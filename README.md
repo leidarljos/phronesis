@@ -2,7 +2,7 @@
 
 # grok-policyd
 
-Policy / supervisor TCB for GrokOS (non-LLM). Host library + CLI for agent lifecycle and fail-closed tool checks.
+Policy / multi-agent supervisor TCB for GrokOS (non-LLM). Host library + CLI for agent lifecycle and fail-closed tool checks.
 
 | | |
 |--|--|
@@ -10,19 +10,29 @@ Policy / supervisor TCB for GrokOS (non-LLM). Host library + CLI for agent lifec
 | **Catalog** | `packages/MANIFEST.yml` in meta |
 | **Issue** | https://nova.teachx.ai/trace-analysis/grokos/-/issues/28 |
 
+## Two engines (do not confuse them)
+
+| Plane | Package | Role |
+|-------|---------|------|
+| **Seat** Cap'n Goal / CancelGoal for the human session | [grokos-session](https://nova.teachx.ai/trace-analysis/grokos-packages/grokos-session) (`grokos-proc` / `InProcessSupervisor`) | Seat process tree for goals; **already live** |
+| **Multi-agent TCB** lifecycle + policy | **this package** (`grok_supervisor_*`) | Agent start/stop/status/log + default-deny tools |
+
+session ↔ policyd is **Cap'n Proto over UDS only** (no cbindgen / shared-lib into session). This MR is the host C library a future policyd daemon will wrap; Cap'n wire is not implemented here yet.
+
 ## What this package does (now)
 
 - **start / status / stop / log** for agent processes (process-group leader)
 - **stop** = process-group SIGTERM→SIGKILL; on Linux, **best-effort `cgroup.kill`** when a writable cgroup v2 child can be created, then process-group as safety net
 - **action log** JSONL under state (`log/actions.jsonl`)
-- **policy check**: tools **default deny**; high-risk actions → **prompt**; `read`/`write` under the agent workspace root may **allow**
+- **policy check**: tools **default deny**; high-risk actions → **prompt**; `read`/`write` under the agent workspace root may **allow** (**lexical** allowlist: absolute paths only, rejects `..` components; **not** realpath — symlink escape still open)
 - Host unit tests (`make test`); CI runs the same
 
 ## What this package does **not** do yet
 
-- No UDS daemon / session Cap’n wiring (session still `SupervisorIpcNotImplemented` until a client lands)
-- No multi-UID agent identities or systemd unit templates
+- No UDS daemon / Cap'n wire between sessiond and policyd (session Cap'n Goal plane is already shipped; missing piece is the **policyd peer**, not seat Cap'n)
+- No multi-UID agent identities or systemd unit templates (meta #29)
 - No guaranteed cgroup on every host (macOS and locked cgroup hierarchies fall back to process-group; children that `setpgid` away can escape until a real delegated cgroup is required)
+- No path **canonicalization** (symlink-based escape past workspace root) — intentional stub limit
 - No fake model / capability store (other packages / tickets)
 - No full confirm UX (decision is `prompt`; human channel not implemented here)
 

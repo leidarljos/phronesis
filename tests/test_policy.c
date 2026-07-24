@@ -59,6 +59,15 @@ static void test_workspace_allowlist(void)
 		    "prefix attack");
 	t_expect_eq((long)pr.decision, (long)GROK_DECISION_DENY, "deny prefix attack");
 
+	/* Keel/Rohit: reject lexical .. traversal even if absolute and prefix-matching */
+	t_expect_eq(grok_policy_check(s, "agent-a", "fs", "read", "/ws/proj/../etc/passwd", &pr),
+		    GROK_OK, "dotdot");
+	t_expect_eq((long)pr.decision, (long)GROK_DECISION_DENY, "deny .. under workspace prefix");
+
+	t_expect_eq(grok_policy_check(s, "agent-a", "fs", "read", "/ws/proj/foo/../../etc", &pr),
+		    GROK_OK, "nested dotdot");
+	t_expect_eq((long)pr.decision, (long)GROK_DECISION_DENY, "deny nested ..");
+
 	/* wait natural exit */
 	{
 		grok_agent_status_t st;

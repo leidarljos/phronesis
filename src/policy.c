@@ -22,15 +22,42 @@ static int is_high_risk(const char *action)
 	return 0;
 }
 
+/*
+ * Lexical workspace allowlist (no realpath). Absolute paths only.
+ * Rejects ".." components and "//" style noise so /ws/proj/../etc/passwd
+ * cannot prefix-match /ws/proj. Symlink escape is still possible without
+ * canonicalization — documented as stub limit in README.
+ */
+static int has_dotdot_component(const char *path)
+{
+	const char *p = path;
+
+	if (!p)
+		return 1;
+	while (*p) {
+		if (p[0] == '.' && p[1] == '.' &&
+		    (p[2] == '/' || p[2] == '\0') &&
+		    (p == path || p[-1] == '/'))
+			return 1;
+		p++;
+	}
+	return 0;
+}
+
 static int path_under_workspace(const char *workspace, const char *path)
 {
 	size_t wl;
 
 	if (!workspace || !workspace[0] || !path || !path[0])
 		return 0;
-	if (path[0] != '/')
+	if (path[0] != '/' || workspace[0] != '/')
+		return 0;
+	if (has_dotdot_component(path) || has_dotdot_component(workspace))
 		return 0;
 	wl = strlen(workspace);
+	/* strip trailing slash on workspace for join rules */
+	while (wl > 1 && workspace[wl - 1] == '/')
+		wl--;
 	if (strncmp(path, workspace, wl) != 0)
 		return 0;
 	if (path[wl] != '\0' && path[wl] != '/')

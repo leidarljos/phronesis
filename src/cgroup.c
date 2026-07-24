@@ -100,11 +100,19 @@ int grok_cgroup_create(const char *runtime_dir, const char *agent_id,
 		return GROK_OK;
 
 	/* Prefer a child under our current cgroup (needs subtree control / write). */
-	if (rel[0] == '\0' || strcmp(rel, "/") == 0)
-		snprintf(base, sizeof(base), "/sys/fs/cgroup");
-	else
-		snprintf(base, sizeof(base), "/sys/fs/cgroup%s", rel);
+	if (rel[0] == '\0' || strcmp(rel, "/") == 0) {
+		if (snprintf(base, sizeof(base), "/sys/fs/cgroup") >= (int)sizeof(base))
+			return GROK_OK;
+	} else {
+		/* Bound: prefix + rel must fit base without format-truncation Werror. */
+		if (strlen(rel) + sizeof("/sys/fs/cgroup") > sizeof(base))
+			return GROK_OK;
+		if (snprintf(base, sizeof(base), "/sys/fs/cgroup%s", rel) >= (int)sizeof(base))
+			return GROK_OK;
+	}
 
+	if (strlen(base) + 1 + strlen(agent_id) + sizeof("/grok-") > sizeof(path))
+		return GROK_OK;
 	if (snprintf(path, sizeof(path), "%s/grok-%s", base, agent_id) >= (int)sizeof(path))
 		return GROK_OK;
 

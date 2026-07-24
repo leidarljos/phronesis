@@ -1,7 +1,8 @@
 # SPDX-License-Identifier: Apache-2.0
 
 CC       ?= cc
-CFLAGS   ?= -std=c11 -Wall -Wextra -Werror -O2
+# _DEFAULT_SOURCE: usleep/kill portability; keep -Werror for CI dogfood.
+CFLAGS   ?= -std=c11 -Wall -Wextra -Werror -O2 -D_DEFAULT_SOURCE -D_POSIX_C_SOURCE=200809L
 CPPFLAGS += -Iinclude -Isrc -Itests
 LDFLAGS  ?=
 
@@ -30,7 +31,7 @@ $(BUILD)/%.o: src/%.c | $(BUILD)
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c -o $@ $<
 
 $(BUILD)/%.o: tests/%.c | $(BUILD)
-	$(CC) $(CPPFLAGS) $(CFLAGS) -c -o $@ $<
+	$(CC) $(CPPFLAGS) $(CFLAGS) -Wno-format-truncation -c -o $@ $<
 
 $(BUILD)/grok-policyd: $(BUILD)/grok-policyd.o $(LIB_OBJS)
 	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
