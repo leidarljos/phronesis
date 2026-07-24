@@ -35,6 +35,8 @@ session ↔ policyd is **Cap'n Proto over UDS only** (no cbindgen / shared-lib i
 - No path **canonicalization** (symlink-based escape past workspace root) — intentional stub limit
 - No fake model / capability store (other packages / tickets)
 - No full confirm UX (decision is `prompt`; human channel not implemented here)
+- High-risk actions are an exact-match string table (stub); a structured tool/action catalog is follow-up (#25 / S3)
+- Tests use a small host harness; prefer **cmocka** when the suite grows further (not required for #28)
 
 ## Build
 

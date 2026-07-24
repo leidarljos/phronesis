@@ -138,10 +138,50 @@ static void test_policy_logged(void)
 	t_rm_rf(runtime);
 }
 
+
+static void test_lexical_rejects_dot_and_slashslash(void)
+{
+	grok_supervisor_t *s = NULL;
+	char state[GROK_PATH_MAX], runtime[GROK_PATH_MAX];
+	grok_policy_result_t pr;
+	char *argv[] = { "true", NULL };
+
+	t_expect(t_open_pair(&s, state, sizeof(state), runtime, sizeof(runtime), "lex") == GROK_OK,
+		 "open");
+	t_expect_eq(grok_supervisor_start(s, "agent-a", NULL, "/ws/proj", argv), GROK_OK, "start");
+
+	t_expect_eq(grok_policy_check(s, "agent-a", "fs", "read", "/ws/proj//file", &pr), GROK_OK,
+		    "double slash");
+	t_expect_eq((long)pr.decision, (long)GROK_DECISION_DENY, "deny //");
+
+	t_expect_eq(grok_policy_check(s, "agent-a", "fs", "read", "/ws/proj/./file", &pr), GROK_OK,
+		    "dot segment");
+	t_expect_eq((long)pr.decision, (long)GROK_DECISION_DENY, "deny .");
+
+	t_expect_eq(grok_policy_check(s, "agent-a", "fs", "read", "ws/proj/file", &pr), GROK_OK,
+		    "relative");
+	t_expect_eq((long)pr.decision, (long)GROK_DECISION_DENY, "deny relative");
+
+	{
+		grok_agent_status_t st;
+		int i;
+		for (i = 0; i < 50; i++) {
+			grok_supervisor_status(s, "agent-a", &st);
+			if (st.state != GROK_AGENT_RUNNING)
+				break;
+			usleep(10 * 1000);
+		}
+	}
+	grok_supervisor_close(s);
+	t_rm_rf(state);
+	t_rm_rf(runtime);
+}
+
 void test_policy_suite(void)
 {
 	t_run("tools_default_deny", test_tools_default_deny);
 	t_run("workspace_allowlist", test_workspace_allowlist);
 	t_run("high_risk_prompt", test_high_risk_prompt);
 	t_run("policy_logged", test_policy_logged);
+	t_run("lexical_rejects_dot_and_slashslash", test_lexical_rejects_dot_and_slashslash);
 }
