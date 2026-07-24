@@ -366,9 +366,13 @@ int grok_supervisor_start(grok_supervisor_t *s,
 		return GROK_ERR_IO;
 	}
 
-	snprintf(detail, sizeof(detail), "pid=%d pgid=%d cmd=%s cgroup=%s",
-		 (int)pid, (int)pid, argv[0],
-		 a->cgroup_path[0] ? a->cgroup_path : "none");
+	{
+		const char *cmd = argv[0] ? argv[0] : "?";
+		const char *cg = a->cgroup_path[0] ? a->cgroup_path : "none";
+		/* Bounded detail for action log (avoid -Wformat-truncation). */
+		snprintf(detail, sizeof(detail), "pid=%d pgid=%d cmd=%.64s cgroup=%.128s",
+			 (int)pid, (int)pid, cmd, cg);
+	}
 	(void)grok_action_log_append(s->action_log, agent_id, "start", detail);
 	return GROK_OK;
 }
@@ -421,7 +425,7 @@ int grok_supervisor_stop(grok_supervisor_t *s, const char *agent_id)
 
 	pgid = a->pgid > 0 ? a->pgid : a->pid;
 	if (a->cgroup_path[0] && grok_cgroup_kill(a->cgroup_path) == GROK_OK) {
-		snprintf(detail, sizeof(detail), "cgroup.kill path=%s pgid=%d",
+		snprintf(detail, sizeof(detail), "cgroup.kill path=%.200s pgid=%d",
 			 a->cgroup_path, (int)pgid);
 	} else {
 		snprintf(detail, sizeof(detail), "process-group pgid=%d", (int)pgid);
