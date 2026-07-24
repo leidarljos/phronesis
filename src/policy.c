@@ -23,25 +23,38 @@ static int is_high_risk(const char *action)
 }
 
 /*
- * Lexical workspace allowlist (no realpath). Absolute paths only.
- * Rejects ".." components and "//" style noise so /ws/proj/../etc/passwd
- * cannot prefix-match /ws/proj. Symlink escape is still possible without
- * canonicalization — documented as stub limit in README.
+ * Lexical workspace allowlist (no realpath — non-existent paths must still
+ * evaluate for write-to-new-file). Absolute paths only.
+ *
+ * Rejects: relative paths, empty path components (//), "." components,
+ * ".." components. Symlink escape past workspace remains open without
+ * canonicalization (README stub limit).
  */
-static int has_dotdot_component(const char *path)
+static int is_clean_abs_path(const char *path)
 {
-	const char *p = path;
+	const char *p;
+	const char *comp;
 
-	if (!p)
-		return 1;
+	if (!path || path[0] != '/')
+		return 0;
+	/* no interior NUL issues beyond C string; reject empty components and . / .. */
+	p = path;
 	while (*p) {
-		if (p[0] == '.' && p[1] == '.' &&
-		    (p[2] == '/' || p[2] == '\0') &&
-		    (p == path || p[-1] == '/'))
-			return 1;
+		if (p[0] == '/' && p[1] == '/')
+			return 0; /* empty component */
+		if (p[0] == '/') {
+			comp = p + 1;
+			if (comp[0] == '\0')
+				break; /* trailing slash OK */
+			if (comp[0] == '.' && (comp[1] == '/' || comp[1] == '\0'))
+				return 0; /* "." */
+			if (comp[0] == '.' && comp[1] == '.' &&
+			    (comp[2] == '/' || comp[2] == '\0'))
+				return 0; /* ".." */
+		}
 		p++;
 	}
-	return 0;
+	return 1;
 }
 
 static int path_under_workspace(const char *workspace, const char *path)
@@ -50,16 +63,15 @@ static int path_under_workspace(const char *workspace, const char *path)
 
 	if (!workspace || !workspace[0] || !path || !path[0])
 		return 0;
-	if (path[0] != '/' || workspace[0] != '/')
+	if (!is_clean_abs_path(workspace) || !is_clean_abs_path(path))
 		return 0;
-	if (has_dotdot_component(path) || has_dotdot_component(workspace))
-		return 0;
+
 	wl = strlen(workspace);
-	/* strip trailing slash on workspace for join rules */
 	while (wl > 1 && workspace[wl - 1] == '/')
 		wl--;
 	if (strncmp(path, workspace, wl) != 0)
 		return 0;
+	/* next char must end path or be a separator (prevents /ws/proj vs /ws/projevil) */
 	if (path[wl] != '\0' && path[wl] != '/')
 		return 0;
 	return 1;
@@ -91,7 +103,6 @@ int grok_policy_eval(const char *workspace,
 		return GROK_OK;
 	}
 
-	/* Limited allow: read/write only under declared workspace root. */
 	if (path && path[0] &&
 	    (strcmp(action, "read") == 0 || strcmp(action, "write") == 0) &&
 	    path_under_workspace(workspace, path)) {

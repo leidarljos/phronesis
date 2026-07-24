@@ -30,8 +30,10 @@ $(BUILD):
 $(BUILD)/%.o: src/%.c | $(BUILD)
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c -o $@ $<
 
+# Tests need mkdtemp; drop strict POSIX feature macro that hides it on some libcs.
 $(BUILD)/%.o: tests/%.c | $(BUILD)
-	$(CC) $(CPPFLAGS) $(CFLAGS) -Wno-format-truncation -c -o $@ $<
+	$(CC) $(CPPFLAGS) -std=c11 -Wall -Wextra -Werror -O2 -D_DEFAULT_SOURCE \
+		-Wno-format-truncation -c -o $@ $<
 
 $(BUILD)/grok-policyd: $(BUILD)/grok-policyd.o $(LIB_OBJS)
 	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)

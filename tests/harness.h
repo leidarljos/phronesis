@@ -21,11 +21,17 @@ int t_pid_alive(pid_t pid);
 int t_read_pidfile(const char *path, pid_t *out);
 void t_rm_rf(const char *path);
 
-/* Open supervisor on fresh state+runtime dirs under caller-owned roots. */
 int t_open_pair(grok_supervisor_t **out, char *state, size_t sn,
 		char *runtime, size_t rn, const char *tag);
 
 typedef void (*t_fn)(void);
 int t_run(const char *name, t_fn fn);
+
+void test_paths_suite(void);
+void test_lifecycle_suite(void);
+void test_kill_tree_suite(void);
+void test_action_log_suite(void);
+void test_persist_suite(void);
+void test_policy_suite(void);
 
 #endif
