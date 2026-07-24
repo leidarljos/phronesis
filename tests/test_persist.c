@@ -1,109 +1,101 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 #include "harness.h"
 
+#include <setjmp.h>
+#include <stdarg.h>
+#include <stddef.h>
+#include <cmocka.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 
-static void test_slot_survives_reopen(void)
+static void test_slot_survives_reopen(void **state)
 {
 	grok_supervisor_t *s1 = NULL, *s2 = NULL;
-	char state[GROK_PATH_MAX], runtime[GROK_PATH_MAX];
-	grok_agent_status_t st;
+	char st[GROK_PATH_MAX], rt[GROK_PATH_MAX], slot[GROK_PATH_MAX];
+	grok_agent_status_t stt;
 	char *argv[] = { "sleep", "60", NULL };
-	char slot[GROK_PATH_MAX];
 	pid_t pid;
 
-	t_expect(t_tmpdir(state, sizeof(state), "gp-p-st") == 0, "state");
-	t_expect(t_tmpdir(runtime, sizeof(runtime), "gp-p-rt") == 0, "runtime");
-	t_expect_eq(grok_supervisor_open(&s1, state, runtime), GROK_OK, "open1");
-	t_expect_eq(grok_supervisor_start(s1, "agent-a", "develop", "/ws", argv), GROK_OK, "start");
-	t_expect_eq(grok_supervisor_status(s1, "agent-a", &st), GROK_OK, "st1");
-	pid = st.pid;
-	snprintf(slot, sizeof(slot), "%s/agents/agent-a.slot", runtime);
-	t_expect(access(slot, F_OK) == 0, "slot file exists");
+	(void)state;
+	assert_int_equal(t_tmpdir(st, sizeof(st), "gp-p-st"), 0);
+	assert_int_equal(t_tmpdir(rt, sizeof(rt), "gp-p-rt"), 0);
+	assert_int_equal(grok_supervisor_open(&s1, st, rt), GROK_OK);
+	assert_int_equal(grok_supervisor_start(s1, "agent-a", "develop", "/ws", argv), GROK_OK);
+	assert_int_equal(grok_supervisor_status(s1, "agent-a", &stt), GROK_OK);
+	pid = stt.pid;
+	snprintf(slot, sizeof(slot), "%s/agents/agent-a.slot", rt);
+	assert_int_equal(access(slot, F_OK), 0);
 	grok_supervisor_close(s1);
-
-	t_expect_eq(grok_supervisor_open(&s2, state, runtime), GROK_OK, "open2");
-	t_expect_eq(grok_supervisor_status(s2, "agent-a", &st), GROK_OK, "st2");
-	t_expect_eq((long)st.state, (long)GROK_AGENT_RUNNING, "still running");
-	t_expect_eq((long)st.pid, (long)pid, "same pid");
-	t_expect_streq(st.mode, "develop", "mode persisted");
-	t_expect_streq(st.workspace, "/ws", "workspace persisted");
-	t_expect(t_pid_alive(pid), "process still up");
-	t_expect_eq(grok_supervisor_stop(s2, "agent-a"), GROK_OK, "stop via second handle");
-	t_expect(!t_pid_alive(pid), "killed via reopened supervisor");
+	assert_int_equal(grok_supervisor_open(&s2, st, rt), GROK_OK);
+	assert_int_equal(grok_supervisor_status(s2, "agent-a", &stt), GROK_OK);
+	assert_int_equal(stt.state, GROK_AGENT_RUNNING);
+	assert_int_equal(stt.pid, pid);
+	assert_string_equal(stt.mode, "develop");
+	assert_string_equal(stt.workspace, "/ws");
+	assert_true(t_pid_alive(pid));
+	assert_int_equal(grok_supervisor_stop(s2, "agent-a"), GROK_OK);
+	assert_false(t_pid_alive(pid));
 	grok_supervisor_close(s2);
-	t_rm_rf(state);
-	t_rm_rf(runtime);
+	t_rm_rf(st);
+	t_rm_rf(rt);
 }
 
-static void test_corrupt_slot(void)
+static void test_corrupt_slot(void **state)
 {
 	grok_supervisor_t *s = NULL;
-	char state[GROK_PATH_MAX], runtime[GROK_PATH_MAX];
-	char slot[GROK_PATH_MAX];
-	grok_agent_status_t st;
+	char st[GROK_PATH_MAX], rt[GROK_PATH_MAX], slot[GROK_PATH_MAX];
+	grok_agent_status_t stt;
 
-	t_expect(t_open_pair(&s, state, sizeof(state), runtime, sizeof(runtime), "corrupt") == GROK_OK,
-		 "open");
-	snprintf(slot, sizeof(slot), "%s/agents/agent-a.slot", runtime);
-	t_expect(t_write_file(slot, "not-a-valid-slot\n") == 0, "write junk");
-	/* load from disk fails parse → IO */
-	t_expect_eq(grok_supervisor_status(s, "agent-a", &st), GROK_ERR_IO, "corrupt status");
-	t_expect_eq(grok_supervisor_stop(s, "agent-a"), GROK_ERR_IO, "corrupt stop");
+	(void)state;
+	assert_int_equal(t_open_pair(&s, st, sizeof(st), rt, sizeof(rt), "corrupt"), GROK_OK);
+	snprintf(slot, sizeof(slot), "%s/agents/agent-a.slot", rt);
+	assert_int_equal(t_write_file(slot, "not-a-valid-slot\n"), 0);
+	assert_int_equal(grok_supervisor_status(s, "agent-a", &stt), GROK_ERR_IO);
+	assert_int_equal(grok_supervisor_stop(s, "agent-a"), GROK_ERR_IO);
 	grok_supervisor_close(s);
-	t_rm_rf(state);
-	t_rm_rf(runtime);
+	t_rm_rf(st);
+	t_rm_rf(rt);
 }
 
-static void test_cli_subprocess_roundtrip(void)
+static void test_cli_subprocess_roundtrip(void **state)
 {
-	char state[GROK_PATH_MAX], runtime[GROK_PATH_MAX];
+	char st[GROK_PATH_MAX], rt[GROK_PATH_MAX];
 	char cmd[1024];
-	int rc;
 	const char *bin = "build/grok-policyd";
 
+	(void)state;
 	if (access(bin, X_OK) != 0) {
-		/* suite may run before cli linked; skip soft */
-		fprintf(stderr, "  skip: %s not built\n", bin);
-		return;
+		skip();
 	}
-	t_expect(t_tmpdir(state, sizeof(state), "gp-cli-st") == 0, "state");
-	t_expect(t_tmpdir(runtime, sizeof(runtime), "gp-cli-rt") == 0, "runtime");
-
+	assert_int_equal(t_tmpdir(st, sizeof(st), "gp-cli-st"), 0);
+	assert_int_equal(t_tmpdir(rt, sizeof(rt), "gp-cli-rt"), 0);
 	snprintf(cmd, sizeof(cmd),
 		 "%s --state-dir '%s' --runtime-dir '%s' start agent-cli -- sleep 60",
-		 bin, state, runtime);
-	rc = system(cmd);
-	t_expect_eq(rc, 0, "cli start");
-
+		 bin, st, rt);
+	assert_int_equal(system(cmd), 0);
 	snprintf(cmd, sizeof(cmd),
 		 "%s --state-dir '%s' --runtime-dir '%s' status agent-cli | grep -q running",
-		 bin, state, runtime);
-	rc = system(cmd);
-	t_expect_eq(rc, 0, "cli status running");
-
+		 bin, st, rt);
+	assert_int_equal(system(cmd), 0);
 	snprintf(cmd, sizeof(cmd),
-		 "%s --state-dir '%s' --runtime-dir '%s' stop agent-cli",
-		 bin, state, runtime);
-	rc = system(cmd);
-	t_expect_eq(rc, 0, "cli stop");
-
+		 "%s --state-dir '%s' --runtime-dir '%s' stop agent-cli", bin, st, rt);
+	assert_int_equal(system(cmd), 0);
 	snprintf(cmd, sizeof(cmd),
 		 "%s --state-dir '%s' --runtime-dir '%s' status agent-cli | grep -q stopped",
-		 bin, state, runtime);
-	rc = system(cmd);
-	t_expect_eq(rc, 0, "cli status stopped");
-
-	t_rm_rf(state);
-	t_rm_rf(runtime);
+		 bin, st, rt);
+	assert_int_equal(system(cmd), 0);
+	t_rm_rf(st);
+	t_rm_rf(rt);
 }
 
-void test_persist_suite(void)
+int run_persist_tests(void)
 {
-	t_run("slot_survives_reopen", test_slot_survives_reopen);
-	t_run("corrupt_slot", test_corrupt_slot);
-	t_run("cli_subprocess_roundtrip", test_cli_subprocess_roundtrip);
+	const struct CMUnitTest tests[] = {
+		cmocka_unit_test(test_slot_survives_reopen),
+		cmocka_unit_test(test_corrupt_slot),
+		cmocka_unit_test(test_cli_subprocess_roundtrip),
+	};
+	return cmocka_run_group_tests_name("persist", tests, NULL, NULL);
 }

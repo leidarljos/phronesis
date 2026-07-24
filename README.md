@@ -36,11 +36,12 @@ session ↔ policyd is **Cap'n Proto over UDS only** (no cbindgen / shared-lib i
 - No fake model / capability store (other packages / tickets)
 - No full confirm UX (decision is `prompt`; human channel not implemented here)
 - High-risk actions are an exact-match string table (stub); a structured tool/action catalog is follow-up (#25 / S3)
-- Tests use a small host harness; prefer **cmocka** when the suite grows further (not required for #28)
+- Host tests use **cmocka** (`pkg-config cmocka`; Alpine: `cmocka-dev`)
 
 ## Build
 
 ```bash
+# needs cmocka + pkg-config (brew install cmocka / apk add cmocka-dev pkgconf)
 make test
 make                 # build/grok-policyd
 ```

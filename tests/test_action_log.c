@@ -1,9 +1,12 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 #include "harness.h"
 
+#include <setjmp.h>
+#include <stdarg.h>
+#include <stddef.h>
+#include <cmocka.h>
 #include <stdio.h>
 #include <string.h>
-#include <sys/stat.h>
 #include <unistd.h>
 
 static int count_lines(const char *path)
@@ -20,113 +23,107 @@ static int count_lines(const char *path)
 	return n;
 }
 
-static void test_start_stop_log_lines(void)
+static void test_start_stop_log_lines(void **state)
 {
 	grok_supervisor_t *s = NULL;
-	char state[GROK_PATH_MAX], runtime[GROK_PATH_MAX];
+	char st[GROK_PATH_MAX], rt[GROK_PATH_MAX];
 	char line[1024];
 	const char *logpath;
 	char *argv[] = { "sleep", "30", NULL };
 
-	t_expect(t_open_pair(&s, state, sizeof(state), runtime, sizeof(runtime), "alog") == GROK_OK,
-		 "open");
+	(void)state;
+	assert_int_equal(t_open_pair(&s, st, sizeof(st), rt, sizeof(rt), "alog"), GROK_OK);
 	logpath = grok_supervisor_action_log_path(s);
-	t_expect_eq(grok_supervisor_start(s, "agent-a", NULL, NULL, argv), GROK_OK, "start");
-	t_expect_eq(grok_supervisor_log_last(s, line, sizeof(line)), GROK_OK, "last start");
-	t_expect(strstr(line, "\"kind\":\"start\"") != NULL, "kind start");
-	t_expect(strstr(line, "\"agent\":\"agent-a\"") != NULL, "agent a");
-	t_expect(strstr(line, "pid=") != NULL, "pid detail");
-
-	t_expect_eq(grok_supervisor_stop(s, "agent-a"), GROK_OK, "stop");
-	t_expect_eq(grok_supervisor_log_last(s, line, sizeof(line)), GROK_OK, "last stop");
-	t_expect(strstr(line, "\"kind\":\"stop\"") != NULL, "kind stop");
-	t_expect(count_lines(logpath) >= 2, "at least 2 lines");
-
+	assert_int_equal(grok_supervisor_start(s, "agent-a", NULL, NULL, argv), GROK_OK);
+	assert_int_equal(grok_supervisor_log_last(s, line, sizeof(line)), GROK_OK);
+	assert_non_null(strstr(line, "\"kind\":\"start\""));
+	assert_non_null(strstr(line, "\"agent\":\"agent-a\""));
+	assert_non_null(strstr(line, "pid="));
+	assert_int_equal(grok_supervisor_stop(s, "agent-a"), GROK_OK);
+	assert_int_equal(grok_supervisor_log_last(s, line, sizeof(line)), GROK_OK);
+	assert_non_null(strstr(line, "\"kind\":\"stop\""));
+	assert_true(count_lines(logpath) >= 2);
 	grok_supervisor_close(s);
-	t_rm_rf(state);
-	t_rm_rf(runtime);
+	t_rm_rf(st);
+	t_rm_rf(rt);
 }
 
-static void test_log_json_escape_and_system(void)
+static void test_log_json_escape_and_system(void **state)
 {
 	grok_supervisor_t *s = NULL;
-	char state[GROK_PATH_MAX], runtime[GROK_PATH_MAX];
+	char st[GROK_PATH_MAX], rt[GROK_PATH_MAX];
 	char line[1024];
 
-	t_expect(t_open_pair(&s, state, sizeof(state), runtime, sizeof(runtime), "esc") == GROK_OK,
-		 "open");
-	t_expect_eq(grok_supervisor_log(s, NULL, "note", "say \"hi\" \\ ok"), GROK_OK, "log");
-	t_expect_eq(grok_supervisor_log_last(s, line, sizeof(line)), GROK_OK, "last");
-	t_expect(strstr(line, "\\\"hi\\\"") != NULL, "escaped quotes");
-	t_expect(strstr(line, "\\\\") != NULL, "escaped backslash");
-	t_expect(strstr(line, "\"agent\":\"\"") != NULL, "empty agent system");
-
-	t_expect_eq(grok_supervisor_log(s, "bad id", "x", "y"), GROK_ERR_INVAL, "bad agent");
-	t_expect_eq(grok_supervisor_log(s, "agent-a", "", "y"), GROK_ERR_INVAL, "empty kind");
-	t_expect_eq(grok_supervisor_log(s, "agent-a", NULL, "y"), GROK_ERR_INVAL, "null kind");
-
+	(void)state;
+	assert_int_equal(t_open_pair(&s, st, sizeof(st), rt, sizeof(rt), "esc"), GROK_OK);
+	assert_int_equal(grok_supervisor_log(s, NULL, "note", "say \"hi\" \\ ok"), GROK_OK);
+	assert_int_equal(grok_supervisor_log_last(s, line, sizeof(line)), GROK_OK);
+	assert_non_null(strstr(line, "\\\"hi\\\""));
+	assert_non_null(strstr(line, "\\\\"));
+	assert_non_null(strstr(line, "\"agent\":\"\""));
+	assert_int_equal(grok_supervisor_log(s, "bad id", "x", "y"), GROK_ERR_INVAL);
+	assert_int_equal(grok_supervisor_log(s, "agent-a", "", "y"), GROK_ERR_INVAL);
+	assert_int_equal(grok_supervisor_log(s, "agent-a", NULL, "y"), GROK_ERR_INVAL);
 	grok_supervisor_close(s);
-	t_rm_rf(state);
-	t_rm_rf(runtime);
+	t_rm_rf(st);
+	t_rm_rf(rt);
 }
 
-static void test_log_append_order(void)
+static void test_log_append_order(void **state)
 {
 	grok_supervisor_t *s = NULL;
-	char state[GROK_PATH_MAX], runtime[GROK_PATH_MAX];
+	char st[GROK_PATH_MAX], rt[GROK_PATH_MAX];
 	char line[1024];
 	const char *logpath;
-	int n;
 
-	t_expect(t_open_pair(&s, state, sizeof(state), runtime, sizeof(runtime), "ord") == GROK_OK,
-		 "open");
+	(void)state;
+	assert_int_equal(t_open_pair(&s, st, sizeof(st), rt, sizeof(rt), "ord"), GROK_OK);
 	logpath = grok_supervisor_action_log_path(s);
-	t_expect_eq(grok_supervisor_log(s, "agent-a", "k1", "d1"), GROK_OK, "l1");
-	t_expect_eq(grok_supervisor_log(s, "agent-a", "k2", "d2"), GROK_OK, "l2");
-	t_expect_eq(grok_supervisor_log(s, "agent-b", "k3", "d3"), GROK_OK, "l3");
-	n = count_lines(logpath);
-	t_expect_eq(n, 3, "three lines");
-	t_expect_eq(grok_supervisor_log_last(s, line, sizeof(line)), GROK_OK, "last");
-	t_expect(strstr(line, "\"kind\":\"k3\"") != NULL, "last is k3");
-	t_expect(strstr(line, "agent-b") != NULL, "last agent b");
-
+	assert_int_equal(grok_supervisor_log(s, "agent-a", "k1", "d1"), GROK_OK);
+	assert_int_equal(grok_supervisor_log(s, "agent-a", "k2", "d2"), GROK_OK);
+	assert_int_equal(grok_supervisor_log(s, "agent-b", "k3", "d3"), GROK_OK);
+	assert_int_equal(count_lines(logpath), 3);
+	assert_int_equal(grok_supervisor_log_last(s, line, sizeof(line)), GROK_OK);
+	assert_non_null(strstr(line, "\"kind\":\"k3\""));
+	assert_non_null(strstr(line, "agent-b"));
 	grok_supervisor_close(s);
-	t_rm_rf(state);
-	t_rm_rf(runtime);
+	t_rm_rf(st);
+	t_rm_rf(rt);
 }
 
-static void test_idempotent_stop_logged(void)
+static void test_idempotent_stop_logged(void **state)
 {
 	grok_supervisor_t *s = NULL;
-	char state[GROK_PATH_MAX], runtime[GROK_PATH_MAX];
+	char st[GROK_PATH_MAX], rt[GROK_PATH_MAX];
 	char line[1024];
 	char *argv[] = { "true", NULL };
+	grok_agent_status_t stt;
 	int tries;
-	grok_agent_status_t st;
 
-	t_expect(t_open_pair(&s, state, sizeof(state), runtime, sizeof(runtime), "idemp") == GROK_OK,
-		 "open");
-	t_expect_eq(grok_supervisor_start(s, "agent-a", NULL, NULL, argv), GROK_OK, "start");
+	(void)state;
+	assert_int_equal(t_open_pair(&s, st, sizeof(st), rt, sizeof(rt), "idemp"), GROK_OK);
+	assert_int_equal(grok_supervisor_start(s, "agent-a", NULL, NULL, argv), GROK_OK);
 	for (tries = 0; tries < 100; tries++) {
-		grok_supervisor_status(s, "agent-a", &st);
-		if (st.state != GROK_AGENT_RUNNING)
+		grok_supervisor_status(s, "agent-a", &stt);
+		if (stt.state != GROK_AGENT_RUNNING)
 			break;
 		usleep(10 * 1000);
 	}
-	t_expect_eq(grok_supervisor_stop(s, "agent-a"), GROK_OK, "stop idle");
-	t_expect_eq(grok_supervisor_log_last(s, line, sizeof(line)), GROK_OK, "last");
-	t_expect(strstr(line, "idempotent") != NULL || strstr(line, "\"kind\":\"stop\"") != NULL,
-		 "stop logged");
-
+	assert_int_equal(grok_supervisor_stop(s, "agent-a"), GROK_OK);
+	assert_int_equal(grok_supervisor_log_last(s, line, sizeof(line)), GROK_OK);
+	assert_true(strstr(line, "idempotent") != NULL || strstr(line, "\"kind\":\"stop\"") != NULL);
 	grok_supervisor_close(s);
-	t_rm_rf(state);
-	t_rm_rf(runtime);
+	t_rm_rf(st);
+	t_rm_rf(rt);
 }
 
-void test_action_log_suite(void)
+int run_action_log_tests(void)
 {
-	t_run("start_stop_log_lines", test_start_stop_log_lines);
-	t_run("log_json_escape_and_system", test_log_json_escape_and_system);
-	t_run("log_append_order", test_log_append_order);
-	t_run("idempotent_stop_logged", test_idempotent_stop_logged);
+	const struct CMUnitTest tests[] = {
+		cmocka_unit_test(test_start_stop_log_lines),
+		cmocka_unit_test(test_log_json_escape_and_system),
+		cmocka_unit_test(test_log_append_order),
+		cmocka_unit_test(test_idempotent_stop_logged),
+	};
+	return cmocka_run_group_tests_name("action_log", tests, NULL, NULL);
 }

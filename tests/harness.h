@@ -7,13 +7,6 @@
 #include <stddef.h>
 #include <sys/types.h>
 
-extern int g_failures;
-extern int g_tests;
-
-void t_expect(int cond, const char *msg);
-void t_expect_eq(long a, long b, const char *msg);
-void t_expect_streq(const char *a, const char *b, const char *msg);
-
 int t_tmpdir(char *buf, size_t n, const char *prefix);
 int t_write_file(const char *path, const char *body);
 int t_wait_file(const char *path, int timeout_ms);
@@ -24,14 +17,11 @@ void t_rm_rf(const char *path);
 int t_open_pair(grok_supervisor_t **out, char *state, size_t sn,
 		char *runtime, size_t rn, const char *tag);
 
-typedef void (*t_fn)(void);
-int t_run(const char *name, t_fn fn);
-
-void test_paths_suite(void);
-void test_lifecycle_suite(void);
-void test_kill_tree_suite(void);
-void test_action_log_suite(void);
-void test_persist_suite(void);
-void test_policy_suite(void);
+int run_paths_tests(void);
+int run_lifecycle_tests(void);
+int run_kill_tree_tests(void);
+int run_action_log_tests(void);
+int run_persist_tests(void);
+int run_policy_tests(void);
 
 #endif

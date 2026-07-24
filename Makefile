@@ -1,10 +1,15 @@
 # SPDX-License-Identifier: Apache-2.0
 
 CC       ?= cc
-# _DEFAULT_SOURCE: usleep/kill portability; keep -Werror for CI dogfood.
 CFLAGS   ?= -std=c11 -Wall -Wextra -Werror -O2 -D_DEFAULT_SOURCE -D_POSIX_C_SOURCE=200809L
 CPPFLAGS += -Iinclude -Isrc -Itests
 LDFLAGS  ?=
+
+CMOCKA_CFLAGS := $(shell pkg-config --cflags cmocka 2>/dev/null)
+CMOCKA_LIBS   := $(shell pkg-config --libs cmocka 2>/dev/null)
+ifeq ($(CMOCKA_LIBS),)
+  $(error cmocka not found — install libcmocka / cmocka-dev and pkg-config)
+endif
 
 BUILD    := build
 LIB_SRCS := src/paths.c src/action_log.c src/cgroup.c src/policy.c src/supervisor.c
@@ -30,16 +35,15 @@ $(BUILD):
 $(BUILD)/%.o: src/%.c | $(BUILD)
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c -o $@ $<
 
-# Tests need mkdtemp; drop strict POSIX feature macro that hides it on some libcs.
 $(BUILD)/%.o: tests/%.c | $(BUILD)
-	$(CC) $(CPPFLAGS) -std=c11 -Wall -Wextra -Werror -O2 -D_DEFAULT_SOURCE \
+	$(CC) $(CPPFLAGS) $(CMOCKA_CFLAGS) -std=c11 -Wall -Wextra -Werror -O2 -D_DEFAULT_SOURCE \
 		-Wno-format-truncation -c -o $@ $<
 
 $(BUILD)/grok-policyd: $(BUILD)/grok-policyd.o $(LIB_OBJS)
 	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
 
 $(BUILD)/supervisor_test: $(TEST_OBJS) $(LIB_OBJS)
-	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
+	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS) $(CMOCKA_LIBS)
 
 test: $(BUILD)/grok-policyd $(BUILD)/supervisor_test
 	$(BUILD)/supervisor_test
