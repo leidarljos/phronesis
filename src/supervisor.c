@@ -1,0 +1,494 @@
+/* SPDX-License-Identifier: Apache-2.0 */
+#include "internal.h"
+
+#include <errno.h>
+#include <signal.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/wait.h>
+#include <unistd.h>
+
+#define GROK_MAX_AGENTS 16
+
+typedef struct {
+	int in_use;
+	char id[GROK_ID_MAX];
+	grok_agent_state_t state;
+	pid_t pid;
+	pid_t pgid;
+	int exit_status;
+	char mode[GROK_MODE_MAX];
+	char workspace[GROK_PATH_MAX];
+	char cgroup_path[GROK_PATH_MAX];
+} agent_slot_t;
+
+struct grok_supervisor {
+	char state_dir[GROK_PATH_MAX];
+	char runtime_dir[GROK_PATH_MAX];
+	char action_log[GROK_PATH_MAX];
+	char agents_dir[GROK_PATH_MAX];
+	agent_slot_t agents[GROK_MAX_AGENTS];
+};
+
+static int valid_id(const char *id)
+{
+	size_t i;
+
+	if (!id || !id[0] || strlen(id) >= GROK_ID_MAX)
+		return 0;
+	for (i = 0; id[i]; i++) {
+		char c = id[i];
+		if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+		    (c >= '0' && c <= '9') || c == '-' || c == '_')
+			continue;
+		return 0;
+	}
+	return 1;
+}
+
+static int valid_token(const char *s, size_t maxlen)
+{
+	size_t i;
+
+	if (!s || !s[0] || strlen(s) >= maxlen)
+		return 0;
+	for (i = 0; s[i]; i++) {
+		unsigned char c = (unsigned char)s[i];
+		if (c <= 0x20 || c == 0x7f)
+			return 0;
+	}
+	return 1;
+}
+
+static int slot_path(const grok_supervisor_t *s, const char *id, char *out, size_t n)
+{
+	int r = snprintf(out, n, "%s/%s.slot", s->agents_dir, id);
+
+	if (r < 0 || (size_t)r >= n)
+		return GROK_ERR_INVAL;
+	return GROK_OK;
+}
+
+static int write_slot(const grok_supervisor_t *s, const agent_slot_t *a)
+{
+	char path[GROK_PATH_MAX];
+	char tmp[GROK_PATH_MAX];
+	FILE *f;
+
+	if (slot_path(s, a->id, path, sizeof(path)) != GROK_OK)
+		return GROK_ERR_INVAL;
+	if (snprintf(tmp, sizeof(tmp), "%s.tmp", path) >= (int)sizeof(tmp))
+		return GROK_ERR_INVAL;
+	f = fopen(tmp, "w");
+	if (!f)
+		return GROK_ERR_IO;
+	if (fprintf(f, "%s %d %d %d %d %s %s\n",
+		    a->id, (int)a->state, (int)a->pid, (int)a->pgid, a->exit_status,
+		    a->mode[0] ? a->mode : "-",
+		    a->workspace[0] ? a->workspace : "-") < 0) {
+		fclose(f);
+		unlink(tmp);
+		return GROK_ERR_IO;
+	}
+	if (fclose(f) != 0) {
+		unlink(tmp);
+		return GROK_ERR_IO;
+	}
+	if (rename(tmp, path) != 0) {
+		unlink(tmp);
+		return GROK_ERR_IO;
+	}
+	return GROK_OK;
+}
+
+static int read_slot_file(const grok_supervisor_t *s, const char *id, agent_slot_t *a)
+{
+	char path[GROK_PATH_MAX];
+	FILE *f;
+	int state, pid, pgid, exit_status;
+	char mode[GROK_MODE_MAX];
+	char workspace[GROK_PATH_MAX];
+	char got_id[GROK_ID_MAX];
+
+	if (slot_path(s, id, path, sizeof(path)) != GROK_OK)
+		return GROK_ERR_INVAL;
+	f = fopen(path, "r");
+	if (!f)
+		return GROK_ERR_NOTFOUND;
+	memset(a, 0, sizeof(*a));
+	if (fscanf(f, "%63s %d %d %d %d %31s %511s",
+		   got_id, &state, &pid, &pgid, &exit_status, mode, workspace) != 7) {
+		fclose(f);
+		return GROK_ERR_IO;
+	}
+	fclose(f);
+	if (strcmp(got_id, id) != 0)
+		return GROK_ERR_IO;
+	a->in_use = 1;
+	snprintf(a->id, sizeof(a->id), "%s", got_id);
+	a->state = (grok_agent_state_t)state;
+	a->pid = (pid_t)pid;
+	a->pgid = (pid_t)pgid;
+	a->exit_status = exit_status;
+	if (strcmp(mode, "-") != 0)
+		snprintf(a->mode, sizeof(a->mode), "%s", mode);
+	if (strcmp(workspace, "-") != 0)
+		snprintf(a->workspace, sizeof(a->workspace), "%s", workspace);
+	return GROK_OK;
+}
+
+static agent_slot_t *find_mem(grok_supervisor_t *s, const char *id)
+{
+	int i;
+
+	for (i = 0; i < GROK_MAX_AGENTS; i++) {
+		if (s->agents[i].in_use && strcmp(s->agents[i].id, id) == 0)
+			return &s->agents[i];
+	}
+	return NULL;
+}
+
+static agent_slot_t *alloc_mem(grok_supervisor_t *s)
+{
+	int i;
+
+	for (i = 0; i < GROK_MAX_AGENTS; i++) {
+		if (!s->agents[i].in_use) {
+			memset(&s->agents[i], 0, sizeof(s->agents[i]));
+			s->agents[i].in_use = 1;
+			s->agents[i].exit_status = -1;
+			return &s->agents[i];
+		}
+	}
+	return NULL;
+}
+
+static int load_agent(grok_supervisor_t *s, const char *id, agent_slot_t **out)
+{
+	agent_slot_t *a = find_mem(s, id);
+	agent_slot_t disk;
+	int rc;
+
+	if (a) {
+		*out = a;
+		return GROK_OK;
+	}
+	rc = read_slot_file(s, id, &disk);
+	if (rc != GROK_OK)
+		return rc;
+	a = alloc_mem(s);
+	if (!a)
+		return GROK_ERR_STATE;
+	*a = disk;
+	*out = a;
+	return GROK_OK;
+}
+
+static void reap_slot(agent_slot_t *a)
+{
+	int st;
+	pid_t r;
+
+	if (!a || a->state != GROK_AGENT_RUNNING || a->pid <= 0)
+		return;
+	if (kill(a->pid, 0) != 0 && errno == ESRCH) {
+		r = waitpid(a->pid, &st, WNOHANG);
+		a->exit_status = (r == a->pid) ? st : -1;
+		a->state = GROK_AGENT_STOPPED;
+		a->pid = 0;
+		return;
+	}
+	r = waitpid(a->pid, &st, WNOHANG);
+	if (r == a->pid) {
+		a->exit_status = st;
+		a->state = GROK_AGENT_STOPPED;
+		a->pid = 0;
+	}
+}
+
+static int kill_tree(pid_t pgid)
+{
+	int st;
+	int tries;
+
+	if (pgid <= 1)
+		return GROK_ERR_INVAL;
+
+	(void)kill(-pgid, SIGTERM);
+	for (tries = 0; tries < 50; tries++) {
+		if (kill(-pgid, 0) != 0 && errno == ESRCH)
+			break;
+		(void)waitpid(-pgid, &st, WNOHANG);
+		usleep(10 * 1000);
+	}
+	if (kill(-pgid, 0) == 0) {
+		(void)kill(-pgid, SIGKILL);
+		for (tries = 0; tries < 50; tries++) {
+			if (kill(-pgid, 0) != 0 && errno == ESRCH)
+				break;
+			(void)waitpid(-pgid, &st, WNOHANG);
+			usleep(10 * 1000);
+		}
+	}
+	while (waitpid(-pgid, &st, WNOHANG) > 0) {
+	}
+	return GROK_OK;
+}
+
+int grok_supervisor_open(grok_supervisor_t **out,
+			 const char *state_dir,
+			 const char *runtime_dir)
+{
+	grok_supervisor_t *s;
+	int rc;
+
+	if (!out)
+		return GROK_ERR_INVAL;
+	*out = NULL;
+	s = calloc(1, sizeof(*s));
+	if (!s)
+		return GROK_ERR_IO;
+	rc = grok_paths_resolve(s->state_dir, sizeof(s->state_dir),
+				s->runtime_dir, sizeof(s->runtime_dir),
+				s->action_log, sizeof(s->action_log),
+				state_dir, runtime_dir);
+	if (rc != GROK_OK) {
+		free(s);
+		return rc;
+	}
+	if (snprintf(s->agents_dir, sizeof(s->agents_dir), "%s/agents",
+		     s->runtime_dir) >= (int)sizeof(s->agents_dir)) {
+		free(s);
+		return GROK_ERR_INVAL;
+	}
+	if (grok_paths_ensure_dir(s->agents_dir, 0700) != GROK_OK) {
+		free(s);
+		return GROK_ERR_IO;
+	}
+	*out = s;
+	return GROK_OK;
+}
+
+void grok_supervisor_close(grok_supervisor_t *s)
+{
+	free(s);
+}
+
+const char *grok_supervisor_action_log_path(const grok_supervisor_t *s)
+{
+	return s ? s->action_log : NULL;
+}
+
+const char *grok_supervisor_state_dir(const grok_supervisor_t *s)
+{
+	return s ? s->state_dir : NULL;
+}
+
+const char *grok_supervisor_runtime_dir(const grok_supervisor_t *s)
+{
+	return s ? s->runtime_dir : NULL;
+}
+
+int grok_supervisor_start(grok_supervisor_t *s,
+			  const char *agent_id,
+			  const char *mode,
+			  const char *workspace,
+			  char *const argv[])
+{
+	agent_slot_t *a;
+	pid_t pid;
+	char detail[GROK_DETAIL_MAX];
+	int rc;
+
+	if (!s || !argv || !argv[0] || !valid_id(agent_id))
+		return GROK_ERR_INVAL;
+	if (mode && mode[0] && !valid_token(mode, GROK_MODE_MAX))
+		return GROK_ERR_INVAL;
+	if (workspace && workspace[0] && !valid_token(workspace, GROK_PATH_MAX))
+		return GROK_ERR_INVAL;
+
+	rc = load_agent(s, agent_id, &a);
+	if (rc == GROK_OK) {
+		reap_slot(a);
+		if (a->state == GROK_AGENT_RUNNING)
+			return GROK_ERR_EXISTS;
+	} else if (rc == GROK_ERR_NOTFOUND) {
+		a = alloc_mem(s);
+		if (!a)
+			return GROK_ERR_STATE;
+		snprintf(a->id, sizeof(a->id), "%s", agent_id);
+	} else {
+		return rc;
+	}
+
+	pid = fork();
+	if (pid < 0)
+		return GROK_ERR_SPAWN;
+	if (pid == 0) {
+		if (setpgid(0, 0) != 0)
+			_exit(127);
+		execvp(argv[0], argv);
+		_exit(127);
+	}
+	(void)setpgid(pid, pid);
+
+	a->pid = pid;
+	a->pgid = pid;
+	a->state = GROK_AGENT_RUNNING;
+	a->exit_status = -1;
+	a->cgroup_path[0] = '\0';
+	if (mode && mode[0])
+		snprintf(a->mode, sizeof(a->mode), "%s", mode);
+	else
+		snprintf(a->mode, sizeof(a->mode), "develop");
+	if (workspace && workspace[0])
+		snprintf(a->workspace, sizeof(a->workspace), "%s", workspace);
+	else
+		a->workspace[0] = '\0';
+
+	/* Best-effort cgroup placement; process-group kill remains the baseline. */
+	if (grok_cgroup_create(s->runtime_dir, agent_id, a->cgroup_path,
+			       sizeof(a->cgroup_path)) == GROK_OK &&
+	    a->cgroup_path[0]) {
+		if (grok_cgroup_attach(a->cgroup_path, pid) != GROK_OK)
+			a->cgroup_path[0] = '\0';
+	}
+
+	if (write_slot(s, a) != GROK_OK) {
+		(void)kill_tree(pid);
+		if (a->cgroup_path[0])
+			grok_cgroup_remove(a->cgroup_path);
+		a->state = GROK_AGENT_FAILED;
+		a->pid = 0;
+		a->cgroup_path[0] = '\0';
+		(void)write_slot(s, a);
+		return GROK_ERR_IO;
+	}
+
+	snprintf(detail, sizeof(detail), "pid=%d pgid=%d cmd=%s cgroup=%s",
+		 (int)pid, (int)pid, argv[0],
+		 a->cgroup_path[0] ? a->cgroup_path : "none");
+	(void)grok_action_log_append(s->action_log, agent_id, "start", detail);
+	return GROK_OK;
+}
+
+int grok_supervisor_status(grok_supervisor_t *s,
+			   const char *agent_id,
+			   grok_agent_status_t *out)
+{
+	agent_slot_t *a;
+	int rc;
+
+	if (!s || !out || !valid_id(agent_id))
+		return GROK_ERR_INVAL;
+	rc = load_agent(s, agent_id, &a);
+	if (rc != GROK_OK)
+		return rc;
+	reap_slot(a);
+	(void)write_slot(s, a);
+	memset(out, 0, sizeof(*out));
+	snprintf(out->id, sizeof(out->id), "%s", a->id);
+	out->state = a->state;
+	out->pid = a->pid;
+	out->pgid = a->pgid;
+	out->exit_status = a->exit_status;
+	snprintf(out->mode, sizeof(out->mode), "%s", a->mode);
+	snprintf(out->workspace, sizeof(out->workspace), "%s", a->workspace);
+	out->has_cgroup = a->cgroup_path[0] ? 1 : 0;
+	return GROK_OK;
+}
+
+int grok_supervisor_stop(grok_supervisor_t *s, const char *agent_id)
+{
+	agent_slot_t *a;
+	char detail[GROK_DETAIL_MAX];
+	pid_t pgid;
+	int rc;
+
+	if (!s || !valid_id(agent_id))
+		return GROK_ERR_INVAL;
+	rc = load_agent(s, agent_id, &a);
+	if (rc != GROK_OK)
+		return rc;
+
+	reap_slot(a);
+	if (a->state != GROK_AGENT_RUNNING) {
+		(void)write_slot(s, a);
+		(void)grok_action_log_append(s->action_log, agent_id, "stop", "idempotent");
+		return GROK_OK;
+	}
+
+	pgid = a->pgid > 0 ? a->pgid : a->pid;
+	if (a->cgroup_path[0] && grok_cgroup_kill(a->cgroup_path) == GROK_OK) {
+		snprintf(detail, sizeof(detail), "cgroup.kill path=%s pgid=%d",
+			 a->cgroup_path, (int)pgid);
+	} else {
+		snprintf(detail, sizeof(detail), "process-group pgid=%d", (int)pgid);
+	}
+	/* Always process-group kill as safety net (orphans, attach failure, non-Linux). */
+	(void)kill_tree(pgid);
+	if (a->cgroup_path[0]) {
+		grok_cgroup_remove(a->cgroup_path);
+		a->cgroup_path[0] = '\0';
+	}
+	a->state = GROK_AGENT_STOPPED;
+	a->pid = 0;
+	a->exit_status = -1;
+	(void)write_slot(s, a);
+	(void)grok_action_log_append(s->action_log, agent_id, "stop", detail);
+	return GROK_OK;
+}
+
+int grok_supervisor_log(grok_supervisor_t *s,
+			const char *agent_id,
+			const char *kind,
+			const char *detail)
+{
+	if (!s)
+		return GROK_ERR_INVAL;
+	if (agent_id && agent_id[0] && !valid_id(agent_id))
+		return GROK_ERR_INVAL;
+	return grok_action_log_append(s->action_log, agent_id, kind, detail);
+}
+
+int grok_supervisor_log_last(const grok_supervisor_t *s, char *buf, size_t buflen)
+{
+	if (!s)
+		return GROK_ERR_INVAL;
+	return grok_action_log_last(s->action_log, buf, buflen);
+}
+
+int grok_policy_check(grok_supervisor_t *s,
+		      const char *agent_id,
+		      const char *tool,
+		      const char *action,
+		      const char *path,
+		      grok_policy_result_t *out)
+{
+	agent_slot_t *a = NULL;
+	const char *ws = NULL;
+	char detail[GROK_DETAIL_MAX];
+	int rc;
+
+	if (!s || !out)
+		return GROK_ERR_INVAL;
+	if (agent_id && agent_id[0]) {
+		if (!valid_id(agent_id))
+			return GROK_ERR_INVAL;
+		rc = load_agent(s, agent_id, &a);
+		if (rc == GROK_OK)
+			ws = a->workspace[0] ? a->workspace : NULL;
+		else if (rc != GROK_ERR_NOTFOUND)
+			return rc;
+		/* unknown agent still evaluates with empty workspace (deny paths) */
+	}
+	rc = grok_policy_eval(ws, tool, action, path, out);
+	if (rc != GROK_OK)
+		return rc;
+	snprintf(detail, sizeof(detail), "tool=%s action=%s decision=%d %s",
+		 tool ? tool : "", action ? action : "",
+		 (int)out->decision, out->reason);
+	(void)grok_action_log_append(s->action_log, agent_id, "policy", detail);
+	return GROK_OK;
+}
