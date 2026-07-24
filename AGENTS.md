@@ -9,3 +9,7 @@
 7. Prefer host unit/contract tests; use fake model for goal-path tests.
 
 Parent meta: https://nova.teachx.ai/trace-analysis/grokos  
+
+## Signed commits
+
+Required. Never set `commit.gpgsign false`. Use `./scripts/setup-commit-signing.sh` if commit fails on signing.
