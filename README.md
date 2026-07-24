@@ -1,3 +1,5 @@
+**Agents/contributors:** see [AGENTS.md](./AGENTS.md) · [CONTRIBUTING.md](./CONTRIBUTING.md). Issues: [meta](https://nova.teachx.ai/trace-analysis/grokos/-/issues).
+
 # grok-policyd
 
 GrokOS package repository.
