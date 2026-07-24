@@ -1,0 +1,27 @@
+/* SPDX-License-Identifier: Apache-2.0 */
+#ifndef GROK_POLICYD_TEST_HARNESS_H
+#define GROK_POLICYD_TEST_HARNESS_H
+
+#include "grok-policyd/supervisor.h"
+
+#include <stddef.h>
+#include <sys/types.h>
+
+int t_tmpdir(char *buf, size_t n, const char *prefix);
+int t_write_file(const char *path, const char *body);
+int t_wait_file(const char *path, int timeout_ms);
+int t_pid_alive(pid_t pid);
+int t_read_pidfile(const char *path, pid_t *out);
+void t_rm_rf(const char *path);
+
+int t_open_pair(grok_supervisor_t **out, char *state, size_t sn,
+		char *runtime, size_t rn, const char *tag);
+
+int run_paths_tests(void);
+int run_lifecycle_tests(void);
+int run_kill_tree_tests(void);
+int run_action_log_tests(void);
+int run_persist_tests(void);
+int run_policy_tests(void);
+
+#endif
