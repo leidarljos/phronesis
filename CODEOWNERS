@@ -1,0 +1,6 @@
+# GrokOS package CODEOWNERS
+# Review routing only. Protected main + green pipeline remain the hard merge gates.
+# Meta policy: https://nova.teachx.ai/trace-analysis/grokos/-/blob/main/docs/infra/CODEOWNERS.md
+# Linked meta issue: https://nova.teachx.ai/trace-analysis/grokos/-/issues/8
+
+* @pbergeron
