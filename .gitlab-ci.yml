@@ -1,0 +1,11 @@
+stages: [validate]
+validate:tree:
+  stage: validate
+  image: alpine:3.20
+  script:
+    - test -f README.md
+    - test -d packaging
+    - echo "package tree OK"
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
