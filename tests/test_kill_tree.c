@@ -1,6 +1,10 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 #include "harness.h"
 
+#include <setjmp.h>
+#include <stdarg.h>
+#include <stddef.h>
+#include <cmocka.h>
 #include <errno.h>
 #include <signal.h>
 #include <stdio.h>
@@ -22,7 +26,6 @@ static int write_tree_script(const char *path, const char *marker, int depth, in
 			     ignore_term ? "trap '' TERM\n" : "",
 			     marker);
 	} else {
-		/* Nested shell stays in same process group (no job control). */
 		n = snprintf(body, sizeof(body),
 			     "#!/bin/sh\n"
 			     "%s"
@@ -45,110 +48,110 @@ static int write_tree_script(const char *path, const char *marker, int depth, in
 static void run_tree_case(const char *tag, int depth, int ignore_term)
 {
 	grok_supervisor_t *s = NULL;
-	char state[GROK_PATH_MAX], runtime[GROK_PATH_MAX];
+	char st[GROK_PATH_MAX], rt[GROK_PATH_MAX];
 	char script[GROK_PATH_MAX], marker[GROK_PATH_MAX];
 	char *argv[3];
 	pid_t leader = 0, leaf = 0;
-	grok_agent_status_t st;
+	grok_agent_status_t stt;
 	int tries;
 
-	t_expect(t_open_pair(&s, state, sizeof(state), runtime, sizeof(runtime), tag) == GROK_OK,
-		 "open");
-	snprintf(script, sizeof(script), "%s/tree.sh", runtime);
-	snprintf(marker, sizeof(marker), "%s/leaf.pid", runtime);
-	t_expect(write_tree_script(script, marker, depth, ignore_term) == 0, "script");
-
+	assert_int_equal(t_open_pair(&s, st, sizeof(st), rt, sizeof(rt), tag), GROK_OK);
+	snprintf(script, sizeof(script), "%s/tree.sh", rt);
+	snprintf(marker, sizeof(marker), "%s/leaf.pid", rt);
+	assert_int_equal(write_tree_script(script, marker, depth, ignore_term), 0);
 	argv[0] = "/bin/sh";
 	argv[1] = script;
 	argv[2] = NULL;
-	t_expect_eq(grok_supervisor_start(s, "agent-tree", NULL, NULL, argv), GROK_OK, "start");
-	t_expect_eq(grok_supervisor_status(s, "agent-tree", &st), GROK_OK, "status");
-	leader = st.pid;
-	t_expect(t_pid_alive(leader), "leader alive");
-
-	t_expect(t_wait_file(marker, 2000) == 0, "leaf pid file");
-	t_expect(t_read_pidfile(marker, &leaf) == 0, "read leaf");
-	t_expect(leaf > 1 && leaf != leader, "leaf distinct");
-	t_expect(t_pid_alive(leaf), "leaf alive before stop");
-
-	t_expect_eq(grok_supervisor_stop(s, "agent-tree"), GROK_OK, "stop");
+	assert_int_equal(grok_supervisor_start(s, "agent-tree", NULL, NULL, argv), GROK_OK);
+	assert_int_equal(grok_supervisor_status(s, "agent-tree", &stt), GROK_OK);
+	leader = stt.pid;
+	assert_true(t_pid_alive(leader));
+	assert_int_equal(t_wait_file(marker, 2000), 0);
+	assert_int_equal(t_read_pidfile(marker, &leaf), 0);
+	assert_true(leaf > 1 && leaf != leader);
+	assert_true(t_pid_alive(leaf));
+	assert_int_equal(grok_supervisor_stop(s, "agent-tree"), GROK_OK);
 	for (tries = 0; tries < 100; tries++) {
 		if (!t_pid_alive(leader) && !t_pid_alive(leaf))
 			break;
 		usleep(10 * 1000);
 	}
-	t_expect(!t_pid_alive(leader), "leader dead");
-	t_expect(!t_pid_alive(leaf), "leaf dead (tree kill)");
-	t_expect_eq(grok_supervisor_status(s, "agent-tree", &st), GROK_OK, "status after");
-	t_expect_eq((long)st.state, (long)GROK_AGENT_STOPPED, "stopped");
-
+	assert_false(t_pid_alive(leader));
+	assert_false(t_pid_alive(leaf));
+	assert_int_equal(grok_supervisor_status(s, "agent-tree", &stt), GROK_OK);
+	assert_int_equal(stt.state, GROK_AGENT_STOPPED);
 	grok_supervisor_close(s);
-	t_rm_rf(state);
-	t_rm_rf(runtime);
+	t_rm_rf(st);
+	t_rm_rf(rt);
 }
 
-static void test_kill_one_level_grandchild(void)
+static void test_kill_one_level_grandchild(void **state)
 {
+	(void)state;
 	run_tree_case("kt1", 1, 0);
 }
 
-static void test_kill_nested_shell_tree(void)
+static void test_kill_nested_shell_tree(void **state)
 {
+	(void)state;
 	run_tree_case("kt2", 2, 0);
 }
 
-static void test_kill_sigterm_ignored_leader(void)
+static void test_kill_sigterm_ignored_leader(void **state)
 {
-	/* Leader ignores SIGTERM; stop must escalate to SIGKILL. */
+	(void)state;
 	run_tree_case("kt3", 1, 1);
 }
 
-static void test_stop_after_external_kill(void)
+static void test_stop_after_external_kill(void **state)
 {
 	grok_supervisor_t *s = NULL;
-	char state[GROK_PATH_MAX], runtime[GROK_PATH_MAX];
-	grok_agent_status_t st;
+	char st[GROK_PATH_MAX], rt[GROK_PATH_MAX];
+	grok_agent_status_t stt;
 	char *argv[] = { "sleep", "120", NULL };
 	pid_t pid;
 
-	t_expect(t_open_pair(&s, state, sizeof(state), runtime, sizeof(runtime), "extkill") == GROK_OK,
-		 "open");
-	t_expect_eq(grok_supervisor_start(s, "agent-a", NULL, NULL, argv), GROK_OK, "start");
-	t_expect_eq(grok_supervisor_status(s, "agent-a", &st), GROK_OK, "st");
-	pid = st.pid;
-	t_expect(kill(pid, SIGKILL) == 0, "external kill");
+	(void)state;
+	assert_int_equal(t_open_pair(&s, st, sizeof(st), rt, sizeof(rt), "extkill"), GROK_OK);
+	assert_int_equal(grok_supervisor_start(s, "agent-a", NULL, NULL, argv), GROK_OK);
+	assert_int_equal(grok_supervisor_status(s, "agent-a", &stt), GROK_OK);
+	pid = stt.pid;
+	assert_int_equal(kill(pid, SIGKILL), 0);
 	usleep(50 * 1000);
-	t_expect_eq(grok_supervisor_stop(s, "agent-a"), GROK_OK, "stop after external");
-	t_expect_eq(grok_supervisor_status(s, "agent-a", &st), GROK_OK, "st2");
-	t_expect_eq((long)st.state, (long)GROK_AGENT_STOPPED, "stopped");
+	assert_int_equal(grok_supervisor_stop(s, "agent-a"), GROK_OK);
+	assert_int_equal(grok_supervisor_status(s, "agent-a", &stt), GROK_OK);
+	assert_int_equal(stt.state, GROK_AGENT_STOPPED);
 	grok_supervisor_close(s);
-	t_rm_rf(state);
-	t_rm_rf(runtime);
+	t_rm_rf(st);
+	t_rm_rf(rt);
 }
 
-static void test_thrash_start_stop(void)
+static void test_thrash_start_stop(void **state)
 {
 	grok_supervisor_t *s = NULL;
-	char state[GROK_PATH_MAX], runtime[GROK_PATH_MAX];
+	char st[GROK_PATH_MAX], rt[GROK_PATH_MAX];
 	char *argv[] = { "sleep", "30", NULL };
 	int i;
 
-	t_expect(t_open_pair(&s, state, sizeof(state), runtime, sizeof(runtime), "thrash") == GROK_OK,
-		 "open");
+	(void)state;
+	assert_int_equal(t_open_pair(&s, st, sizeof(st), rt, sizeof(rt), "thrash"), GROK_OK);
 	for (i = 0; i < 8; i++) {
-		t_expect_eq(grok_supervisor_start(s, "agent-a", NULL, NULL, argv), GROK_OK, "start");
-		t_expect_eq(grok_supervisor_stop(s, "agent-a"), GROK_OK, "stop");
+		assert_int_equal(grok_supervisor_start(s, "agent-a", NULL, NULL, argv), GROK_OK);
+		assert_int_equal(grok_supervisor_stop(s, "agent-a"), GROK_OK);
 	}
 	grok_supervisor_close(s);
-	t_rm_rf(state);
-	t_rm_rf(runtime);
+	t_rm_rf(st);
+	t_rm_rf(rt);
 }
 
-void test_kill_tree_suite(void)
+int run_kill_tree_tests(void)
 {
-	t_run("kill_one_level_grandchild", test_kill_one_level_grandchild);
-	t_run("kill_nested_shell_tree", test_kill_nested_shell_tree);
-	t_run("kill_sigterm_ignored_leader", test_kill_sigterm_ignored_leader);
-	t_run("stop_after_external_kill", test_stop_after_external_kill);
-	t_run("thrash_start_stop", test_thrash_start_stop);
+	const struct CMUnitTest tests[] = {
+		cmocka_unit_test(test_kill_one_level_grandchild),
+		cmocka_unit_test(test_kill_nested_shell_tree),
+		cmocka_unit_test(test_kill_sigterm_ignored_leader),
+		cmocka_unit_test(test_stop_after_external_kill),
+		cmocka_unit_test(test_thrash_start_stop),
+	};
+	return cmocka_run_group_tests_name("kill_tree", tests, NULL, NULL);
 }

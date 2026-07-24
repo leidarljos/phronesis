@@ -3,36 +3,21 @@
 
 #include <stdio.h>
 
-void test_paths_suite(void);
-void test_lifecycle_suite(void);
-void test_kill_tree_suite(void);
-void test_action_log_suite(void);
-void test_persist_suite(void);
-void test_policy_suite(void);
-
 int main(void)
 {
-	g_failures = 0;
-	g_tests = 0;
+	int fails = 0;
 
-	fprintf(stderr, "=== paths ===\n");
-	test_paths_suite();
-	fprintf(stderr, "=== lifecycle ===\n");
-	test_lifecycle_suite();
-	fprintf(stderr, "=== kill_tree ===\n");
-	test_kill_tree_suite();
-	fprintf(stderr, "=== action_log ===\n");
-	test_action_log_suite();
-	fprintf(stderr, "=== persist ===\n");
-	test_persist_suite();
-	fprintf(stderr, "=== policy ===\n");
-	test_policy_suite();
+	fails += run_paths_tests();
+	fails += run_lifecycle_tests();
+	fails += run_kill_tree_tests();
+	fails += run_action_log_tests();
+	fails += run_persist_tests();
+	fails += run_policy_tests();
 
-	fprintf(stderr, "\n%d test cases, %d failure(s)\n", g_tests, g_failures);
-	if (g_failures) {
-		fprintf(stderr, "FAILED\n");
+	if (fails) {
+		fprintf(stderr, "FAILED: %d suite failure group(s)\n", fails);
 		return 1;
 	}
-	printf("ok: %d supervisor test cases passed\n", g_tests);
+	printf("ok: cmocka supervisor suites passed\n");
 	return 0;
 }

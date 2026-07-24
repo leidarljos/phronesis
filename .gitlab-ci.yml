@@ -31,7 +31,7 @@ test:host:
   stage: test
   image: alpine:3.20
   before_script:
-    - apk add --no-cache build-base
+    - apk add --no-cache build-base cmocka-dev pkgconf
   script:
     - make clean test
   rules:

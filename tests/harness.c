@@ -10,37 +10,6 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
-int g_failures;
-int g_tests;
-
-void t_expect(int cond, const char *msg)
-{
-	if (!cond) {
-		fprintf(stderr, "  FAIL: %s\n", msg);
-		g_failures++;
-	}
-}
-
-void t_expect_eq(long a, long b, const char *msg)
-{
-	if (a != b) {
-		fprintf(stderr, "  FAIL: %s (got %ld want %ld)\n", msg, a, b);
-		g_failures++;
-	}
-}
-
-void t_expect_streq(const char *a, const char *b, const char *msg)
-{
-	if (!a)
-		a = "";
-	if (!b)
-		b = "";
-	if (strcmp(a, b) != 0) {
-		fprintf(stderr, "  FAIL: %s (got \"%s\" want \"%s\")\n", msg, a, b);
-		g_failures++;
-	}
-}
-
 int t_tmpdir(char *buf, size_t n, const char *prefix)
 {
 	const char *base = getenv("TMPDIR");
@@ -156,16 +125,4 @@ int t_open_pair(grok_supervisor_t **out, char *state, size_t sn,
 	if (t_tmpdir(runtime, rn, pfx_r) != 0)
 		return -1;
 	return grok_supervisor_open(out, state, runtime);
-}
-
-int t_run(const char *name, t_fn fn)
-{
-	int before = g_failures;
-
-	g_tests++;
-	fprintf(stderr, "test: %s\n", name);
-	fn();
-	if (g_failures == before)
-		fprintf(stderr, "  ok\n");
-	return g_failures == before ? 0 : -1;
 }
