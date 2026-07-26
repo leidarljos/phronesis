@@ -4,13 +4,13 @@ Embedding the C ABI
 Build and install
 -----------------
 
-Host tests use **cmocka** (see :doc:`testing`). Library-only build does not.
+Use **pixi** for the toolchain (cmocka, compilers). Host tests: :doc:`testing`.
 
 .. code-block:: bash
 
-   # cmocka-dev / libcmocka-dev + pkg-config required for tests
-   make lib test
-   make install PREFIX=$HOME/.local
+   pixi install --locked
+   pixi run lib test
+   pixi run install          # PREFIX=/usr/local by default
    export PKG_CONFIG_PATH=$HOME/.local/lib/pkgconfig:$PKG_CONFIG_PATH
 
 Link from C

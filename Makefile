@@ -77,7 +77,7 @@ $(BUILD)/grok-policyd: $(BUILD)/grok-policyd.o $(STATIC_LIB)
 	$(CC) $(CFLAGS) -o $@ $(BUILD)/grok-policyd.o $(STATIC_LIB) $(LDFLAGS)
 
 $(BUILD)/supervisor_test: $(TEST_OBJS) $(STATIC_LIB)
-	@test -n "$(CMOCKA_LIBS)" || (echo "error: cmocka not found (pkg-config cmocka). Install cmocka-dev / libcmocka-dev." && exit 1)
+	@test -n "$(CMOCKA_LIBS)" || (echo "error: cmocka not found (pkg-config cmocka). Use pixi install --locked (provides cmocka), or install cmocka-dev / libcmocka-dev." && exit 1)
 	$(CC) $(CFLAGS) -o $@ $(TEST_OBJS) $(STATIC_LIB) $(LDFLAGS) $(CMOCKA_LIBS)
 
 $(BUILD)/example_minimal: examples/c/minimal.c $(STATIC_LIB) | $(BUILD)
@@ -86,7 +86,7 @@ $(BUILD)/example_minimal: examples/c/minimal.c $(STATIC_LIB) | $(BUILD)
 example: $(BUILD)/example_minimal
 
 test: $(BUILD)/grok-policyd $(BUILD)/supervisor_test
-	@test -n "$(CMOCKA_LIBS)" || (echo "error: cmocka not found (pkg-config cmocka). Install cmocka-dev / libcmocka-dev." && exit 1)
+	@test -n "$(CMOCKA_LIBS)" || (echo "error: cmocka not found (pkg-config cmocka). Use pixi install --locked (provides cmocka), or install cmocka-dev / libcmocka-dev." && exit 1)
 	$(BUILD)/supervisor_test
 
 pc: $(BUILD)/grok-policyd.pc

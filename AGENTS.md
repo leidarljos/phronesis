@@ -13,3 +13,15 @@ Parent meta: https://nova.teachx.ai/trace-analysis/grokos
 ## Signed commits
 
 Required. Never set `commit.gpgsign false`. Use `./scripts/setup-commit-signing.sh` if commit fails on signing.
+
+## Build
+
+Use **pixi** (see `pixi.toml`):
+
+```bash
+pixi install --locked
+pixi run test    # or: pixi run ci
+```
+
+`Makefile` is the recipe backend; do not invent ad-hoc host toolchains for dogfood.
+

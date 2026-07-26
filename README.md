@@ -30,7 +30,8 @@ Policy / multi-agent supervisor TCB for GrokOS (non-LLM). Host library + CLI for
 - **action log** JSONL under state (`log/actions.jsonl`)
 - **policy check**: tools **default deny**; high-risk actions → **prompt**; `read`/`write` under the agent workspace root may **allow** (**lexical** allowlist: absolute paths only, rejects `..` components; **not** realpath — symlink escape still open)
 - **Installable C library**: `libgrok_policyd.a` / `.so`, pkg-config, version queries (`grok_policyd_version_string`, `grok_policyd_api_version`)
-- **Docs**: Doxygen + Sphinx/breathe (`make doxygen` / `make docs`)
+- **Docs**: Doxygen + Sphinx/breathe (`pixi run -e docs …`)
+- **Dev env**: `pixi.toml` + `pixi.lock` (compilers, cmocka, docs)
 - Host unit tests via **cmocka** (`make test`; `pkg-config cmocka`; Alpine: `cmocka-dev`); CI runs the same
 
 ## What this package does **not** do yet
@@ -45,13 +46,20 @@ Policy / multi-agent supervisor TCB for GrokOS (non-LLM). Host library + CLI for
 
 ## Build
 
+**Entry point is pixi** (same pattern as `grokos-session` / `grokos-shell`).
+`Makefile` is the compile recipe backend; do not invent host `apk`/`apt` toolchains for dogfood.
+
 ```bash
-# needs cmocka + pkg-config (brew install cmocka / apk add cmocka-dev pkgconf)
-make test                 # library + CLI + cmocka suites
-make lib                  # static + shared lib + pkg-config
-make example              # examples/c/minimal.c
-make install PREFIX=$HOME/.local
+pixi install --locked
+pixi run test                 # lib + CLI + cmocka suites
+pixi run lib                  # static + shared lib + pkg-config
+pixi run example              # examples/c/minimal.c
+pixi run build                # lib + test + example
+pixi run ci                   # env-info + build (CI gate)
+pixi run install              # PREFIX default /usr/local (override with make)
 ```
+
+Host tests use **cmocka** from the pixi env (`pkg-config cmocka`).
 
 ```bash
 STATE=$(mktemp -d -p "${XDG_CACHE_HOME:-$HOME/.cache}")
@@ -68,12 +76,9 @@ Paths: `GROKOS_STATE_DIR`, `GROKOS_RUNTIME_DIR`, `GROKOS_ACTION_LOG`, else XDG h
 ### Documentation
 
 ```bash
-# Doxygen HTML + XML (XML feeds Sphinx)
-make doxygen              # needs doxygen
-
-# Full Sphinx site (breathe + furo)
-pip install -r docs/requirements.txt
-make docs                 # docs/build/html
+pixi install --locked -e docs
+pixi run -e docs doxygen      # HTML + XML (breathe)
+pixi run -e docs docs         # doxygen + Sphinx HTML
 ```
 
 Architecture notes: `docs/source/architecture.rst`, `docs/orgmode/architecture.org`.
