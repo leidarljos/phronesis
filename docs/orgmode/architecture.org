@@ -1,0 +1,36 @@
+#+TITLE: grok-policyd C ABI architecture
+#+OPTIONS: toc:nil num:nil author:nil
+
+* Intent
+
+Stable *host* FFI for multi-agent TCB beyond Cap'n Proto. Session Cap'n
+(Goal plane) stays in ~grokos-session~; this package owns the C library
+hosts link (e.g. ~grokos-shell~ product CLI).
+
+* Mapping to rgpot / featomic / metatensor
+
+| Layer              | rgpot / featomic              | grok-policyd                          |
+|--------------------+-------------------------------+---------------------------------------|
+| Implementation SoT | Rust (~#[repr(C)]~ + extern)  | C (~src/*.c~)                         |
+| Public C header    | cbindgen-generated            | Hand-written ~supervisor.h~           |
+| Docs comments      | Rust docs → doxy style        | Doxygen on the header                 |
+| Reference site     | Sphinx + doxyrest / breathe   | Sphinx + breathe                      |
+| Cross-process      | Cap'n RPC (optional)          | Cap'n peer = meta #70 (separate)      |
+
+cbindgen is the right tool when *Rust is the SoT*. Policyd is pure C; adding
+cbindgen would require a Rust rewrite or a duplicate facade. Prefer
+bindgen only for language bindings *from* this header.
+
+* Deliverables
+
+1. Version macros + ~grok_policyd_*_version~ queries
+2. ~libgrok_policyd.a~ / ~.so~ + pkg-config
+3. Doxygen + Sphinx reference
+4. ~examples/c/minimal.c~
+
+* Host tests
+
+Host unit tests use *cmocka* under =tests/= (=make test=). Same story as the
+package README and CI (=cmocka-dev= / =libcmocka-dev=). Docs/Sphinx build does
+not run the suites; the =test:host= CI job does.
+

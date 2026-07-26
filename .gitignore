@@ -1,3 +1,9 @@
 /build/
+/docs/build/
 *.o
 .DS_Store
+__pycache__/
+*.pyc
+.venv/
+.pixi/
+.cache/
