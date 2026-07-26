@@ -5,6 +5,7 @@
 #include "grok-policyd/supervisor.h"
 
 #include <stddef.h>
+#include <stdint.h>
 #include <sys/types.h>
 
 int t_tmpdir(char *buf, size_t n, const char *prefix);
@@ -23,5 +24,6 @@ int run_kill_tree_tests(void);
 int run_action_log_tests(void);
 int run_persist_tests(void);
 int run_policy_tests(void);
+int run_version_tests(void);
 
 #endif

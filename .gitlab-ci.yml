@@ -1,6 +1,52 @@
-stages: [validate, test]
+# Reproducible via pixi (pixi.lock). Host C library + cmocka tests + full docs.
+stages: [validate, build]
 
-# Signed commits required (GrokOS project policy).
+variables:
+  FF_USE_FASTZIP: "true"
+  RATTLER_CACHE_DIR: ${CI_PROJECT_DIR}/.cache/rattler
+  PIXI_HOME: ${CI_PROJECT_DIR}/.cache/pixi-home
+  # See meta #75: runners have NO shared cache URL. Local pull-push of
+  # multi-GB trees filled the Keel VM (ENOSPC). Do not re-enable fat
+  # caches until a distributed cache exists.
+
+.rules_mr_default:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+# Shared apt+pixi bootstrap (same retry shape as grokos-session / build:pixi).
+.pixi_bootstrap: &pixi_bootstrap |
+  set -euo pipefail
+  export DEBIAN_FRONTEND=noninteractive
+  export PATH="${PIXI_HOME}/bin:${HOME}/.pixi/bin:${PATH}"
+  apt_ok=0
+  for attempt in 1 2 3 4 5; do
+    echo "apt attempt ${attempt}/5"
+    dpkg --configure -a || true
+    apt-get -y -f install || true
+    if apt-get update -qq \
+      && apt-get install -y -qq --no-install-recommends curl ca-certificates bash; then
+      apt_ok=1
+      break
+    fi
+    sleep $((attempt * 4))
+  done
+  if [[ "${apt_ok}" -ne 1 ]]; then
+    echo "FATAL: apt install failed after retries" >&2
+    exit 1
+  fi
+  rm -rf /var/lib/apt/lists/*
+  mkdir -p "${PIXI_HOME}/bin"
+  if [[ ! -x "${PIXI_HOME}/bin/pixi" ]]; then
+    curl -fsSL https://pixi.sh/install.sh | bash
+    if [[ -x "${HOME}/.pixi/bin/pixi" && ! -x "${PIXI_HOME}/bin/pixi" ]]; then
+      cp -a "${HOME}/.pixi/bin/pixi" "${PIXI_HOME}/bin/pixi"
+    fi
+  fi
+  export PATH="${PIXI_HOME}/bin:${HOME}/.pixi/bin:${PATH}"
+  hash -r
+  pixi --version
+
 commits:signed:
   stage: validate
   image: python:3.12-alpine
@@ -14,26 +60,72 @@ commits:signed:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
 
-validate:tree:
+validate:manifest:
   stage: validate
   image: alpine:3.20
+  before_script:
+    - apk add --no-cache bash
   script:
     - test -f README.md
     - test -f include/grok-policyd/supervisor.h
     - test -f Makefile
-    - if [ -d packaging ]; then test -d packaging; fi
-    - echo "package tree OK"
+    - test -f VERSION
+    - test -f API_VERSION
+    - test -f pixi.toml
+    - test -f pixi.lock
+    - test -f packaging/grok-policyd.pc.in
+    - test -f scripts/check-signed-commits.sh
+    - test -f scripts/check-version.sh
+    - test -f scripts/sync-version.sh
+    - test -f scripts/pixi_env_info.sh
+    - bash scripts/check-version.sh
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
 
-test:host:
-  stage: test
-  image: alpine:3.20
+build:pixi:
+  stage: build
+  image: debian:bookworm-slim
+  interruptible: true
+  # cache: disabled (meta #75 / ENOSPC on local-only runner cache)
   before_script:
-    - apk add --no-cache build-base cmocka-dev pkgconf
+    - *pixi_bootstrap
+    - export PATH="${PIXI_HOME}/bin:${HOME}/.pixi/bin:${PATH}"
+    - rm -rf .pixi/envs
+    - pixi install --locked -e ci
   script:
-    - make clean test
+    - export PATH="${PIXI_HOME}/bin:${HOME}/.pixi/bin:${PATH}"
+    - pixi run -e ci env-info
+    - bash scripts/check-version.sh
+    - pixi run -e ci build
+    - test -f build/libgrok_policyd.a
+    - test -f build/libgrok_policyd.so.0.1.0
+    - test -f build/grok-policyd.pc
+    - ./build/example_minimal
+  after_script:
+    - rm -rf build docs/build .pixi/envs .cache/rattler .cache/pixi-home || true
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+docs:pixi:
+  stage: build
+  image: debian:bookworm-slim
+  interruptible: true
+  # cache: disabled (meta #75 / ENOSPC on local-only runner cache)
+  before_script:
+    - *pixi_bootstrap
+    - export PATH="${PIXI_HOME}/bin:${HOME}/.pixi/bin:${PATH}"
+    - rm -rf .pixi/envs
+    - pixi install --locked -e docs
+  script:
+    - export PATH="${PIXI_HOME}/bin:${HOME}/.pixi/bin:${PATH}"
+    - bash scripts/check-version.sh
+    - pixi run -e docs docs
+    - test -f docs/build/doxygen/xml/index.xml
+    - test -f docs/build/html/index.html
+  after_script:
+    - rm -rf build docs/build .pixi/envs .cache/rattler .cache/pixi-home || true
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
