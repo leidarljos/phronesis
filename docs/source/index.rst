@@ -11,6 +11,7 @@ separate track (meta ``#70``).
 
    embedding
    architecture
+   testing
    reference/c_api
 
 Quick links

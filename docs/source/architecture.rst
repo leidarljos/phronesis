@@ -28,6 +28,7 @@ ecosystem pattern:
 2. **Doxygen** on the public header
 3. **Sphinx + breathe** reference (featomic-style C API pages)
 4. Embedding guide for hosts (shell, future daemon)
+5. Host tests with **cmocka** (``make test``; not a second framework)
 
 Cap'n Proto remains the cross-process bus for seat work and, later, the
 policyd peer. The C ABI is for in-process hosts and for a future daemon
