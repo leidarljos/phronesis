@@ -3,10 +3,12 @@
 # Host library (stable C ABI) + CLI + tests + docs.
 # Public surface: include/grok-policyd/supervisor.h
 
-VERSION_MAJOR := 0
-VERSION_MINOR := 1
-VERSION_PATCH := 0
-VERSION       := $(VERSION_MAJOR).$(VERSION_MINOR).$(VERSION_PATCH)
+# Single source: VERSION + API_VERSION (see scripts/check-version.sh)
+VERSION       := $(shell tr -d '[:space:]' < VERSION)
+VERSION_MAJOR := $(word 1,$(subst ., ,$(VERSION)))
+VERSION_MINOR := $(word 2,$(subst ., ,$(VERSION)))
+VERSION_PATCH := $(word 3,$(subst ., ,$(VERSION)))
+API_VERSION   := $(shell tr -d '[:space:]' < API_VERSION)
 
 CC       ?= cc
 CFLAGS   ?= -std=c11 -Wall -Wextra -Werror -O2 -D_DEFAULT_SOURCE -D_POSIX_C_SOURCE=200809L
@@ -42,11 +44,11 @@ REAL_SO    := libgrok_policyd.so.$(VERSION)
 STATIC_LIB := $(BUILD)/libgrok_policyd.a
 SHARED_LIB := $(BUILD)/$(REAL_SO)
 
-.PHONY: all clean test lib install uninstall example doxygen docs pc
+.PHONY: all clean test lib install uninstall example doxygen docs pc check-version
 
 all: lib $(BUILD)/grok-policyd test
 
-lib: $(STATIC_LIB) $(SHARED_LIB) $(BUILD)/libgrok_policyd.so $(BUILD)/$(SONAME) pc
+lib: check-version $(STATIC_LIB) $(SHARED_LIB) $(BUILD)/libgrok_policyd.so $(BUILD)/$(SONAME) pc
 
 $(BUILD):
 	mkdir -p $(BUILD)
@@ -91,6 +93,10 @@ test: $(BUILD)/grok-policyd $(BUILD)/supervisor_test
 
 pc: $(BUILD)/grok-policyd.pc
 
+check-version:
+	bash scripts/check-version.sh
+
+
 $(BUILD)/grok-policyd.pc: packaging/grok-policyd.pc.in | $(BUILD)
 	sed -e 's|@PREFIX@|$(PREFIX)|g' -e 's|@VERSION@|$(VERSION)|g' \
 		$< > $@
@@ -128,7 +134,7 @@ doxygen:
 docs: doxygen
 	@command -v sphinx-build >/dev/null || { \
 		echo "sphinx-build not found — pip install -r docs/requirements.txt"; exit 1; }
-	sphinx-build -b html docs/source docs/build/html
+	sphinx-build -W -b html docs/source docs/build/html
 
 clean:
 	rm -rf $(BUILD) docs/build

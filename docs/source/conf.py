@@ -48,3 +48,5 @@ breathe_domain_by_extension = {
 intersphinx_mapping = {
     "python": ("https://docs.python.org/3", None),
 }
+
+nitpicky = False  # breathe/group noise; CI uses -W selectively if needed

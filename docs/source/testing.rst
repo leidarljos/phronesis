@@ -45,3 +45,4 @@ Layout
    tests/test_main.c      runs every group; non-zero if any fail
 
 CI job ``build:pixi`` runs ``pixi run -e ci build`` (cmocka from the lockfile).
+``scripts/check-version.sh`` asserts header/docs match ``VERSION`` + ``API_VERSION``.

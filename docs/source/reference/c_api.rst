@@ -2,56 +2,60 @@ C API reference
 ===============
 
 Generated from Doxygen comments in ``include/grok-policyd/supervisor.h``.
+Symbols are documented in Doxygen groups; Sphinx renders each group via breathe.
 
 Version
 -------
 
-.. doxygendefine:: GROK_POLICYD_VERSION
-.. doxygendefine:: GROK_POLICYD_API_VERSION
-.. doxygenfunction:: grok_policyd_version_string
-.. doxygenfunction:: grok_policyd_api_version
+.. doxygengroup:: version
+   :project: grok-policyd
+   :content-only:
+   :members:
 
 Status codes
 ------------
 
-.. doxygendefine:: GROK_OK
-.. doxygendefine:: GROK_ERR_INVAL
-.. doxygendefine:: GROK_ERR_EXISTS
-.. doxygendefine:: GROK_ERR_NOTFOUND
-.. doxygendefine:: GROK_ERR_IO
-.. doxygendefine:: GROK_ERR_SPAWN
-.. doxygendefine:: GROK_ERR_STATE
-.. doxygendefine:: GROK_ERR_DENIED
-
-Types
------
-
-.. doxygenenum:: grok_agent_state_t
-.. doxygenenum:: grok_decision_t
-.. doxygenstruct:: grok_agent_status_t
+.. doxygengroup:: status
+   :project: grok-policyd
+   :content-only:
    :members:
-.. doxygenstruct:: grok_policy_result_t
+
+Buffer limits
+-------------
+
+.. doxygengroup:: limits
+   :project: grok-policyd
+   :content-only:
+   :members:
+
+Public types
+------------
+
+.. doxygengroup:: types
+   :project: grok-policyd
+   :content-only:
    :members:
 
 Supervisor lifecycle
 --------------------
 
-.. doxygenfunction:: grok_supervisor_open
-.. doxygenfunction:: grok_supervisor_close
-.. doxygenfunction:: grok_supervisor_action_log_path
-.. doxygenfunction:: grok_supervisor_state_dir
-.. doxygenfunction:: grok_supervisor_runtime_dir
+.. doxygengroup:: lifecycle
+   :project: grok-policyd
+   :content-only:
+   :members:
 
 Agent control
 -------------
 
-.. doxygenfunction:: grok_supervisor_start
-.. doxygenfunction:: grok_supervisor_status
-.. doxygenfunction:: grok_supervisor_stop
-.. doxygenfunction:: grok_supervisor_log
-.. doxygenfunction:: grok_supervisor_log_last
+.. doxygengroup:: agents
+   :project: grok-policyd
+   :content-only:
+   :members:
 
 Policy
 ------
 
-.. doxygenfunction:: grok_policy_check
+.. doxygengroup:: policy
+   :project: grok-policyd
+   :content-only:
+   :members:
