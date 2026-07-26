@@ -13,12 +13,15 @@
 static void rm_tree(const char *path)
 {
 	char cmd[640];
+	int st;
 
 	if (!path || !path[0])
 		return;
 	/* Example-only cleanup; not a library API. */
 	snprintf(cmd, sizeof(cmd), "rm -rf -- '%s'", path);
-	(void)system(cmd);
+	st = system(cmd);
+	if (st != 0)
+		fprintf(stderr, "warning: cleanup %s failed (status %d)\n", path, st);
 }
 
 static int make_dirs(char *state, size_t sn, char *runtime, size_t rn)
