@@ -8,7 +8,7 @@ Policy / multi-agent supervisor TCB for GrokOS (non-LLM). Host library + CLI for
 |--|--|
 | **Parent meta** | https://nova.teachx.ai/trace-analysis/grokos |
 | **Catalog** | `packages/MANIFEST.yml` in meta |
-| **Stable C ABI** | `include/grok-policyd/supervisor.h` (v0.1.0, API generation 1) |
+| **Stable C ABI** | `include/grok-policyd/supervisor.h` (package version in `VERSION`, API gen in `API_VERSION`) |
 
 ## Two engines (do not confuse them)
 
@@ -60,6 +60,8 @@ pixi run install              # PREFIX default /usr/local (override with make)
 ```
 
 Host tests use **cmocka** from the pixi env (`pkg-config cmocka`).
+
+Version single-source: edit `VERSION` / `API_VERSION`, run `./scripts/sync-version.sh`, gate with `./scripts/check-version.sh` (also `make lib`). SONAME follows **package major**; embedders key on `GROK_POLICYD_API_VERSION` (see docs architecture).
 
 ```bash
 STATE=$(mktemp -d -p "${XDG_CACHE_HOME:-$HOME/.cache}")

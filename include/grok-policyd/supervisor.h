@@ -12,9 +12,14 @@
  * @par Stability
  * - Opaque handle @ref grok_supervisor_t may change layout freely.
  * - Public structs/enums and function signatures are ABI-stable within a
- *   major @ref GROK_POLICYD_API_VERSION. Additive symbols are allowed;
+ *   @ref GROK_POLICYD_API_VERSION generation. Additive symbols are allowed;
  *   renames/removals/layout changes require an API version bump.
  * - Fixed-size char buffers in public structs are part of the ABI.
+ * - ELF SONAME uses **package major** (``libgrok_policyd.so.0`` while major is
+ *   0), not API_VERSION. Embedders key on @ref GROK_POLICYD_API_VERSION for
+ *   link-compat; SONAME is the distro package major.
+ * - Single source: repo ``VERSION`` + ``API_VERSION`` files
+ *   (``scripts/sync-version.sh`` / ``scripts/check-version.sh``).
  *
  * @par Cap'n Proto
  * Sessiond peer wire is a separate track (meta #70). This C ABI is the
