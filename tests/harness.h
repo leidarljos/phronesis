@@ -23,5 +23,6 @@ int run_kill_tree_tests(void);
 int run_action_log_tests(void);
 int run_persist_tests(void);
 int run_policy_tests(void);
+int run_version_tests(void);
 
 #endif
