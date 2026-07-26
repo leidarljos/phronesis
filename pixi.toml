@@ -1,0 +1,57 @@
+# Reproducible grok-policyd env for local dogfood, rg.terra, and GitLab CI.
+# Install: pixi install --locked
+# Build:   pixi run build
+# Test:    pixi run test
+
+[workspace]
+name = "grok-policyd"
+version = "0.1.0"
+description = "GrokOS multi-agent policy supervisor TCB — stable C ABI"
+authors = ["GrokOS contributors"]
+channels = ["conda-forge"]
+platforms = ["linux-64"]
+
+[dependencies]
+compilers = ">=1.9.0,<2"
+binutils = ">=2.40"
+make = ">=4.3,<5"
+pkg-config = ">=0.29,<1"
+cmocka = ">=1.1.7,<2"
+bash = ">=5.2"
+coreutils = ">=9.5"
+sed = "*"
+which = "*"
+git = ">=2.40"
+
+[tasks]
+env-info = "bash scripts/pixi_env_info.sh"
+clean = "make clean"
+lib = "make lib"
+test = "make test"
+example = "make example"
+build = { depends-on = ["lib", "test", "example"] }
+cli = "make all"
+install = "make install"
+pc = "make pc"
+ci = { depends-on = ["env-info", "build"] }
+
+[feature.docs.dependencies]
+doxygen = ">=1.11,<2"
+python = ">=3.12,<3.14"
+pip = "*"
+
+[feature.docs.pypi-dependencies]
+sphinx = ">=7.2,<9"
+breathe = ">=4.35,<5"
+furo = ">=2024.1.29"
+myst-parser = ">=2.0,<5"
+
+[feature.docs.tasks]
+doxygen = "make doxygen"
+docs-html = "sphinx-build -b html docs/source docs/build/html"
+docs = { depends-on = ["doxygen", "docs-html"] }
+
+[environments]
+default = { solve-group = "default" }
+ci = { solve-group = "default" }
+docs = { features = ["docs"], solve-group = "default" }

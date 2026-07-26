@@ -1,34 +1,29 @@
 Host tests (cmocka)
 ===================
 
-Host unit tests live under ``tests/`` and use **cmocka** (same as the package
-README / CI). There is no second test harness for the C library.
+Host unit tests live under ``tests/`` and use **cmocka**. The supported way to
+get the toolchain is **pixi** (see package ``pixi.toml``), not ad-hoc system
+packages.
 
 Dependencies
 ------------
 
 .. code-block:: bash
 
-   # Alpine
-   apk add build-base cmocka-dev pkgconf
+   pixi install --locked
+   # provides: C compiler, make, pkg-config, cmocka
 
-   # Debian/Ubuntu
-   apt install build-essential libcmocka-dev pkg-config
-
-   # macOS
-   brew install cmocka pkg-config
-
-``pkg-config --libs cmocka`` must succeed. ``make lib``, ``make example``, and
-``make doxygen`` do **not** need cmocka; ``make test`` / ``make all`` do.
+``pkg-config --libs cmocka`` succeeds inside ``pixi run``. ``pixi run lib`` and
+``pixi run -e docs doxygen`` do not need the test binary; ``pixi run test`` does.
 
 Run
 ---
 
 .. code-block:: bash
 
-   make test
-   # builds build/libgrok_policyd.a, build/grok-policyd, build/supervisor_test
-   # then runs the cmocka suites
+   pixi run test
+   # or: pixi run build   # lib + test + example
+   # or: pixi run ci      # env-info + build
 
 Suites (``tests/test_*.c`` → ``cmocka_run_group_tests_name``):
 
@@ -49,5 +44,4 @@ Layout
    tests/test_*.c         one cmocka group per file
    tests/test_main.c      runs every group; non-zero if any fail
 
-CI (``.gitlab-ci.yml`` job ``test:host``) installs ``cmocka-dev`` and runs
-``make clean lib test example``.
+CI job ``build:pixi`` runs ``pixi run -e ci build`` (cmocka from the lockfile).

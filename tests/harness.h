@@ -5,6 +5,7 @@
 #include "grok-policyd/supervisor.h"
 
 #include <stddef.h>
+#include <stdint.h>
 #include <sys/types.h>
 
 int t_tmpdir(char *buf, size_t n, const char *prefix);
