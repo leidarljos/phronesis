@@ -18,9 +18,7 @@ PICFLAGS := -fPIC
 
 CMOCKA_CFLAGS := $(shell pkg-config --cflags cmocka 2>/dev/null)
 CMOCKA_LIBS   := $(shell pkg-config --libs cmocka 2>/dev/null)
-ifeq ($(CMOCKA_LIBS),)
-  $(error cmocka not found — install libcmocka / cmocka-dev and pkg-config)
-endif
+# cmocka is only required for the test binary (not lib/docs/example).
 
 BUILD    := build
 LIB_SRCS := src/paths.c src/action_log.c src/cgroup.c src/policy.c \
