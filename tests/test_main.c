@@ -13,6 +13,7 @@ int main(void)
 	fails += run_action_log_tests();
 	fails += run_persist_tests();
 	fails += run_policy_tests();
+	fails += run_version_tests();
 
 	if (fails) {
 		fprintf(stderr, "FAILED: %d suite failure group(s)\n", fails);

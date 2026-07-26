@@ -1,0 +1,11 @@
+prefix=@PREFIX@
+exec_prefix=${prefix}
+libdir=${prefix}/lib
+includedir=${prefix}/include
+
+Name: grok-policyd
+Description: GrokOS multi-agent policy supervisor (stable C ABI)
+Version: @VERSION@
+URL: https://nova.teachx.ai/trace-analysis/grokos-packages/grok-policyd
+Libs: -L${libdir} -lgrok_policyd
+Cflags: -I${includedir}
