@@ -31,7 +31,7 @@ Policy / multi-agent supervisor TCB for GrokOS (non-LLM). Host library + CLI for
 - **policy check**: tools **default deny**; high-risk actions → **prompt**; `read`/`write` under the agent workspace root may **allow** (**lexical** allowlist: absolute paths only, rejects `..` components; **not** realpath — symlink escape still open)
 - **Installable C library**: `libgrok_policyd.a` / `.so`, pkg-config, version queries (`grok_policyd_version_string`, `grok_policyd_api_version`)
 - **Docs**: Doxygen + Sphinx/breathe (`make doxygen` / `make docs`)
-- Host unit tests (`make test`); CI runs the same
+- Host unit tests via **cmocka** (`make test`; `pkg-config cmocka`; Alpine: `cmocka-dev`); CI runs the same
 
 ## What this package does **not** do yet
 
@@ -42,7 +42,6 @@ Policy / multi-agent supervisor TCB for GrokOS (non-LLM). Host library + CLI for
 - No fake model / capability store (other packages / tickets)
 - No full confirm UX (decision is `prompt`; human channel not implemented here)
 - High-risk actions are an exact-match string table (stub); a structured tool/action catalog is follow-up (#25 / S3)
-- Host tests use **cmocka** (`pkg-config cmocka`; Alpine: `cmocka-dev`)
 
 ## Build
 
@@ -78,6 +77,7 @@ make docs                 # docs/build/html
 ```
 
 Architecture notes: `docs/source/architecture.rst`, `docs/orgmode/architecture.org`.
+Host tests (cmocka): `docs/source/testing.rst`.
 
 ### Embedding (C)
 

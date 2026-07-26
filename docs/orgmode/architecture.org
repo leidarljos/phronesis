@@ -27,3 +27,10 @@ bindgen only for language bindings *from* this header.
 2. ~libgrok_policyd.a~ / ~.so~ + pkg-config
 3. Doxygen + Sphinx reference
 4. ~examples/c/minimal.c~
+
+* Host tests
+
+Host unit tests use *cmocka* under =tests/= (=make test=). Same story as the
+package README and CI (=cmocka-dev= / =libcmocka-dev=). Docs/Sphinx build does
+not run the suites; the =test:host= CI job does.
+
