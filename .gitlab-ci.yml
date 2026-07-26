@@ -5,6 +5,9 @@ variables:
   FF_USE_FASTZIP: "true"
   RATTLER_CACHE_DIR: ${CI_PROJECT_DIR}/.cache/rattler
   PIXI_HOME: ${CI_PROJECT_DIR}/.cache/pixi-home
+  # See meta #75: runners have NO shared cache URL. Local pull-push of
+  # multi-GB trees filled the Keel VM (ENOSPC). Do not re-enable fat
+  # caches until a distributed cache exists.
 
 .rules_mr_default:
   rules:
@@ -84,15 +87,7 @@ build:pixi:
   stage: build
   image: debian:bookworm-slim
   interruptible: true
-  cache:
-    key:
-      files:
-        - pixi.lock
-      prefix: "pixi-policyd"
-    paths:
-      - .cache/rattler/
-      - .cache/pixi-home/
-    policy: pull-push
+  # cache: disabled (meta #75 / ENOSPC on local-only runner cache)
   before_script:
     - *pixi_bootstrap
     - export PATH="${PIXI_HOME}/bin:${HOME}/.pixi/bin:${PATH}"
@@ -107,6 +102,8 @@ build:pixi:
     - test -f build/libgrok_policyd.so.0.1.0
     - test -f build/grok-policyd.pc
     - ./build/example_minimal
+  after_script:
+    - rm -rf build docs/build .pixi/envs .cache/rattler .cache/pixi-home || true
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
@@ -115,15 +112,7 @@ docs:pixi:
   stage: build
   image: debian:bookworm-slim
   interruptible: true
-  cache:
-    key:
-      files:
-        - pixi.lock
-      prefix: "pixi-policyd-docs"
-    paths:
-      - .cache/rattler/
-      - .cache/pixi-home/
-    policy: pull-push
+  # cache: disabled (meta #75 / ENOSPC on local-only runner cache)
   before_script:
     - *pixi_bootstrap
     - export PATH="${PIXI_HOME}/bin:${HOME}/.pixi/bin:${PATH}"
@@ -135,6 +124,8 @@ docs:pixi:
     - pixi run -e docs docs
     - test -f docs/build/doxygen/xml/index.xml
     - test -f docs/build/html/index.html
+  after_script:
+    - rm -rf build docs/build .pixi/envs .cache/rattler .cache/pixi-home || true
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
