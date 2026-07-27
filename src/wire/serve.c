@@ -1,7 +1,12 @@
 /* SPDX-License-Identifier: Apache-2.0 */
+/*
+ * Cap'n peer accept loop — thin dispatch over Unix primitives (unix_sock).
+ * suckless: no DIY listen/bind; admit mapping is pure and fail-closed.
+ */
 #define _GNU_SOURCE
 #include "wire/serve.h"
 
+#include "internal.h"
 #include "wire/capnp_min.h"
 #include "wire/frame.h"
 
@@ -10,44 +15,32 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
-#include <sys/stat.h>
-#include <sys/un.h>
 #include <unistd.h>
 
-static int ensure_parent_0700(const char *socket_path)
+/* Thin wrappers for tests / API stability. */
+int grok_policyd_wire_ensure_socket_parent(const char *socket_path)
 {
-	char *dup = strdup(socket_path);
-	char *slash;
-	int rc = 0;
-
-	if (!dup)
-		return -1;
-	slash = strrchr(dup, '/');
-	if (slash && slash != dup) {
-		*slash = '\0';
-		if (mkdir(dup, 0700) != 0 && errno != EEXIST) {
-			rc = -1;
-			goto out;
-		}
-		if (chmod(dup, 0700) != 0) {
-			rc = -1;
-			goto out;
-		}
-	}
-out:
-	free(dup);
-	return rc;
+	return grok_unix_ensure_socket_parent(socket_path) == GROK_OK ? 0 : -1;
 }
 
-static int peer_uid_ok(int fd)
+int grok_policyd_wire_map_admit_kind(const char *kind, const char **tool,
+				     const char **action)
 {
-	struct ucred cred;
-	socklen_t len = sizeof(cred);
-
-	memset(&cred, 0, sizeof(cred));
-	if (getsockopt(fd, SOL_SOCKET, SO_PEERCRED, &cred, &len) != 0)
+	if (!kind || !tool || !action)
+		return -1;
+	if (strcmp(kind, "seat") == 0) {
+		*tool = "seat";
+		*action = "publish_run";
 		return 0;
-	return cred.uid == getuid();
+	}
+	/* empty or "model" / "agent" → product model/agent start plane */
+	if (kind[0] == '\0' || strcmp(kind, "model") == 0 ||
+	    strcmp(kind, "agent") == 0) {
+		*tool = "model";
+		*action = "start";
+		return 0;
+	}
+	return -1;
 }
 
 static void fill_error(struct wire_response *r, int32_t code, const char *msg)
@@ -107,27 +100,28 @@ static int handle_request(grok_supervisor_t *sup, const char *socket_path,
 	}
 
 	if (req->op == WIRE_OP_ADMIT) {
-		/* Map admit kinds onto policy_check tools. */
-		const char *tool = "model";
-		const char *action = "start";
+		/*
+		 * Map admit kinds onto policy_check tools. Fail-closed:
+		 * unknown kind is not silent model/start ALLOW.
+		 *
+		 * kind=""|"model" → model/start (product model admit)
+		 * kind="agent"    → model/start (product agent process start)
+		 * kind="seat"     → seat/publish_run (Cap'n board publish)
+		 */
+		const char *tool = NULL;
+		const char *action = NULL;
 		const char *path = NULL;
 		grok_policy_result_t pr;
 		int rc;
 
-		if (strcmp(req->u.admit.kind, "seat") == 0) {
-			tool = "seat";
-			action = "publish_run";
-			path = req->u.admit.detail;
-		} else if (strcmp(req->u.admit.kind, "model") == 0 ||
-			   req->u.admit.kind[0] == '\0') {
-			tool = "model";
-			action = "start";
-			path = NULL;
-		} else if (strcmp(req->u.admit.kind, "agent") == 0) {
-			tool = "seat";
-			action = "publish_run";
-			path = req->u.admit.detail;
+		if (grok_policyd_wire_map_admit_kind(req->u.admit.kind, &tool,
+						     &action) != 0) {
+			fill_error(resp, GROK_ERR_INVAL,
+				   "unknown admit.kind (fail-closed)");
+			return 0;
 		}
+		if (strcmp(tool, "seat") == 0)
+			path = req->u.admit.detail;
 
 		rc = grok_policy_check(sup, req->u.admit.agent_id, tool, action,
 				       path, &pr);
@@ -183,8 +177,17 @@ static void serve_one(grok_supervisor_t *sup, const char *socket_path, int cfd)
 	uint8_t *out = NULL;
 	size_t out_len = 0;
 
-	if (!peer_uid_ok(cfd)) {
-		fprintf(stderr, "policyd serve: peercred denied\n");
+	memset(&req, 0, sizeof(req));
+	memset(&resp, 0, sizeof(resp));
+
+	if (!grok_unix_peer_is_self(cfd)) {
+		/* Fail-closed: tell peer why when possible. */
+		fill_error(&resp, GROK_ERR_DENIED, "peercred uid mismatch");
+		if (wire_encode_response(&resp, &out, &out_len) == 0) {
+			(void)gkpp_write_frame(cfd, out, out_len);
+			free(out);
+			out = NULL;
+		}
 		return;
 	}
 
@@ -193,8 +196,6 @@ static void serve_one(grok_supervisor_t *sup, const char *socket_path, int cfd)
 		return;
 	}
 
-	memset(&req, 0, sizeof(req));
-	memset(&resp, 0, sizeof(resp));
 	if (wire_decode_request(body, body_len, &req) != 0) {
 		fill_error(&resp, GROK_ERR_INVAL, "decode request failed");
 	} else {
@@ -213,41 +214,15 @@ static void serve_one(grok_supervisor_t *sup, const char *socket_path, int cfd)
 
 int grok_policyd_serve(grok_supervisor_t *sup, const char *socket_path)
 {
-	struct sockaddr_un addr;
 	int lfd = -1;
 	int rc = 1;
 
 	if (!sup || !socket_path || !socket_path[0])
 		return 2;
-	if (strlen(socket_path) >= sizeof(addr.sun_path)) {
-		fprintf(stderr, "socket path too long\n");
-		return 2;
-	}
-	if (ensure_parent_0700(socket_path) != 0) {
-		perror("mkdir socket parent");
-		return 1;
-	}
-	unlink(socket_path);
 
-	lfd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
-	if (lfd < 0) {
-		perror("socket");
+	if (grok_unix_stream_listen(socket_path, 0600, &lfd) != GROK_OK) {
+		perror("unix listen");
 		return 1;
-	}
-	memset(&addr, 0, sizeof(addr));
-	addr.sun_family = AF_UNIX;
-	snprintf(addr.sun_path, sizeof(addr.sun_path), "%s", socket_path);
-	if (bind(lfd, (struct sockaddr *)&addr, sizeof(addr)) != 0) {
-		perror("bind");
-		goto out;
-	}
-	if (chmod(socket_path, 0600) != 0) {
-		perror("chmod socket");
-		goto out;
-	}
-	if (listen(lfd, 16) != 0) {
-		perror("listen");
-		goto out;
 	}
 	fprintf(stderr, "grok-policyd serve: listening on %s\n", socket_path);
 
@@ -263,9 +238,7 @@ int grok_policyd_serve(grok_supervisor_t *sup, const char *socket_path)
 		close(cfd);
 	}
 	rc = 0;
-out:
-	if (lfd >= 0)
-		close(lfd);
-	unlink(socket_path);
+	close(lfd);
+	(void)unlink(socket_path);
 	return rc;
 }

@@ -23,8 +23,8 @@ CMOCKA_LIBS   := $(shell pkg-config --libs cmocka 2>/dev/null)
 # cmocka is only required for the test binary (not lib/docs/example).
 
 BUILD    := build
-LIB_SRCS := src/paths.c src/action_log.c src/cgroup.c src/policy.c \
-	src/supervisor.c src/version.c
+LIB_SRCS := src/paths.c src/unix_dir.c src/unix_sock.c src/action_log.c \
+	src/cgroup.c src/policy.c src/supervisor.c src/version.c
 WIRE_SRCS := src/wire/frame.c src/wire/capnp_min.c src/wire/serve.c
 WIRE_OBJS := $(addprefix $(BUILD)/wire-,$(notdir $(WIRE_SRCS:.c=.o)))
 LIB_OBJS := $(addprefix $(BUILD)/,$(notdir $(LIB_SRCS:.c=.o)))

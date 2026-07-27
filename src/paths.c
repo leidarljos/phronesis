@@ -24,18 +24,8 @@ static int join3(char *out, size_t n, const char *a, const char *b, const char *
 
 int grok_paths_ensure_dir(const char *path, int mode)
 {
-	struct stat st;
-
-	if (!path || !path[0])
-		return GROK_ERR_INVAL;
-	if (stat(path, &st) == 0) {
-		if (!S_ISDIR(st.st_mode))
-			return GROK_ERR_IO;
-		return GROK_OK;
-	}
-	if (mkdir(path, (mode_t)mode) != 0 && errno != EEXIST)
-		return GROK_ERR_IO;
-	return GROK_OK;
+	/* Leaf create via Unix primitives; never chmod an existing shared dir. */
+	return grok_unix_mkdir_leaf(path, (mode_t)mode);
 }
 
 static int ensure_state_tree(const char *state)

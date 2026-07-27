@@ -30,4 +30,13 @@ int grok_policy_eval(const char *workspace,
 		     const char *path,
 		     grok_policy_result_t *out);
 
+
+/* Unix primitives (suckless: OS calls, no host-hostile chmod on shared parents). */
+#include <sys/types.h>
+int grok_unix_mkdir_leaf(const char *path, mode_t mode);
+int grok_unix_ensure_socket_parent(const char *socket_path);
+int grok_unix_stream_listen(const char *socket_path, mode_t sock_mode, int *listen_fd);
+int grok_unix_peer_uid(int fd, uid_t *uid_out);
+int grok_unix_peer_is_self(int fd);
+
 #endif
