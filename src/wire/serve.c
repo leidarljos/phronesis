@@ -14,6 +14,7 @@
 #include <nng/nng.h>
 #include <nng/protocol/reqrep0/rep.h>
 #include <stdint.h>
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -148,8 +149,15 @@ static int handle_request(grok_supervisor_t *sup, const char *socket_path,
 		resp->kind = WIRE_RESP_AGENT;
 		snprintf(resp->u.agent.id, sizeof(resp->u.agent.id), "%s", st.id);
 		resp->u.agent.state = (int)st.state;
-		resp->u.agent.pid = (int32_t)st.pid;
-		resp->u.agent.pgid = (int32_t)st.pgid;
+		/* Clamp pid/pgid into int32 wire field (no silent wrap). */
+		if (st.pid > INT32_MAX || st.pid < 0)
+			resp->u.agent.pid = 0;
+		else
+			resp->u.agent.pid = (int32_t)st.pid;
+		if (st.pgid > INT32_MAX || st.pgid < 0)
+			resp->u.agent.pgid = 0;
+		else
+			resp->u.agent.pgid = (int32_t)st.pgid;
 		resp->u.agent.exit_status = st.exit_status;
 		snprintf(resp->u.agent.mode, sizeof(resp->u.agent.mode), "%s",
 			 st.mode);
@@ -240,27 +248,31 @@ int grok_policyd_serve(grok_supervisor_t *sup, const char *socket_path)
 
 	(void)grok_host_drop_bounding_caps();
 	if (grok_host_init() != GROK_OK) {
-		fprintf(stderr, "host init (libuv) failed\n");
+		fprintf(stderr, "host init failed\n");
 		return 1;
 	}
 	if (grok_unix_ensure_socket_parent(socket_path) != GROK_OK) {
 		perror("socket parent");
+		grok_host_fini();
 		return 1;
 	}
 	(void)unlink(socket_path);
 
 	if (socket_path[0] != '/') {
 		fprintf(stderr, "policyd serve: socket path must be absolute\n");
+		grok_host_fini();
 		return 1;
 	}
 	if (snprintf(url, sizeof(url), "ipc://%s", socket_path) >= (int)sizeof(url)) {
 		fprintf(stderr, "policyd serve: path too long\n");
+		grok_host_fini();
 		return 1;
 	}
 
 	rc = nng_rep0_open(&sock);
 	if (rc != 0) {
 		fprintf(stderr, "policyd serve: rep0_open %s\n", nng_strerror(rc));
+		grok_host_fini();
 		return 1;
 	}
 	/* Create listener so we can set IPC mode 0600 before start. */
@@ -269,6 +281,7 @@ int grok_policyd_serve(grok_supervisor_t *sup, const char *socket_path)
 		fprintf(stderr, "policyd serve: listener_create %s\n",
 			nng_strerror(rc));
 		nng_close(sock);
+		grok_host_fini();
 		return 1;
 	}
 	rc = nng_listener_set_int(lis, NNG_OPT_IPC_PERMISSIONS, 0600);

@@ -1,24 +1,30 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /*
  * Cap'n wire codec via c-capnproto (generated schema/policy.capnp.c).
- * App-facing API remains wire_decode_request / wire_encode_response.
+ * Seacord/Effective C: bounds on sizes, checked growth, free on all error paths.
  */
 #include "wire/capnp_min.h"
 
 #include "policy.capnp.h"
 
 #include <capnp_c.h>
-#include <bsd/string.h>
+#include <limits.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
 static capn_text ctext(const char *s)
 {
 	capn_text t;
+	size_t len;
 
 	if (!s)
 		s = "";
-	t.len = (int)strlen(s);
+	len = strlen(s);
+	/* capn_text.len is int; clamp (Effective C: no silent wrap). */
+	if (len > (size_t)INT_MAX)
+		len = (size_t)INT_MAX;
+	t.len = (int)len;
 	t.str = s;
 	t.seg = NULL;
 	return t;
@@ -30,10 +36,14 @@ static void copy_text(char *dst, size_t n, capn_text t)
 
 	if (!dst || n == 0)
 		return;
-	l = (t.len > 0 && t.str) ? (size_t)t.len : 0;
+	/* t.len is signed; reject negative before cast to size_t. */
+	if (t.len <= 0 || !t.str)
+		l = 0;
+	else
+		l = (size_t)t.len;
 	if (l >= n)
-		l = n - 1;
-	if (l && t.str)
+		l = n - 1U;
+	if (l > 0)
 		memcpy(dst, t.str, l);
 	dst[l] = '\0';
 }
@@ -45,7 +55,9 @@ int wire_decode_request(const uint8_t *body, size_t body_len, struct wire_reques
 	struct PolicyEnvelope env;
 	struct PolicyRequest req;
 
-	if (!body || !body_len || !out)
+	if (!body || body_len == 0 || !out)
+		return -1;
+	if (body_len > GROK_NNG_MAX_BODY)
 		return -1;
 	memset(out, 0, sizeof(*out));
 	memset(&c, 0, sizeof(c));
@@ -117,8 +129,9 @@ int wire_encode_response(const struct wire_response *resp, uint8_t **out,
 	PolicyEnvelope_ptr ep;
 	PolicyResponse_ptr rp;
 	uint8_t *buf = NULL;
-	size_t cap = 8192;
+	size_t cap = 8192U;
 	int64_t n;
+	const size_t cap_max = 1024U * 1024U;
 
 	if (!resp || !out || !out_len)
 		return -1;
@@ -221,6 +234,11 @@ int wire_encode_response(const struct wire_response *resp, uint8_t **out,
 	}
 
 	for (;;) {
+		/* INT30-C-style: cap *= 2 must not wrap size_t. */
+		if (cap == 0 || cap > cap_max) {
+			capn_free(&c);
+			return -1;
+		}
 		buf = malloc(cap);
 		if (!buf) {
 			capn_free(&c);
@@ -231,11 +249,17 @@ int wire_encode_response(const struct wire_response *resp, uint8_t **out,
 			break;
 		free(buf);
 		buf = NULL;
-		if (cap > 1024 * 1024) {
+		if (cap > cap_max / 2U) {
 			capn_free(&c);
 			return -1;
 		}
-		cap *= 2;
+		cap *= 2U;
+	}
+	/* n >= 0 here; reject absurd positive sizes past our body max. */
+	if ((uint64_t)n > (uint64_t)GROK_NNG_MAX_BODY) {
+		free(buf);
+		capn_free(&c);
+		return -1;
 	}
 	capn_free(&c);
 	*out = buf;
