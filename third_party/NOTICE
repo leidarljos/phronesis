@@ -1,8 +1,14 @@
-Vendored dependencies (not GPL):
+Vendored path helpers only (not GPL):
 
 - cwalk (MIT) — https://github.com/likle/cwalk
-- c-capnproto runtime (MIT) — https://github.com/opensourcerouting/c-capnproto
-  Generated schema/policy.capnp.c produced with capnpc-c.
-- OpenBSD strlcpy/strlcat via libbsd sources (ISC) — https://gitlab.freedesktop.org/libbsd/libbsd
+- OpenBSD strlcpy/strlcat via libbsd sources (ISC)
 
-Linked (conda-forge / system, not vendored): nng, libuv, libsystemd, libcap, cmocka.
+Linked via pkg-config / conda (not vendored):
+
+- c-capnproto (HaoZeke/c-capnproto, MIT) — channel https://repo.prefix.dev/rg-forge
+  (libcapnp_c + capnpc-c); lineage jmckaskill → opensourcerouting → HaoZeke
+- nng, libsystemd, libcap, cmocka, capnproto / c-capnproto (schema + wire) — conda-forge / rg-forge
+
+Regenerate wire C (needs capnpc-c on PATH from c-capnproto package):
+
+  make schema
