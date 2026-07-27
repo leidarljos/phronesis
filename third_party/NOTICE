@@ -1,0 +1,8 @@
+Vendored dependencies (not GPL):
+
+- cwalk (MIT) — https://github.com/likle/cwalk
+- c-capnproto runtime (MIT) — https://github.com/opensourcerouting/c-capnproto
+  Generated schema/policy.capnp.c produced with capnpc-c.
+- OpenBSD strlcpy/strlcat via libbsd sources (ISC) — https://gitlab.freedesktop.org/libbsd/libbsd
+
+Linked (conda-forge / system, not vendored): nng, libuv, libsystemd, libcap, cmocka.

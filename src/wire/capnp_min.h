@@ -1,8 +1,8 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /**
- * Minimal Cap'n Proto single-segment codec for policy.capnp layouts.
- * Interoperable with capnp-rust serialize (stream segment table + body).
- * Not a general Cap'n library — only PolicyEnvelope request/response shapes.
+ * App-level Cap'n peer request/response shapes.
+ * Encoding is c-capnproto (schema/policy.capnp.c) in codec_c_capn.c.
+ * Interoperable with capnp-rust stream serialize of policy.capnp.
  */
 #ifndef GROK_POLICYD_WIRE_CAPNP_MIN_H
 #define GROK_POLICYD_WIRE_CAPNP_MIN_H

@@ -35,6 +35,14 @@ int grok_policy_eval(const char *workspace,
 #include <sys/types.h>
 int grok_unix_mkdir_leaf(const char *path, mode_t mode);
 int grok_unix_ensure_socket_parent(const char *socket_path);
+
+/* host_platform: libuv + libsystemd + libcap */
+int grok_host_init(void);
+void grok_host_fini(void);
+int grok_host_should_stop(void);
+void grok_host_notify_ready(void);
+void grok_host_notify_stopping(void);
+int grok_host_drop_bounding_caps(void);
 int grok_unix_stream_listen(const char *socket_path, mode_t sock_mode, int *listen_fd);
 int grok_unix_peer_uid(int fd, uid_t *uid_out);
 int grok_unix_peer_is_self(int fd);
