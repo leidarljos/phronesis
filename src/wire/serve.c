@@ -1,20 +1,19 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /*
  * Cap'n peer serve loop over nng req/rep IPC.
- * Payload: Cap'n body only (no GKPP stream header). ACL: NNG_OPT_PEER_UID.
+ * Payload: Cap'n body only on nng messages. ACL: NNG_OPT_PEER_UID (uint64).
  */
 #define _GNU_SOURCE
 #include "wire/serve.h"
 
 #include "internal.h"
-#include "wire/capnp_min.h"
-#include "wire/frame.h"
+#include "wire/wire_codec.h"
 
 #include <errno.h>
+#include <limits.h>
 #include <nng/nng.h>
 #include <nng/protocol/reqrep0/rep.h>
 #include <stdint.h>
-#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -205,6 +204,8 @@ static void serve_one_msg(grok_supervisor_t *sup, const char *socket_path,
 		body_len = nng_msg_len(msg);
 		if (!body || body_len == 0) {
 			fill_error(&resp, GROK_ERR_INVAL, "empty body");
+		} else if (body_len > GROK_NNG_MAX_BODY) {
+			fill_error(&resp, GROK_ERR_INVAL, "body too large");
 		} else if (wire_decode_request(body, body_len, &req) != 0) {
 			fill_error(&resp, GROK_ERR_INVAL, "decode request failed");
 		} else {
@@ -239,101 +240,75 @@ static void serve_one_msg(grok_supervisor_t *sup, const char *socket_path,
 int grok_policyd_serve(grok_supervisor_t *sup, const char *socket_path)
 {
 	nng_socket sock = NNG_SOCKET_INITIALIZER;
+	nng_listener lis = NNG_LISTENER_INITIALIZER;
 	char url[sizeof("ipc://") + 512];
 	int rc;
-	nng_listener lis = NNG_LISTENER_INITIALIZER;
 
-	if (!sup || !socket_path || !socket_path[0])
+	if (!sup || !socket_path || socket_path[0] != '/')
 		return 2;
 
 	(void)grok_host_drop_bounding_caps();
-	if (grok_host_init() != GROK_OK) {
-		fprintf(stderr, "host init failed\n");
+	if (grok_host_init() != GROK_OK)
 		return 1;
-	}
 	if (grok_unix_ensure_socket_parent(socket_path) != GROK_OK) {
-		perror("socket parent");
 		grok_host_fini();
 		return 1;
 	}
 	(void)unlink(socket_path);
-
-	if (socket_path[0] != '/') {
-		fprintf(stderr, "policyd serve: socket path must be absolute\n");
-		grok_host_fini();
-		return 1;
-	}
 	if (snprintf(url, sizeof(url), "ipc://%s", socket_path) >= (int)sizeof(url)) {
-		fprintf(stderr, "policyd serve: path too long\n");
 		grok_host_fini();
 		return 1;
 	}
 
 	rc = nng_rep0_open(&sock);
 	if (rc != 0) {
-		fprintf(stderr, "policyd serve: rep0_open %s\n", nng_strerror(rc));
+		fprintf(stderr, "policyd serve: %s\n", nng_strerror(rc));
 		grok_host_fini();
 		return 1;
 	}
-	/* Create listener so we can set IPC mode 0600 before start. */
 	rc = nng_listener_create(&lis, sock, url);
-	if (rc != 0) {
-		fprintf(stderr, "policyd serve: listener_create %s\n",
-			nng_strerror(rc));
-		nng_close(sock);
-		grok_host_fini();
-		return 1;
-	}
+	if (rc != 0)
+		goto fail_sock;
 	rc = nng_listener_set_int(lis, NNG_OPT_IPC_PERMISSIONS, 0600);
-	if (rc != 0) {
-		fprintf(stderr, "policyd serve: IPC_PERMISSIONS %s\n",
-			nng_strerror(rc));
-		nng_listener_close(lis);
-		nng_close(sock);
-		grok_host_fini();
-		return 1;
-	}
-	(void)nng_socket_set_ms(sock, NNG_OPT_RECVTIMEO, 500);
+	if (rc != 0)
+		goto fail_lis;
+	(void)nng_socket_set_size(sock, NNG_OPT_RECVMAXSZ, GROK_NNG_MAX_BODY);
+	(void)nng_socket_set_ms(sock, NNG_OPT_RECVTIMEO, 250);
 	rc = nng_listener_start(lis, 0);
-	if (rc != 0) {
-		fprintf(stderr, "policyd serve: listener_start %s\n",
-			nng_strerror(rc));
-		nng_listener_close(lis);
-		nng_close(sock);
-		grok_host_fini();
-		return 1;
-	}
-	/* Mode is NNG_OPT_IPC_PERMISSIONS only (no hand chmod). */
+	if (rc != 0)
+		goto fail_lis;
+
 	fprintf(stderr, "grok-policyd serve: nng rep on %s\n", socket_path);
 	grok_host_notify_ready();
 
-	/*
-	 * Poll stop every iteration. nng RECVTIMEO is 500ms so SIGTERM is
-	 * observed without blocking forever; host_should_stop also pumps libuv.
-	 */
-	for (;;) {
+	while (!grok_host_should_stop()) {
 		nng_msg *msg = NULL;
 
-		if (grok_host_should_stop()) {
-			fprintf(stderr, "policyd serve: stop requested\n");
-			break;
-		}
 		rc = nng_recvmsg(sock, &msg, 0);
 		if (rc == NNG_ETIMEDOUT)
 			continue;
 		if (rc != 0) {
-			fprintf(stderr, "policyd serve: recv %s\n", nng_strerror(rc));
 			if (rc == NNG_ECLOSED || grok_host_should_stop())
 				break;
+			fprintf(stderr, "policyd serve: recv %s\n", nng_strerror(rc));
 			continue;
 		}
 		serve_one_msg(sup, socket_path, sock, msg);
 		nng_msg_free(msg);
 	}
 
+	fprintf(stderr, "policyd serve: stop requested\n");
 	grok_host_notify_stopping();
 	nng_close(sock);
 	(void)unlink(socket_path);
 	grok_host_fini();
 	return 0;
+
+fail_lis:
+	nng_listener_close(lis);
+fail_sock:
+	fprintf(stderr, "policyd serve: %s\n", nng_strerror(rc));
+	nng_close(sock);
+	grok_host_fini();
+	return 1;
 }
