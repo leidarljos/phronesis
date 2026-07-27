@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /*
- * Cap'n peer accept loop — thin dispatch over Unix primitives (unix_sock).
- * suckless: no DIY listen/bind; admit mapping is pure and fail-closed.
+ * Cap'n peer serve loop over nng req/rep IPC.
+ * Payload: Cap'n body only (no GKPP stream header). ACL: NNG_OPT_PEER_UID.
  */
 #define _GNU_SOURCE
 #include "wire/serve.h"
@@ -11,10 +11,13 @@
 #include "wire/frame.h"
 
 #include <errno.h>
+#include <nng/nng.h>
+#include <nng/protocol/reqrep0/rep.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/socket.h>
+#include <sys/stat.h>
 #include <unistd.h>
 
 /* Thin wrappers for tests / API stability. */
@@ -100,14 +103,6 @@ static int handle_request(grok_supervisor_t *sup, const char *socket_path,
 	}
 
 	if (req->op == WIRE_OP_ADMIT) {
-		/*
-		 * Map admit kinds onto policy_check tools. Fail-closed:
-		 * unknown kind is not silent model/start ALLOW.
-		 *
-		 * kind=""|"model" → model/start (product model admit)
-		 * kind="agent"    → model/start (product agent process start)
-		 * kind="seat"     → seat/publish_run (Cap'n board publish)
-		 */
 		const char *tool = NULL;
 		const char *action = NULL;
 		const char *path = NULL;
@@ -168,77 +163,139 @@ static int handle_request(grok_supervisor_t *sup, const char *socket_path,
 	return 0;
 }
 
-static void serve_one(grok_supervisor_t *sup, const char *socket_path, int cfd)
+static int peer_uid_ok(nng_msg *msg)
 {
-	uint8_t *body = NULL;
-	size_t body_len = 0;
+	nng_pipe p = nng_msg_get_pipe(msg);
+	uint64_t uid = UINT64_MAX;
+	/* nng 1.x: PEER_UID is uint64 on the pipe (not int). */
+	int rc = nng_pipe_get_uint64(p, NNG_OPT_PEER_UID, &uid);
+
+	if (rc != 0)
+		return 0;
+	return uid <= (uint64_t)UINT32_MAX && (uid_t)uid == getuid();
+}
+
+static void serve_one_msg(grok_supervisor_t *sup, const char *socket_path,
+			  nng_socket sock, nng_msg *msg)
+{
 	struct wire_request req;
 	struct wire_response resp;
 	uint8_t *out = NULL;
 	size_t out_len = 0;
+	void *body;
+	size_t body_len;
+	nng_msg *rmsg = NULL;
+	int rc;
 
 	memset(&req, 0, sizeof(req));
 	memset(&resp, 0, sizeof(resp));
 
-	if (!grok_unix_peer_is_self(cfd)) {
-		/* Fail-closed: tell peer why when possible. */
+	if (!peer_uid_ok(msg)) {
 		fill_error(&resp, GROK_ERR_DENIED, "peercred uid mismatch");
-		if (wire_encode_response(&resp, &out, &out_len) == 0) {
-			(void)gkpp_write_frame(cfd, out, out_len);
-			free(out);
-			out = NULL;
-		}
-		return;
-	}
-
-	if (gkpp_read_frame(cfd, &body, &body_len) != 0) {
-		fprintf(stderr, "policyd serve: bad frame\n");
-		return;
-	}
-
-	if (wire_decode_request(body, body_len, &req) != 0) {
-		fill_error(&resp, GROK_ERR_INVAL, "decode request failed");
 	} else {
-		handle_request(sup, socket_path, &req, &resp);
+		body = nng_msg_body(msg);
+		body_len = nng_msg_len(msg);
+		if (!body || body_len == 0) {
+			fill_error(&resp, GROK_ERR_INVAL, "empty body");
+		} else if (wire_decode_request(body, body_len, &req) != 0) {
+			fill_error(&resp, GROK_ERR_INVAL, "decode request failed");
+		} else {
+			handle_request(sup, socket_path, &req, &resp);
+		}
 	}
-	free(body);
 
 	if (wire_encode_response(&resp, &out, &out_len) != 0) {
 		fprintf(stderr, "policyd serve: encode failed\n");
 		return;
 	}
-	if (gkpp_write_frame(cfd, out, out_len) != 0)
-		fprintf(stderr, "policyd serve: write failed\n");
+	rc = nng_msg_alloc(&rmsg, 0);
+	if (rc != 0) {
+		free(out);
+		fprintf(stderr, "policyd serve: msg_alloc %d\n", rc);
+		return;
+	}
+	rc = nng_msg_append(rmsg, out, out_len);
 	free(out);
+	if (rc != 0) {
+		nng_msg_free(rmsg);
+		fprintf(stderr, "policyd serve: msg_append %d\n", rc);
+		return;
+	}
+	rc = nng_sendmsg(sock, rmsg, 0);
+	if (rc != 0) {
+		nng_msg_free(rmsg);
+		fprintf(stderr, "policyd serve: sendmsg %d\n", rc);
+	}
 }
 
 int grok_policyd_serve(grok_supervisor_t *sup, const char *socket_path)
 {
-	int lfd = -1;
-	int rc = 1;
+	nng_socket sock = NNG_SOCKET_INITIALIZER;
+	char url[sizeof("ipc://") + 512];
+	int rc;
+	nng_listener lis = NNG_LISTENER_INITIALIZER;
 
 	if (!sup || !socket_path || !socket_path[0])
 		return 2;
 
-	if (grok_unix_stream_listen(socket_path, 0600, &lfd) != GROK_OK) {
-		perror("unix listen");
+	if (grok_unix_ensure_socket_parent(socket_path) != GROK_OK) {
+		perror("socket parent");
 		return 1;
 	}
-	fprintf(stderr, "grok-policyd serve: listening on %s\n", socket_path);
+	(void)unlink(socket_path);
+
+	if (socket_path[0] != '/') {
+		fprintf(stderr, "policyd serve: socket path must be absolute\n");
+		return 1;
+	}
+	if (snprintf(url, sizeof(url), "ipc://%s", socket_path) >= (int)sizeof(url)) {
+		fprintf(stderr, "policyd serve: path too long\n");
+		return 1;
+	}
+
+	rc = nng_rep0_open(&sock);
+	if (rc != 0) {
+		fprintf(stderr, "policyd serve: rep0_open %s\n", nng_strerror(rc));
+		return 1;
+	}
+	/* Create listener so we can set IPC mode 0600 before start. */
+	rc = nng_listener_create(&lis, sock, url);
+	if (rc != 0) {
+		fprintf(stderr, "policyd serve: listener_create %s\n",
+			nng_strerror(rc));
+		nng_close(sock);
+		return 1;
+	}
+	(void)nng_listener_set_int(lis, NNG_OPT_IPC_PERMISSIONS, 0600);
+	(void)nng_socket_set_ms(sock, NNG_OPT_RECVTIMEO, 500);
+	rc = nng_listener_start(lis, 0);
+	if (rc != 0) {
+		fprintf(stderr, "policyd serve: listener_start %s\n",
+			nng_strerror(rc));
+		nng_listener_close(lis);
+		nng_close(sock);
+		return 1;
+	}
+	/* Path chmod as belt-and-suspenders when the FS object exists. */
+	(void)chmod(socket_path, 0600);
+	fprintf(stderr, "grok-policyd serve: nng rep on %s\n", socket_path);
 
 	for (;;) {
-		int cfd = accept4(lfd, NULL, NULL, SOCK_CLOEXEC);
-		if (cfd < 0) {
-			if (errno == EINTR)
-				continue;
-			perror("accept");
-			break;
+		nng_msg *msg = NULL;
+		rc = nng_recvmsg(sock, &msg, 0);
+		if (rc == NNG_ETIMEDOUT)
+			continue;
+		if (rc != 0) {
+			fprintf(stderr, "policyd serve: recv %s\n", nng_strerror(rc));
+			if (rc == NNG_ECLOSED)
+				break;
+			continue;
 		}
-		serve_one(sup, socket_path, cfd);
-		close(cfd);
+		serve_one_msg(sup, socket_path, sock, msg);
+		nng_msg_free(msg);
 	}
-	rc = 0;
-	close(lfd);
+
+	nng_close(sock);
 	(void)unlink(socket_path);
-	return rc;
+	return 0;
 }

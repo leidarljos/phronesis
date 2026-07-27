@@ -17,6 +17,8 @@ binutils = ">=2.40"
 make = ">=4.3,<5"
 pkg-config = ">=0.29,<1"
 cmocka = ">=1.1.7,<2"
+# Cap'n peer transport (nng req/rep over ipc://)
+nng = ">=1.11,<2"
 bash = ">=5.2"
 coreutils = ">=9.5"
 sed = "*"
