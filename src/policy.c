@@ -103,6 +103,26 @@ int grok_policy_eval(const char *workspace,
 		return GROK_OK;
 	}
 
+	/*
+	 * Seat Cap'n visibility channel (sessiond peercred already same-uid).
+	 * tool=seat: publish_run | read_run | list_runs | list_events
+	 */
+	if (strcmp(tool, "seat") == 0 &&
+	    (strcmp(action, "publish_run") == 0 || strcmp(action, "read_run") == 0 ||
+	     strcmp(action, "list_runs") == 0 || strcmp(action, "list_events") == 0)) {
+		out->decision = GROK_DECISION_ALLOW;
+		snprintf(out->reason, sizeof(out->reason),
+			 "seat Cap'n visibility (peercred + seat policy)");
+		return GROK_OK;
+	}
+
+	/* Product model admit plane (path not bound; identity is agent_id). */
+	if (strcmp(tool, "model") == 0 && strcmp(action, "start") == 0) {
+		out->decision = GROK_DECISION_ALLOW;
+		snprintf(out->reason, sizeof(out->reason), "model start admit plane");
+		return GROK_OK;
+	}
+
 	if (path && path[0] &&
 	    (strcmp(action, "read") == 0 || strcmp(action, "write") == 0) &&
 	    path_under_workspace(workspace, path)) {
