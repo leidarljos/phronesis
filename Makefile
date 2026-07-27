@@ -21,6 +21,12 @@ PICFLAGS := -fPIC
 CMOCKA_CFLAGS := $(shell pkg-config --cflags cmocka 2>/dev/null)
 CMOCKA_LIBS   := $(shell pkg-config --libs cmocka 2>/dev/null)
 # cmocka is only required for the test binary (not lib/docs/example).
+# nng: Cap'n peer transport (req/rep over ipc://). Prefer pkg-config; conda may only provide -lnng.
+NNG_CFLAGS := $(shell pkg-config --cflags nng 2>/dev/null)
+NNG_LIBS   := $(shell pkg-config --libs nng 2>/dev/null)
+ifeq ($(NNG_LIBS),)
+NNG_LIBS := -lnng
+endif
 
 BUILD    := build
 LIB_SRCS := src/paths.c src/unix_dir.c src/unix_sock.c src/action_log.c \
@@ -38,6 +44,7 @@ TEST_SRCS := tests/harness.c \
 	tests/test_persist.c \
 	tests/test_policy.c \
 	tests/test_version.c \
+	tests/test_wire_serve.c \
 	tests/test_main.c
 TEST_OBJS := $(addprefix $(BUILD)/,$(notdir $(TEST_SRCS:.c=.o)))
 
@@ -78,14 +85,14 @@ $(BUILD)/$(SONAME): $(SHARED_LIB)
 	ln -sfn $(REAL_SO) $@
 
 $(BUILD)/wire-%.o: src/wire/%.c | $(BUILD)
-	$(CC) $(CPPFLAGS) $(CFLAGS) -c -o $@ $<
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(NNG_CFLAGS) -c -o $@ $<
 
 $(BUILD)/grok-policyd: $(BUILD)/grok-policyd.o $(WIRE_OBJS) $(STATIC_LIB)
-	$(CC) $(CFLAGS) -o $@ $(BUILD)/grok-policyd.o $(WIRE_OBJS) $(STATIC_LIB) $(LDFLAGS)
+	$(CC) $(CFLAGS) -o $@ $(BUILD)/grok-policyd.o $(WIRE_OBJS) $(STATIC_LIB) $(LDFLAGS) $(NNG_LIBS)
 
-$(BUILD)/supervisor_test: $(TEST_OBJS) $(STATIC_LIB)
+$(BUILD)/supervisor_test: $(TEST_OBJS) $(WIRE_OBJS) $(STATIC_LIB)
 	@test -n "$(CMOCKA_LIBS)" || (echo "error: cmocka not found (pkg-config cmocka). Use pixi install --locked (provides cmocka), or install cmocka-dev / libcmocka-dev." && exit 1)
-	$(CC) $(CFLAGS) -o $@ $(TEST_OBJS) $(STATIC_LIB) $(LDFLAGS) $(CMOCKA_LIBS)
+	$(CC) $(CFLAGS) -o $@ $(TEST_OBJS) $(WIRE_OBJS) $(STATIC_LIB) $(LDFLAGS) $(CMOCKA_LIBS) $(NNG_LIBS)
 
 $(BUILD)/example_minimal: examples/c/minimal.c $(STATIC_LIB) | $(BUILD)
 	$(CC) $(CPPFLAGS) $(CFLAGS) -o $@ examples/c/minimal.c $(STATIC_LIB) $(LDFLAGS)
@@ -96,7 +103,7 @@ test-wire: $(BUILD)/test_wire_frame
 	$(BUILD)/test_wire_frame
 
 $(BUILD)/test_wire_frame: tests/test_wire_frame.c $(WIRE_OBJS) $(STATIC_LIB) | $(BUILD)
-	$(CC) $(CPPFLAGS) $(CFLAGS) -o $@ tests/test_wire_frame.c $(WIRE_OBJS) $(STATIC_LIB) $(LDFLAGS)
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(NNG_CFLAGS) -o $@ tests/test_wire_frame.c $(WIRE_OBJS) $(STATIC_LIB) $(LDFLAGS) $(NNG_LIBS)
 
 test: $(BUILD)/grok-policyd $(BUILD)/supervisor_test test-wire
 	@test -n "$(CMOCKA_LIBS)" || (echo "error: cmocka not found (pkg-config cmocka). Use pixi install --locked (provides cmocka), or install cmocka-dev / libcmocka-dev." && exit 1)
