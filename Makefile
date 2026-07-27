@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 #
-# Host library (stable C ABI) + CLI + tests.
+# Host library (stable C ABI) + CLI + tests + docs.
 # Public surface: include/grok-policyd/supervisor.h
 
 # Single source: VERSION + API_VERSION (see scripts/check-version.sh)
@@ -20,11 +20,13 @@ PICFLAGS := -fPIC
 
 CMOCKA_CFLAGS := $(shell pkg-config --cflags cmocka 2>/dev/null)
 CMOCKA_LIBS   := $(shell pkg-config --libs cmocka 2>/dev/null)
-# cmocka is only required for the test binary (not lib/example).
+# cmocka is only required for the test binary (not lib/docs/example).
 
 BUILD    := build
 LIB_SRCS := src/paths.c src/action_log.c src/cgroup.c src/policy.c \
 	src/supervisor.c src/version.c
+WIRE_SRCS := src/wire/frame.c src/wire/capnp_min.c src/wire/serve.c
+WIRE_OBJS := $(addprefix $(BUILD)/wire-,$(notdir $(WIRE_SRCS:.c=.o)))
 LIB_OBJS := $(addprefix $(BUILD)/,$(notdir $(LIB_SRCS:.c=.o)))
 LIB_PIC_OBJS := $(addprefix $(BUILD)/pic-,$(notdir $(LIB_SRCS:.c=.o)))
 
@@ -44,7 +46,7 @@ REAL_SO    := libgrok_policyd.so.$(VERSION)
 STATIC_LIB := $(BUILD)/libgrok_policyd.a
 SHARED_LIB := $(BUILD)/$(REAL_SO)
 
-.PHONY: all clean test lib install uninstall example pc check-version
+.PHONY: all clean test lib install uninstall example doxygen docs pc check-version test-wire
 
 all: lib $(BUILD)/grok-policyd test
 
@@ -75,8 +77,11 @@ $(BUILD)/libgrok_policyd.so: $(SHARED_LIB)
 $(BUILD)/$(SONAME): $(SHARED_LIB)
 	ln -sfn $(REAL_SO) $@
 
-$(BUILD)/grok-policyd: $(BUILD)/grok-policyd.o $(STATIC_LIB)
-	$(CC) $(CFLAGS) -o $@ $(BUILD)/grok-policyd.o $(STATIC_LIB) $(LDFLAGS)
+$(BUILD)/wire-%.o: src/wire/%.c | $(BUILD)
+	$(CC) $(CPPFLAGS) $(CFLAGS) -c -o $@ $<
+
+$(BUILD)/grok-policyd: $(BUILD)/grok-policyd.o $(WIRE_OBJS) $(STATIC_LIB)
+	$(CC) $(CFLAGS) -o $@ $(BUILD)/grok-policyd.o $(WIRE_OBJS) $(STATIC_LIB) $(LDFLAGS)
 
 $(BUILD)/supervisor_test: $(TEST_OBJS) $(STATIC_LIB)
 	@test -n "$(CMOCKA_LIBS)" || (echo "error: cmocka not found (pkg-config cmocka). Use pixi install --locked (provides cmocka), or install cmocka-dev / libcmocka-dev." && exit 1)
@@ -87,7 +92,13 @@ $(BUILD)/example_minimal: examples/c/minimal.c $(STATIC_LIB) | $(BUILD)
 
 example: $(BUILD)/example_minimal
 
-test: $(BUILD)/grok-policyd $(BUILD)/supervisor_test
+test-wire: $(BUILD)/test_wire_frame
+	$(BUILD)/test_wire_frame
+
+$(BUILD)/test_wire_frame: tests/test_wire_frame.c $(WIRE_OBJS) $(STATIC_LIB) | $(BUILD)
+	$(CC) $(CPPFLAGS) $(CFLAGS) -o $@ tests/test_wire_frame.c $(WIRE_OBJS) $(STATIC_LIB) $(LDFLAGS)
+
+test: $(BUILD)/grok-policyd $(BUILD)/supervisor_test test-wire
 	@test -n "$(CMOCKA_LIBS)" || (echo "error: cmocka not found (pkg-config cmocka). Use pixi install --locked (provides cmocka), or install cmocka-dev / libcmocka-dev." && exit 1)
 	$(BUILD)/supervisor_test
 
@@ -126,8 +137,18 @@ uninstall:
 	rm -f $(DESTDIR)$(PREFIX)/lib/pkgconfig/grok-policyd.pc
 	rm -f $(DESTDIR)$(PREFIX)/bin/grok-policyd
 
+doxygen:
+	@command -v doxygen >/dev/null || { echo "doxygen not found"; exit 1; }
+	mkdir -p docs/build/doxygen
+	cd docs && doxygen Doxyfile
+
+docs: doxygen
+	@command -v sphinx-build >/dev/null || { \
+		echo "sphinx-build not found — pip install -r docs/requirements.txt"; exit 1; }
+	sphinx-build -W -b html docs/source docs/build/html
+
 clean:
-	rm -rf $(BUILD)
+	rm -rf $(BUILD) docs/build
 
 $(BUILD)/grok-policyd.o: include/grok-policyd/supervisor.h
 $(BUILD)/supervisor.o: include/grok-policyd/supervisor.h src/internal.h

@@ -1,7 +1,9 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 #include "grok-policyd/supervisor.h"
+#include "wire/serve.h"
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 static void usage(const char *argv0)
@@ -12,8 +14,9 @@ static void usage(const char *argv0)
 		"  %s [--state-dir DIR] [--runtime-dir DIR] status <agent-id>\n"
 		"  %s [--state-dir DIR] [--runtime-dir DIR] stop <agent-id>\n"
 		"  %s [--state-dir DIR] [--runtime-dir DIR] log <agent-id> <kind> <detail>\n"
-		"  %s [--state-dir DIR] [--runtime-dir DIR] check <agent-id> <tool> <action> [path]\n",
-		argv0, argv0, argv0, argv0, argv0);
+		"  %s [--state-dir DIR] [--runtime-dir DIR] check <agent-id> <tool> <action> [path]\n"
+		"  %s [--state-dir DIR] [--runtime-dir DIR] serve [--socket PATH]\n",
+		argv0, argv0, argv0, argv0, argv0, argv0);
 }
 
 static const char *state_name(grok_agent_state_t st)
@@ -167,6 +170,44 @@ int main(int argc, char **argv)
 		}
 		printf("decision=%s reason=%s\n", dec, pr.reason);
 		exit_code = (pr.decision == GROK_DECISION_DENY) ? 2 : 0;
+	} else if (strcmp(cmd, "serve") == 0) {
+		const char *sock = NULL;
+		char *def_sock = NULL;
+
+		while (i < argc) {
+			if (strcmp(argv[i], "--socket") == 0 && i + 1 < argc) {
+				sock = argv[++i];
+				i++;
+			} else {
+				usage(argv[0]);
+				exit_code = 2;
+				goto out;
+			}
+		}
+		if (!sock) {
+			const char *xdg = getenv("XDG_RUNTIME_DIR");
+			const char *env = getenv("GROKOS_POLICYD_SOCK");
+			if (env && env[0]) {
+				sock = env;
+			} else if (xdg && xdg[0]) {
+				size_t n = strlen(xdg) + 32;
+				def_sock = malloc(n);
+				if (!def_sock) {
+					exit_code = 1;
+					goto out;
+				}
+				snprintf(def_sock, n, "%s/grokos/policyd.sock", xdg);
+				sock = def_sock;
+			} else {
+				fprintf(stderr,
+					"serve: set --socket or GROKOS_POLICYD_SOCK or XDG_RUNTIME_DIR\n");
+				exit_code = 2;
+				goto out;
+			}
+		}
+		exit_code = grok_policyd_serve(sup, sock);
+		free(def_sock);
+		goto out;
 	} else {
 		usage(argv[0]);
 		exit_code = 2;

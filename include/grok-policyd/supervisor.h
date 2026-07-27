@@ -22,8 +22,9 @@
  *   (``scripts/sync-version.sh`` / ``scripts/check-version.sh``).
  *
  * @par Cap'n Proto
- * Sessiond peer wire is a separate track (meta #70). This C ABI is the
- * in-process / static-link surface used by hosts such as grokos-shell.
+ * Sessiond peer wire (meta #70 / Slice C): schema/policy.capnp + GKPP UDS
+ * (`grok-policyd serve`). This C ABI remains the in-process / static-link
+ * surface for hosts such as grokos-shell; the Cap'n peer wraps the library.
  */
 
 #ifndef GROK_POLICYD_SUPERVISOR_H
