@@ -238,6 +238,11 @@ int grok_policyd_serve(grok_supervisor_t *sup, const char *socket_path)
 	if (!sup || !socket_path || !socket_path[0])
 		return 2;
 
+	(void)grok_host_drop_bounding_caps();
+	if (grok_host_init() != GROK_OK) {
+		fprintf(stderr, "host init (libuv) failed\n");
+		return 1;
+	}
 	if (grok_unix_ensure_socket_parent(socket_path) != GROK_OK) {
 		perror("socket parent");
 		return 1;
@@ -295,7 +300,9 @@ int grok_policyd_serve(grok_supervisor_t *sup, const char *socket_path)
 		nng_msg_free(msg);
 	}
 
+	grok_host_notify_stopping();
 	nng_close(sock);
 	(void)unlink(socket_path);
+	grok_host_fini();
 	return 0;
 }

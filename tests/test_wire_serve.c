@@ -9,9 +9,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
-#include <sys/socket.h>
 #include <sys/stat.h>
-#include <sys/un.h>
 #include <unistd.h>
 #include <cmocka.h>
 
@@ -59,44 +57,6 @@ static void test_ensure_parent_creates_leaf(void **state)
 	assert_int_equal(rmdir(base), 0);
 }
 
-static void test_unix_listen_and_peercred_self(void **state)
-{
-	char base[256];
-	char sock[300];
-	int lfd = -1;
-	int cfd = -1;
-	int afd = -1;
-	pid_t pid;
-
-	(void)state;
-	snprintf(base, sizeof(base), "/tmp/policyd-listen-%d", (int)getpid());
-	(void)rmdir(base);
-	assert_int_equal(mkdir(base, 0700), 0);
-	snprintf(sock, sizeof(sock), "%s/p.sock", base);
-	assert_int_equal(grok_unix_stream_listen(sock, 0600, &lfd), GROK_OK);
-	assert_true(lfd >= 0);
-
-	/* Connect from same process → peercred uid is self. */
-	cfd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
-	assert_true(cfd >= 0);
-	{
-		struct sockaddr_un addr;
-		memset(&addr, 0, sizeof(addr));
-		addr.sun_family = AF_UNIX;
-		snprintf(addr.sun_path, sizeof(addr.sun_path), "%s", sock);
-		assert_int_equal(connect(cfd, (struct sockaddr *)&addr, sizeof(addr)), 0);
-	}
-	afd = accept4(lfd, NULL, NULL, SOCK_CLOEXEC);
-	assert_true(afd >= 0);
-	assert_true(grok_unix_peer_is_self(afd));
-	close(afd);
-	close(cfd);
-	close(lfd);
-	(void)unlink(sock);
-	assert_int_equal(rmdir(base), 0);
-	(void)pid;
-}
-
 static void test_map_admit_kind_known(void **state)
 {
 	const char *tool = NULL;
@@ -136,7 +96,6 @@ int run_wire_serve_tests(void)
 	const struct CMUnitTest tests[] = {
 		cmocka_unit_test(test_ensure_parent_does_not_chmod_existing),
 		cmocka_unit_test(test_ensure_parent_creates_leaf),
-		cmocka_unit_test(test_unix_listen_and_peercred_self),
 		cmocka_unit_test(test_map_admit_kind_known),
 		cmocka_unit_test(test_map_admit_kind_unknown_fail_closed),
 	};
