@@ -21,9 +21,10 @@ echo "checking $SO"
 need=$(readelf -d "$SO" 2>/dev/null | awk '/NEEDED/ {print $5}' | tr -d '[]' || true)
 echo "DT_NEEDED: $need"
 bad=
-for lib in libnng libuv libsystemd libcap; do
+# CLI/host wire stack only — never DT_NEEDED of the TCB .so.
+for lib in libnng libuv libsystemd libcap libcapnp_c libcapnp; do
   if echo "$need" | grep -q "$lib"; then
-    echo "error: shared TCB lib must not NEEDED $lib (CLI-only)" >&2
+    echo "error: shared TCB lib must not NEEDED $lib (CLI/wire only)" >&2
     bad=1
   fi
 done
@@ -32,12 +33,12 @@ pc="$ROOT/build/grok-policyd.pc"
 if [[ -f "$pc" ]]; then
   libs=$(grep '^Libs:' "$pc" || true)
   echo "$libs"
-  for lib in nng uv systemd cap; do
+  for lib in nng uv systemd cap capnp_c capnp; do
     if echo "$libs" | grep -q -- "-l$lib"; then
-      echo "error: .pc Libs pulls -l$lib (CLI-only)" >&2
+      echo "error: .pc Libs pulls -l$lib (CLI/wire only)" >&2
       bad=1
     fi
   done
 fi
 [[ -z "${bad:-}" ]] || exit 1
-echo "ok: shared lib and .pc free of CLI host stack"
+echo "ok: shared lib and .pc free of CLI/wire host stack"
