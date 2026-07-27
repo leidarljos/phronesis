@@ -271,7 +271,15 @@ int grok_policyd_serve(grok_supervisor_t *sup, const char *socket_path)
 		nng_close(sock);
 		return 1;
 	}
-	(void)nng_listener_set_int(lis, NNG_OPT_IPC_PERMISSIONS, 0600);
+	rc = nng_listener_set_int(lis, NNG_OPT_IPC_PERMISSIONS, 0600);
+	if (rc != 0) {
+		fprintf(stderr, "policyd serve: IPC_PERMISSIONS %s\n",
+			nng_strerror(rc));
+		nng_listener_close(lis);
+		nng_close(sock);
+		grok_host_fini();
+		return 1;
+	}
 	(void)nng_socket_set_ms(sock, NNG_OPT_RECVTIMEO, 500);
 	rc = nng_listener_start(lis, 0);
 	if (rc != 0) {
@@ -279,20 +287,30 @@ int grok_policyd_serve(grok_supervisor_t *sup, const char *socket_path)
 			nng_strerror(rc));
 		nng_listener_close(lis);
 		nng_close(sock);
+		grok_host_fini();
 		return 1;
 	}
-	/* Path chmod as belt-and-suspenders when the FS object exists. */
-	(void)chmod(socket_path, 0600);
+	/* Mode is NNG_OPT_IPC_PERMISSIONS only (no hand chmod). */
 	fprintf(stderr, "grok-policyd serve: nng rep on %s\n", socket_path);
+	grok_host_notify_ready();
 
+	/*
+	 * Poll stop every iteration. nng RECVTIMEO is 500ms so SIGTERM is
+	 * observed without blocking forever; host_should_stop also pumps libuv.
+	 */
 	for (;;) {
 		nng_msg *msg = NULL;
+
+		if (grok_host_should_stop()) {
+			fprintf(stderr, "policyd serve: stop requested\n");
+			break;
+		}
 		rc = nng_recvmsg(sock, &msg, 0);
 		if (rc == NNG_ETIMEDOUT)
 			continue;
 		if (rc != 0) {
 			fprintf(stderr, "policyd serve: recv %s\n", nng_strerror(rc));
-			if (rc == NNG_ECLOSED)
+			if (rc == NNG_ECLOSED || grok_host_should_stop())
 				break;
 			continue;
 		}

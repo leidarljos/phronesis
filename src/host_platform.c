@@ -1,4 +1,9 @@
 /* SPDX-License-Identifier: Apache-2.0 */
+/*
+ * CLI/daemon host glue only — not linked into libgrok_policyd.so.
+ * libuv: cooperative loop for signals (and future process watches).
+ * libsystemd: sd_notify. libcap: optional priv drop.
+ */
 #include "internal.h"
 
 #include <signal.h>
@@ -16,7 +21,13 @@ static uv_signal_t g_sigterm;
 static uv_signal_t g_sigint;
 static volatile sig_atomic_t g_stop;
 
-static void on_signal(uv_signal_t *handle, int signum)
+static void on_posix_signal(int signum)
+{
+	(void)signum;
+	g_stop = 1;
+}
+
+static void on_uv_signal(uv_signal_t *handle, int signum)
 {
 	(void)handle;
 	(void)signum;
@@ -27,9 +38,17 @@ static void on_signal(uv_signal_t *handle, int signum)
 
 int grok_host_init(void)
 {
+	struct sigaction sa;
 	int rc;
 
 	g_stop = 0;
+	memset(&sa, 0, sizeof(sa));
+	sa.sa_handler = on_posix_signal;
+	sigemptyset(&sa.sa_mask);
+	/* Do not set SA_RESTART: nng recv timeouts must return so serve can poll g_stop. */
+	(void)sigaction(SIGTERM, &sa, NULL);
+	(void)sigaction(SIGINT, &sa, NULL);
+
 	g_loop = calloc(1, sizeof(*g_loop));
 	if (!g_loop)
 		return GROK_ERR_IO;
@@ -41,8 +60,8 @@ int grok_host_init(void)
 	}
 	uv_signal_init(g_loop, &g_sigterm);
 	uv_signal_init(g_loop, &g_sigint);
-	uv_signal_start(&g_sigterm, on_signal, SIGTERM);
-	uv_signal_start(&g_sigint, on_signal, SIGINT);
+	uv_signal_start(&g_sigterm, on_uv_signal, SIGTERM);
+	uv_signal_start(&g_sigint, on_uv_signal, SIGINT);
 	return GROK_OK;
 }
 
@@ -63,7 +82,7 @@ void grok_host_fini(void)
 int grok_host_should_stop(void)
 {
 	if (g_loop)
-		uv_run(g_loop, UV_RUN_NOWAIT);
+		(void)uv_run(g_loop, UV_RUN_NOWAIT);
 	return g_stop ? 1 : 0;
 }
 

@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 #
-# Host library + CLI + tests. Wire: nng + c-capnproto.
-# Host: libuv, libsystemd, libcap. Paths: cwalk + libbsd strl*.
+# libgrok_policyd: stable TCB C ABI only (no nng/uv/systemd/cap).
+# grok-policyd CLI + wire tests: nng + c-capnproto + host stack (CLI-only).
 
 VERSION       := $(shell tr -d '[:space:]' < VERSION)
 VERSION_MAJOR := $(word 1,$(subst ., ,$(VERSION)))
@@ -12,9 +12,11 @@ API_VERSION   := $(shell tr -d '[:space:]' < API_VERSION)
 CC       ?= cc
 CFLAGS   ?= -std=c11 -Wall -Wextra -Werror -O2 -D_DEFAULT_SOURCE -D_POSIX_C_SOURCE=200809L
 CPPFLAGS += -Iinclude -Isrc -Itests \
-	-Ithird_party/c-capnproto/lib \
 	-Ithird_party/cwalk \
-	-Ithird_party/bsdcompat/include \
+	-Ithird_party/bsdcompat/include
+# Wire/CLI only (not for TCB lib objects)
+WIRE_CPPFLAGS := $(CPPFLAGS) \
+	-Ithird_party/c-capnproto/lib \
 	-Ischema
 LDFLAGS  ?=
 PREFIX   ?= /usr/local
@@ -43,24 +45,28 @@ ifeq ($(CAP_LIBS),)
 CAP_LIBS := -lcap
 endif
 
+# CLI / serve / wire tests only — never DT_NEEDED of the shared TCB lib.
 HOST_LIBS := $(NNG_LIBS) $(UV_LIBS) $(SYSTEMD_LIBS) $(CAP_LIBS)
 HOST_CFLAGS := $(NNG_CFLAGS) $(UV_CFLAGS) $(SYSTEMD_CFLAGS) $(CAP_CFLAGS)
 
 BUILD := build
 
+# --- Stable TCB library (supervisor.h) ---
 LIB_SRCS := src/paths.c src/unix_dir.c src/action_log.c \
-	src/cgroup.c src/policy.c src/supervisor.c src/version.c \
-	src/host_platform.c
-
+	src/cgroup.c src/policy.c src/supervisor.c src/version.c
 LIB_OBJS := $(addprefix $(BUILD)/,$(notdir $(LIB_SRCS:.c=.o)))
 LIB_PIC_OBJS := $(addprefix $(BUILD)/pic-,$(notdir $(LIB_SRCS:.c=.o)))
 
-VENDOR_OBJS := $(BUILD)/vendor-cwalk.o \
-	$(BUILD)/vendor-capn.o $(BUILD)/vendor-capn-malloc.o $(BUILD)/vendor-capn-stream.o \
+# Path helpers only (used by paths.c); not Cap'n / nng.
+LIB_VENDOR_OBJS := $(BUILD)/vendor-cwalk.o \
 	$(BUILD)/vendor-strlcpy.o $(BUILD)/vendor-strlcat.o
 
+# --- Cap'n peer wire + CLI host glue (not in .so) ---
 WIRE_OBJS := $(BUILD)/wire-frame.o $(BUILD)/wire-codec_c_capn.o $(BUILD)/wire-serve.o \
 	$(BUILD)/wire-policy.capnp.o
+WIRE_VENDOR_OBJS := $(BUILD)/vendor-capn.o $(BUILD)/vendor-capn-malloc.o \
+	$(BUILD)/vendor-capn-stream.o
+HOST_OBJS := $(BUILD)/host_platform.o
 
 TEST_SRCS := tests/harness.c \
 	tests/test_paths.c \
@@ -88,23 +94,18 @@ lib: check-version $(STATIC_LIB) $(SHARED_LIB) $(BUILD)/libgrok_policyd.so $(BUI
 $(BUILD):
 	mkdir -p $(BUILD)
 
+# TCB lib objects — no HOST_CFLAGS
 $(BUILD)/%.o: src/%.c | $(BUILD)
-	$(CC) $(CPPFLAGS) $(CFLAGS) $(HOST_CFLAGS) -c -o $@ $<
+	$(CC) $(CPPFLAGS) $(CFLAGS) -c -o $@ $<
 
 $(BUILD)/pic-%.o: src/%.c | $(BUILD)
-	$(CC) $(CPPFLAGS) $(CFLAGS) $(HOST_CFLAGS) $(PICFLAGS) -c -o $@ $<
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(PICFLAGS) -c -o $@ $<
+
+$(BUILD)/host_platform.o: src/host_platform.c | $(BUILD)
+	$(CC) $(WIRE_CPPFLAGS) $(CFLAGS) $(HOST_CFLAGS) -c -o $@ $<
 
 $(BUILD)/vendor-cwalk.o: third_party/cwalk/cwalk.c | $(BUILD)
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c -o $@ $<
-
-$(BUILD)/vendor-capn.o: third_party/c-capnproto/lib/capn.c | $(BUILD)
-	$(CC) $(CPPFLAGS) $(CFLAGS) -Wno-unused-parameter -c -o $@ $<
-
-$(BUILD)/vendor-capn-malloc.o: third_party/c-capnproto/lib/capn-malloc.c | $(BUILD)
-	$(CC) $(CPPFLAGS) $(CFLAGS) -Wno-unused-parameter -c -o $@ $<
-
-$(BUILD)/vendor-capn-stream.o: third_party/c-capnproto/lib/capn-stream.c | $(BUILD)
-	$(CC) $(CPPFLAGS) $(CFLAGS) -Wno-unused-parameter -c -o $@ $<
 
 $(BUILD)/vendor-strlcpy.o: third_party/bsdcompat/strlcpy.c | $(BUILD)
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c -o $@ $<
@@ -112,21 +113,31 @@ $(BUILD)/vendor-strlcpy.o: third_party/bsdcompat/strlcpy.c | $(BUILD)
 $(BUILD)/vendor-strlcat.o: third_party/bsdcompat/strlcat.c | $(BUILD)
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c -o $@ $<
 
+$(BUILD)/vendor-capn.o: third_party/c-capnproto/lib/capn.c | $(BUILD)
+	$(CC) $(WIRE_CPPFLAGS) $(CFLAGS) -Wno-unused-parameter -c -o $@ $<
+
+$(BUILD)/vendor-capn-malloc.o: third_party/c-capnproto/lib/capn-malloc.c | $(BUILD)
+	$(CC) $(WIRE_CPPFLAGS) $(CFLAGS) -Wno-unused-parameter -c -o $@ $<
+
+$(BUILD)/vendor-capn-stream.o: third_party/c-capnproto/lib/capn-stream.c | $(BUILD)
+	$(CC) $(WIRE_CPPFLAGS) $(CFLAGS) -Wno-unused-parameter -c -o $@ $<
+
 $(BUILD)/wire-%.o: src/wire/%.c | $(BUILD)
-	$(CC) $(CPPFLAGS) $(CFLAGS) $(HOST_CFLAGS) -c -o $@ $<
+	$(CC) $(WIRE_CPPFLAGS) $(CFLAGS) $(HOST_CFLAGS) -c -o $@ $<
 
 $(BUILD)/wire-policy.capnp.o: schema/policy.capnp.c | $(BUILD)
-	$(CC) $(CPPFLAGS) $(CFLAGS) -Wno-unused-parameter -c -o $@ $<
+	$(CC) $(WIRE_CPPFLAGS) $(CFLAGS) -Wno-unused-parameter -c -o $@ $<
 
 $(BUILD)/%.o: tests/%.c | $(BUILD)
-	$(CC) $(CPPFLAGS) $(CMOCKA_CFLAGS) $(HOST_CFLAGS) -std=c11 -Wall -Wextra -Werror -O2 -D_DEFAULT_SOURCE \
+	$(CC) $(WIRE_CPPFLAGS) $(CMOCKA_CFLAGS) $(HOST_CFLAGS) -std=c11 -Wall -Wextra -Werror -O2 -D_DEFAULT_SOURCE \
 		-Wno-format-truncation -c -o $@ $<
 
-$(STATIC_LIB): $(LIB_OBJS) $(VENDOR_OBJS)
+# Shared/static TCB: supervisor ABI only. No -lnng/-luv/-lsystemd/-lcap.
+$(STATIC_LIB): $(LIB_OBJS) $(LIB_VENDOR_OBJS)
 	$(AR) rcs $@ $^
 
-$(SHARED_LIB): $(LIB_PIC_OBJS) $(VENDOR_OBJS)
-	$(CC) -shared -Wl,-soname,$(SONAME) -o $@ $^ $(LDFLAGS) $(HOST_LIBS)
+$(SHARED_LIB): $(LIB_PIC_OBJS) $(LIB_VENDOR_OBJS)
+	$(CC) -shared -Wl,-soname,$(SONAME) -o $@ $^ $(LDFLAGS)
 
 $(BUILD)/libgrok_policyd.so: $(SHARED_LIB)
 	ln -sfn $(REAL_SO) $@
@@ -134,27 +145,31 @@ $(BUILD)/libgrok_policyd.so: $(SHARED_LIB)
 $(BUILD)/$(SONAME): $(SHARED_LIB)
 	ln -sfn $(REAL_SO) $@
 
-$(BUILD)/grok-policyd: $(BUILD)/grok-policyd.o $(WIRE_OBJS) $(STATIC_LIB)
-	$(CC) $(CFLAGS) -o $@ $(BUILD)/grok-policyd.o $(WIRE_OBJS) $(STATIC_LIB) $(LDFLAGS) $(HOST_LIBS)
+# CLI: TCB static + wire + host
+$(BUILD)/grok-policyd: $(BUILD)/grok-policyd.o $(WIRE_OBJS) $(WIRE_VENDOR_OBJS) $(HOST_OBJS) $(STATIC_LIB)
+	$(CC) $(CFLAGS) -o $@ $(BUILD)/grok-policyd.o $(WIRE_OBJS) $(WIRE_VENDOR_OBJS) $(HOST_OBJS) $(STATIC_LIB) $(LDFLAGS) $(HOST_LIBS)
 
-$(BUILD)/supervisor_test: $(TEST_OBJS) $(WIRE_OBJS) $(STATIC_LIB)
+# Unit tests: TCB + wire helpers for admit map / parent; wire frame needs c-capnproto
+$(BUILD)/supervisor_test: $(TEST_OBJS) $(WIRE_OBJS) $(WIRE_VENDOR_OBJS) $(HOST_OBJS) $(STATIC_LIB)
 	test -n "$(CMOCKA_LIBS)" || (echo "error: cmocka not found" && exit 1)
-	$(CC) $(CFLAGS) -o $@ $(TEST_OBJS) $(WIRE_OBJS) $(STATIC_LIB) $(LDFLAGS) $(CMOCKA_LIBS) $(HOST_LIBS)
+	$(CC) $(CFLAGS) -o $@ $(TEST_OBJS) $(WIRE_OBJS) $(WIRE_VENDOR_OBJS) $(HOST_OBJS) $(STATIC_LIB) $(LDFLAGS) $(CMOCKA_LIBS) $(HOST_LIBS)
 
 $(BUILD)/example_minimal: examples/c/minimal.c $(STATIC_LIB) | $(BUILD)
-	$(CC) $(CPPFLAGS) $(CFLAGS) -o $@ examples/c/minimal.c $(STATIC_LIB) $(LDFLAGS) $(HOST_LIBS)
+	$(CC) $(CPPFLAGS) $(CFLAGS) -o $@ examples/c/minimal.c $(STATIC_LIB) $(LDFLAGS)
 
 example: $(BUILD)/example_minimal
 
 test-wire: $(BUILD)/test_wire_frame
 	$(BUILD)/test_wire_frame
 
-$(BUILD)/test_wire_frame: tests/test_wire_frame.c $(WIRE_OBJS) $(STATIC_LIB) | $(BUILD)
-	$(CC) $(CPPFLAGS) $(CFLAGS) $(HOST_CFLAGS) -o $@ tests/test_wire_frame.c $(WIRE_OBJS) $(STATIC_LIB) $(LDFLAGS) $(HOST_LIBS)
+$(BUILD)/test_wire_frame: tests/test_wire_frame.c $(WIRE_OBJS) $(WIRE_VENDOR_OBJS) $(HOST_OBJS) $(STATIC_LIB) | $(BUILD)
+	$(CC) $(WIRE_CPPFLAGS) $(CFLAGS) $(HOST_CFLAGS) -o $@ tests/test_wire_frame.c $(WIRE_OBJS) $(WIRE_VENDOR_OBJS) $(HOST_OBJS) $(STATIC_LIB) $(LDFLAGS) $(HOST_LIBS)
 
-test: $(BUILD)/grok-policyd $(BUILD)/supervisor_test test-wire
+test: lib $(BUILD)/grok-policyd $(BUILD)/supervisor_test test-wire
 	test -n "$(CMOCKA_LIBS)" || (echo "error: cmocka not found" && exit 1)
 	$(BUILD)/supervisor_test
+	bash scripts/check_shared_libs.sh
+	bash scripts/smoke_serve_signal.sh
 
 pc: $(BUILD)/grok-policyd.pc
 
@@ -166,7 +181,7 @@ $(BUILD)/grok-policyd.pc: packaging/grok-policyd.pc.in | $(BUILD)
 
 schema:
 	command -v capnp >/dev/null || { echo "capnp not found"; exit 1; }
-	command -v capnpc-c >/dev/null || { echo "capnpc-c not found"; exit 1; }
+	command -v capnpc-c >/dev/null || { echo "capnpc-c not found (HaoZeke/c-capnproto)"; exit 1; }
 	cd schema && capnp compile -o $$(command -v capnpc-c) -I ../third_party/c-capnproto/compiler policy.capnp
 
 install: lib $(BUILD)/grok-policyd
