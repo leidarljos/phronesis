@@ -10,7 +10,6 @@ int grok_paths_resolve(char *state_dir, size_t state_len,
 		       const char *state_override,
 		       const char *runtime_override);
 int grok_paths_ensure_dir(const char *path, int mode);
-int grok_unix_ensure_socket_parent(const char *socket_path);
 
 int grok_action_log_append(const char *path,
 			   const char *agent_id,

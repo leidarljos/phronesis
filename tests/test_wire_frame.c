@@ -240,11 +240,94 @@ static void test_check_seat_via_handle(void **state)
 	(void)rmdir(base);
 }
 
+/** admit.kind=model → handle_capnp → allow (product FFI path for agent start). */
+static void test_admit_model_via_handle(void **state)
+{
+	char base[256];
+	char st[300];
+	char rt[300];
+	grok_supervisor_t *sup = NULL;
+	uint8_t *reqb = NULL;
+	uint8_t *resp = NULL;
+	size_t req_len = 0, resp_len = 0;
+	struct capn c;
+	capn_ptr cr;
+	struct capn_segment *cs;
+	struct PolicyEnvelope env;
+	struct PolicyRequest preq;
+	struct PolicyAdmit ad;
+	PolicyEnvelope_ptr ep;
+	PolicyRequest_ptr rp;
+	PolicyAdmit_ptr ap;
+	PolicyEnvelope_ptr root;
+	struct PolicyResponse pr;
+	struct PolicyDecision d;
+
+	(void)state;
+	snprintf(base, sizeof(base), "/tmp/policyd-capn-admit-%d", (int)getpid());
+	snprintf(st, sizeof(st), "%s/state", base);
+	snprintf(rt, sizeof(rt), "%s/run", base);
+	assert_int_equal(mkdir(base, 0700), 0);
+	assert_int_equal(mkdir(st, 0700), 0);
+	assert_int_equal(mkdir(rt, 0700), 0);
+	assert_int_equal(grok_supervisor_open(&sup, st, rt), GROK_OK);
+
+	memset(&c, 0, sizeof(c));
+	capn_init_malloc(&c);
+	cr = capn_root(&c);
+	cs = cr.seg;
+	memset(&ad, 0, sizeof(ad));
+	ad.agentId = ctext("admit-agent");
+	ad.kind = ctext("model");
+	ad.detail = ctext("start");
+	ap = new_PolicyAdmit(cs);
+	write_PolicyAdmit(&ad, ap);
+	memset(&preq, 0, sizeof(preq));
+	preq.op_which = PolicyRequest_op_admit;
+	preq.op.admit = ap;
+	rp = new_PolicyRequest(cs);
+	write_PolicyRequest(&preq, rp);
+	memset(&env, 0, sizeof(env));
+	env.protocolVersion = 1;
+	env.traceId = ctext("");
+	env.body_which = PolicyEnvelope_body_request;
+	env.body.request = rp;
+	ep = new_PolicyEnvelope(cs);
+	write_PolicyEnvelope(&env, ep);
+	assert_int_equal(capn_setp(capn_root(&c), 0, ep.p), 0);
+	assert_int_equal(capn_write_grow(&c, &reqb, &req_len), 0);
+	capn_free(&c);
+
+	assert_int_equal(
+		grok_policyd_handle_capnp(sup, reqb, req_len, &resp, &resp_len),
+		0);
+
+	memset(&c, 0, sizeof(c));
+	assert_int_equal(capn_init_mem(&c, resp, resp_len, 0), 0);
+	root.p = capn_getp(capn_root(&c), 0, 1);
+	read_PolicyEnvelope(&env, root);
+	assert_int_equal(env.body_which, PolicyEnvelope_body_response);
+	read_PolicyResponse(&pr, env.body.response);
+	assert_int_equal(pr.ok_which, PolicyResponse_ok_admit);
+	read_PolicyDecision(&d, pr.ok.admit);
+	assert_int_equal(d.decision, Decision_allow);
+	assert_true(d.reason.len > 0);
+	capn_free(&c);
+
+	free(reqb);
+	free(resp);
+	grok_supervisor_close(sup);
+	(void)rmdir(rt);
+	(void)rmdir(st);
+	(void)rmdir(base);
+}
+
 int run_wire_frame_tests(void)
 {
 	const struct CMUnitTest tests[] = {
 		cmocka_unit_test(test_status_request_via_handle),
 		cmocka_unit_test(test_check_seat_via_handle),
+		cmocka_unit_test(test_admit_model_via_handle),
 	};
 	return cmocka_run_group_tests_name("wire_frame", tests, NULL, NULL);
 }

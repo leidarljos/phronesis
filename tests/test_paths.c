@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 #include "harness.h"
+#include "internal.h"
 
 #include <setjmp.h>
 #include <stdarg.h>
@@ -109,6 +110,41 @@ static void test_env_state_runtime_override(void **state)
 	t_rm_rf(rt);
 }
 
+/* admit.kind → tool/action map (Cap'n FFI helper; not sock serve). */
+static void test_map_admit_kind_known(void **state)
+{
+	const char *tool = NULL;
+	const char *action = NULL;
+
+	(void)state;
+	assert_int_equal(grok_policyd_map_admit_kind("seat", &tool, &action), 0);
+	assert_string_equal(tool, "seat");
+	assert_string_equal(action, "publish_run");
+
+	assert_int_equal(grok_policyd_map_admit_kind("model", &tool, &action), 0);
+	assert_string_equal(tool, "model");
+	assert_string_equal(action, "start");
+
+	assert_int_equal(grok_policyd_map_admit_kind("", &tool, &action), 0);
+	assert_string_equal(tool, "model");
+	assert_string_equal(action, "start");
+
+	assert_int_equal(grok_policyd_map_admit_kind("agent", &tool, &action), 0);
+	assert_string_equal(tool, "model");
+	assert_string_equal(action, "start");
+}
+
+static void test_map_admit_kind_unknown_fail_closed(void **state)
+{
+	const char *tool = "model";
+	const char *action = "start";
+
+	(void)state;
+	assert_int_equal(grok_policyd_map_admit_kind("weird", &tool, &action), -1);
+	assert_int_equal(grok_policyd_map_admit_kind("shell", &tool, &action), -1);
+	assert_int_equal(grok_policyd_map_admit_kind(NULL, &tool, &action), -1);
+}
+
 int run_paths_tests(void)
 {
 	const struct CMUnitTest tests[] = {
@@ -117,6 +153,8 @@ int run_paths_tests(void)
 		cmocka_unit_test(test_creates_state_tree_and_modes),
 		cmocka_unit_test(test_env_action_log_override),
 		cmocka_unit_test(test_env_state_runtime_override),
+		cmocka_unit_test(test_map_admit_kind_known),
+		cmocka_unit_test(test_map_admit_kind_unknown_fail_closed),
 	};
 	return cmocka_run_group_tests_name("paths", tests, NULL, NULL);
 }
