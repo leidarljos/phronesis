@@ -1,19 +1,16 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /*
- * Cap'n body round-trip via c-capnproto + nng loopback (no DTO layer).
+ * Cap'n body round-trip via handle_capnp (in-process FFI, no socket).
  */
 #include "harness.h"
-#include "wire/serve.h"
+#include "grok-policyd/supervisor.h"
 
 #include "policy.capnp.h"
 
 #include <capnp_c.h>
 #include <errno.h>
 #include <limits.h>
-#include <nng/nng.h>
 #include <sys/stat.h>
-#include <nng/protocol/reqrep0/rep.h>
-#include <nng/protocol/reqrep0/req.h>
 #include <setjmp.h>
 #include <stdarg.h>
 #include <stddef.h>
@@ -104,76 +101,6 @@ static int encode_status_request(uint8_t **out, size_t *out_len)
 	return 0;
 }
 
-static void test_nng_body_loopback(void **state)
-{
-	char path[256];
-	char url[320];
-	const char *payload = "hello-capnp-body-pad";
-	nng_socket rep;
-	nng_socket req;
-	nng_msg *msg = NULL;
-	nng_msg *rmsg = NULL;
-	nng_msg *echo = NULL;
-	nng_pipe p;
-	uint64_t uid = UINT64_MAX;
-	int rc;
-	pid_t pid = getpid();
-
-	(void)state;
-	memset(&rep, 0, sizeof(rep));
-	memset(&req, 0, sizeof(req));
-
-	snprintf(path, sizeof(path), "/var/tmp/policyd-nng-loop-%d.sock", (int)pid);
-	assert_true(snprintf(url, sizeof(url), "ipc://%s", path) < (int)sizeof(url));
-	(void)unlink(path);
-
-	rc = nng_rep0_open(&rep);
-	assert_int_equal(rc, 0);
-	rc = nng_listen(rep, url, NULL, 0);
-	assert_int_equal(rc, 0);
-	rc = nng_req0_open(&req);
-	assert_int_equal(rc, 0);
-	rc = nng_socket_set_ms(req, NNG_OPT_RECVTIMEO, 3000);
-	assert_int_equal(rc, 0);
-	rc = nng_socket_set_ms(rep, NNG_OPT_RECVTIMEO, 3000);
-	assert_int_equal(rc, 0);
-	rc = nng_dial(req, url, NULL, 0);
-	assert_int_equal(rc, 0);
-
-	rc = nng_msg_alloc(&msg, 0);
-	assert_int_equal(rc, 0);
-	rc = nng_msg_append(msg, payload, strlen(payload));
-	assert_int_equal(rc, 0);
-	rc = nng_sendmsg(req, msg, 0);
-	assert_int_equal(rc, 0);
-
-	rc = nng_recvmsg(rep, &rmsg, 0);
-	assert_int_equal(rc, 0);
-	assert_int_equal(nng_msg_len(rmsg), strlen(payload));
-	assert_memory_equal(nng_msg_body(rmsg), payload, strlen(payload));
-
-	p = nng_msg_get_pipe(rmsg);
-	rc = nng_pipe_get_uint64(p, NNG_OPT_PEER_UID, &uid);
-	assert_int_equal(rc, 0);
-	assert_int_equal(uid, (uint64_t)getuid());
-
-	rc = nng_msg_alloc(&echo, 0);
-	assert_int_equal(rc, 0);
-	rc = nng_msg_append(echo, payload, strlen(payload));
-	assert_int_equal(rc, 0);
-	nng_msg_free(rmsg);
-	rc = nng_sendmsg(rep, echo, 0);
-	assert_int_equal(rc, 0);
-	rc = nng_recvmsg(req, &rmsg, 0);
-	assert_int_equal(rc, 0);
-	assert_int_equal(nng_msg_len(rmsg), strlen(payload));
-	nng_msg_free(rmsg);
-
-	nng_close(req);
-	nng_close(rep);
-	(void)unlink(path);
-}
-
 static void test_status_request_via_handle(void **state)
 {
 	char base[256];
@@ -201,10 +128,10 @@ static void test_status_request_via_handle(void **state)
 
 	assert_int_equal(encode_status_request(&req, &req_len), 0);
 	assert_true(req_len > 0);
-	assert_true(req_len <= GROK_NNG_MAX_BODY);
+	assert_true(req_len <= GROK_POLICY_CAPNP_MAX_BODY);
 
 	assert_int_equal(
-		grok_policyd_handle_capnp(sup, "/tmp/fake.sock", req, req_len,
+		grok_policyd_handle_capnp(sup, req, req_len,
 					  &resp, &resp_len),
 		0);
 	assert_non_null(resp);
@@ -291,7 +218,7 @@ static void test_check_seat_via_handle(void **state)
 	capn_free(&c);
 
 	assert_int_equal(
-		grok_policyd_handle_capnp(sup, "/tmp/fake.sock", reqb, req_len,
+		grok_policyd_handle_capnp(sup, reqb, req_len,
 					  &resp, &resp_len),
 		0);
 
@@ -316,7 +243,6 @@ static void test_check_seat_via_handle(void **state)
 int run_wire_frame_tests(void)
 {
 	const struct CMUnitTest tests[] = {
-		cmocka_unit_test(test_nng_body_loopback),
 		cmocka_unit_test(test_status_request_via_handle),
 		cmocka_unit_test(test_check_seat_via_handle),
 	};

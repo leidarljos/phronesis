@@ -1,15 +1,1 @@
-# SPDX-License-Identifier: Apache-2.0
-# Feature options default auto: enable on Linux when pkg-config finds them.
-# Serve always uses an nng-native loop; systemd only supplies notify/watchdog/caps.
-option(
-  'systemd',
-  type: 'feature',
-  value: 'auto',
-  description: 'libsystemd sd_notify / watchdog (Linux seat units). Not required for Cap\'n serve.',
-)
-option(
-  'libcap',
-  type: 'feature',
-  value: 'auto',
-  description: 'libcap: clear process capabilities when running privileged (Linux).',
-)
+# Library + Cap'n FFI only (no optional nng serve host features).

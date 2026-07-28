@@ -1,6 +1,6 @@
-# GrokOS policyd Cap'n peer wire (meta #70 / Slice C).
-# Not the seat bus (session.capnp / nng Cap'n). Wire is nng Cap'n body (ipc://).
-# Schema SoT for this package; grokos-session pins a copy under crates/grokos-schema/schema/.
+# GrokOS policyd Cap'n language (meta #70 / Slice C).
+# Not the seat bus (session.capnp). Callers FFI grok_policyd_handle_capnp with these bodies.
+# Schema SoT for this package; embedders pin a copy (e.g. grokos-session schema/).
 
 @0xe2859f3833215a0b;
 
