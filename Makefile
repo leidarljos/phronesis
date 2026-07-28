@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 #
-# Host library (stable C ABI) + CLI + tests + docs.
+# Host library (stable C ABI) + CLI + tests.
 # Public surface: include/grok-policyd/supervisor.h
 
 # Single source: VERSION + API_VERSION (see scripts/check-version.sh)
@@ -20,7 +20,7 @@ PICFLAGS := -fPIC
 
 CMOCKA_CFLAGS := $(shell pkg-config --cflags cmocka 2>/dev/null)
 CMOCKA_LIBS   := $(shell pkg-config --libs cmocka 2>/dev/null)
-# cmocka is only required for the test binary (not lib/docs/example).
+# cmocka is only required for the test binary (not lib/example).
 
 BUILD    := build
 LIB_SRCS := src/paths.c src/action_log.c src/cgroup.c src/policy.c \
@@ -44,7 +44,7 @@ REAL_SO    := libgrok_policyd.so.$(VERSION)
 STATIC_LIB := $(BUILD)/libgrok_policyd.a
 SHARED_LIB := $(BUILD)/$(REAL_SO)
 
-.PHONY: all clean test lib install uninstall example doxygen docs pc check-version
+.PHONY: all clean test lib install uninstall example pc check-version
 
 all: lib $(BUILD)/grok-policyd test
 
@@ -126,18 +126,8 @@ uninstall:
 	rm -f $(DESTDIR)$(PREFIX)/lib/pkgconfig/grok-policyd.pc
 	rm -f $(DESTDIR)$(PREFIX)/bin/grok-policyd
 
-doxygen:
-	@command -v doxygen >/dev/null || { echo "doxygen not found"; exit 1; }
-	mkdir -p docs/build/doxygen
-	cd docs && doxygen Doxyfile
-
-docs: doxygen
-	@command -v sphinx-build >/dev/null || { \
-		echo "sphinx-build not found — pip install -r docs/requirements.txt"; exit 1; }
-	sphinx-build -W -b html docs/source docs/build/html
-
 clean:
-	rm -rf $(BUILD) docs/build
+	rm -rf $(BUILD)
 
 $(BUILD)/grok-policyd.o: include/grok-policyd/supervisor.h
 $(BUILD)/supervisor.o: include/grok-policyd/supervisor.h src/internal.h

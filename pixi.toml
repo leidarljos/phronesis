@@ -35,23 +35,6 @@ install = "make install"
 pc = "make pc"
 ci = { depends-on = ["env-info", "build"] }
 
-[feature.docs.dependencies]
-doxygen = ">=1.11,<2"
-python = ">=3.12,<3.14"
-pip = "*"
-
-[feature.docs.pypi-dependencies]
-sphinx = ">=7.2,<9"
-breathe = ">=4.35,<5"
-furo = ">=2024.1.29"
-myst-parser = ">=2.0,<5"
-
-[feature.docs.tasks]
-doxygen = "make doxygen"
-docs-html = "sphinx-build -W -b html docs/source docs/build/html"
-docs = { depends-on = ["doxygen", "docs-html"] }
-
 [environments]
 default = { solve-group = "default" }
 ci = { solve-group = "default" }
-docs = { features = ["docs"], solve-group = "default" }

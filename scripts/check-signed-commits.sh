@@ -98,7 +98,7 @@ Setup (SSH signing recommended):
 
 Agents: do not disable commit.gpgsign. Prefer not committing unless asked.
 
-See CONTRIBUTING.md § Signed commits.
+See README.md for signed-commit policy.
 MSG
   exit 1
 fi
