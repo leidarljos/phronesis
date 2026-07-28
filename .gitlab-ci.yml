@@ -73,12 +73,12 @@ validate:manifest:
     - test -f src/capnp_api.c
     - test -f schema/policy.capnp
     - test -f tests/test_main.c
-    - test -f tests/test_wire_frame.c
+    - test -f tests/test_capnp_ffi.c
     - test ! -f scripts/smoke_serve_signal.sh
     # Quote: bare "! grep" is a YAML tag, not shell negation (CI #14651).
     - |
-      if grep -q '^int main' tests/test_wire_frame.c; then
-        echo "FATAL: tests/test_wire_frame.c must not define main (cmocka suite only)" >&2
+      if grep -q '^int main' tests/test_capnp_ffi.c; then
+        echo "FATAL: tests/test_capnp_ffi.c must not define main (cmocka suite only)" >&2
         exit 1
       fi
     - test -f VERSION
@@ -126,7 +126,7 @@ build:pixi:
     - test -x build/supervisor_test
     - pixi run -e ci bash -c 'nm build/libgrok_policyd.a | grep -q grok_policyd_handle_capnp'
     - test -x build/example_minimal
-    - test ! -e build/test_wire_frame
+    - test ! -e build/test_capnp_ffi
     - ./build/example_minimal
     - ./build/supervisor_test
   after_script:
