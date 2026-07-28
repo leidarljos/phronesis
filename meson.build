@@ -50,7 +50,20 @@ inc = include_directories(
 )
 
 # --- always-required deps for wire/CLI ---
-nng_dep = dependency('nng', required: true)
+# conda-forge nng often ships lib+headers without nng.pc (CI #14656).
+# pkg-config only first (skip flaky CMake/MbedTLS configs). Fallback:
+# find_library('nng') under the active conda/pixi compiler search path.
+nng_dep = dependency('nng', method: 'pkg-config', required: false)
+if not nng_dep.found()
+  nng_lib = cc.find_library('nng', required: true)
+  if not cc.has_header('nng/nng.h')
+    error('nng library found but nng/nng.h is missing (CONDA_PREFIX/include on CPATH?)')
+  endif
+  nng_dep = declare_dependency(dependencies: nng_lib)
+  message('nng: find_library fallback (no nng.pc)')
+else
+  message('nng: pkg-config')
+endif
 capnp_c_dep = dependency('c-capnproto', required: true)
 cmocka_dep = dependency('cmocka', required: true)
 
