@@ -70,7 +70,8 @@ validate:manifest:
     - test ! -d src/wire
     - test ! -f src/host.c
     - test ! -d schema
-    - test ! -d third_party/c-capnproto
+    - test ! -d third_party
+    - test ! -f src/unix_dir.c
     - test -f tests/test_main.c
     - test ! -f tests/test_wire_frame.c
     - |
