@@ -69,7 +69,7 @@ grok_supervisor_stop(sup, "agent-a");
 grok_supervisor_close(sup);
 ```
 
-## Cap'n peer
+## Cap'n peer (this package)
 
 ```bash
 grok-policyd serve --socket "$XDG_RUNTIME_DIR/grokos/policyd.sock"
@@ -77,11 +77,11 @@ grok-policyd serve --socket "$XDG_RUNTIME_DIR/grokos/policyd.sock"
 
 | | |
 |--|--|
-| Transport | nng req/rep, `ipc://`, mode 0600, `NNG_OPT_PEER_UID` same-uid |
-| Body | Cap'n multi-segment `PolicyEnvelope` (`schema/policy.capnp`) via c-capnproto |
-| TCB link split | `libgrok_policyd` has no nng / systemd / libcap; those stay on the CLI |
+| Transport | nng req/rep, `ipc://`, 0600, `NNG_OPT_PEER_UID` same-uid |
+| Body | Cap'n `PolicyEnvelope` (`schema/policy.capnp`, c-capnproto) |
+| CLI vs TCB | nng / c-capnproto / optional systemd+libcap on the **CLI**; not in `libgrok_policyd.so` |
 
-sessiond dials this peer for seat authorize when product path is Cap'n-required. Agents dial for `model`/`start`.
+sessiond dials for seat authorize; agent dials for `model`/`start`. Same Cap'n body shape either side.
 
 ## Build and test
 
