@@ -1,9 +1,10 @@
-Vendored into libgrok_policyd (static):
+Cap'n pure-C runtime is **not** vendored here.
 
-- c-capnproto (MIT) — pure-C Cap'n runtime under third_party/c-capnproto
-  (lineage jmckaskill → opensourcerouting → HaoZeke)
+Build/link against the **c-capnproto** package (libcapnp_c, pkg-config
+name `c-capnproto`) from rg-forge / conda-forge lineage:
+https://github.com/HaoZeke/c-capnproto
 
-Build tools via conda (rg-forge / conda-forge): capnproto (capnp), capnpc-c
-from c-capnproto package, cmocka, meson, ninja.
+Schema codegen: `capnp` + `capnpc-c` from that stack; cmocka for tests.
+Meson: `dependency('c-capnproto')`.
 
 No nng in this package: Cap'n is in-process FFI, not a socket peer.
