@@ -7,6 +7,4 @@ __pycache__/
 .venv/
 .pixi/
 .cache/
-# c-capnproto outputs (make schema / wire build). SoT is policy.capnp only.
-schema/policy.capnp.c
-schema/policy.capnp.h
+# c-capnproto outputs are under build/ (covered by /build/). SoT: schema/policy.capnp

@@ -22,7 +22,7 @@
  *   (``scripts/sync-version.sh`` / ``scripts/check-version.sh``).
  *
  * @par Cap'n Proto
- * Sessiond peer wire (meta #70 / Slice C): schema/policy.capnp + GKPP UDS
+ * Sessiond peer wire (meta #70 / Slice C): schema/policy.capnp + nng Cap'n peer UDS
  * (`grok-policyd serve`). This C ABI remains the in-process / static-link
  * surface for hosts such as grokos-shell; the Cap'n peer wraps the library.
  */

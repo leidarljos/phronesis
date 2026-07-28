@@ -74,7 +74,12 @@ validate:manifest:
     - test ! -f src/host_platform.c
     - test -f tests/test_main.c
     - test -f tests/test_wire_frame.c
-    - ! grep -q '^int main' tests/test_wire_frame.c
+    # Quote: bare "! grep" is a YAML tag, not shell negation (CI #14651).
+    - |
+      if grep -q '^int main' tests/test_wire_frame.c; then
+        echo "FATAL: tests/test_wire_frame.c must not define main (cmocka suite only)" >&2
+        exit 1
+      fi
     - test -f VERSION
     - test -f API_VERSION
     - test -f pixi.toml

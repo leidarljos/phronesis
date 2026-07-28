@@ -1,92 +1,52 @@
 # AGENTS.md — grok-policyd
 
 1. Read **meta** rules first: https://nova.teachx.ai/trace-analysis/grokos/-/blob/main/AGENTS.md
-2. **Claim work on meta issues**: https://nova.teachx.ai/trace-analysis/grokos/-/issues
+2. Claim work on **meta issues**: https://nova.teachx.ai/trace-analysis/grokos/-/issues
 3. This repo implements code for meta issues tagged for **grok-policyd**.
-4. Every MR must link `trace-analysis/grokos#N`.
+4. Every merge request must link `trace-analysis/grokos#N`.
 5. No secrets, no proprietary product source paste-ins, no silent stubs.
-6. Fail closed on security/policy paths.
-7. Prefer host unit/contract tests; use fake model for goal-path tests.
+6. Prefer host unit/contract tests; goal-path tests use a **fake model**.
+7. Root [`README.md`](./README.md) is the package map. Keep docs here simple — do not reintroduce a multi-file docs tree.
 
 Parent meta: https://nova.teachx.ai/trace-analysis/grokos
 
-## CRITICAL :: Meson is the only build system
+## Documentation
 
-- **Canonical build: Meson.** Root file is `meson.build`. Entry point: `pixi run test` / `pixi run build`.
-- **Do not create, restore, or maintain a root `Makefile`** (or CMakeLists, autotools, ad-hoc `cc` scripts) for this package. If you are about to write a Makefile, stop.
-- **Do not** reintroduce `make test` / `make lib` / `make test-wire` recipes. Those were deleted on purpose.
-- Configure + build + test:
-
-  ```bash
-  pixi install --locked
-  pixi run test          # meson setup/compile + meson test (cmocka + smokes)
-  # or:
-  meson setup build
-  meson compile -C build
-  meson test -C build --print-errorlogs
-  ```
-
-- Schema codegen is a Meson `custom_target` (`scripts/gen-capnp-c.sh` → `policy.capnp.{c,h}` under the builddir). SoT remains `schema/policy.capnp`. Never commit generated `.c`/`.h`.
-
-## CRITICAL :: cmocka is the only host C unit framework
-
-This rule has been violated repeatedly. Follow it literally.
-
-- **Every host C unit test** lives under `tests/`, is a cmocka group (`cmocka_run_group_tests_name` + `run_*_tests()` in `harness.h`), and is linked into **one** binary: `supervisor_test` (Meson target).
-- **`tests/test_main.c`** is the only `main()` among unit tests. It only calls `run_*_tests()`.
-- **Forbidden (delete on sight, do not reintroduce):**
-  - A second C test binary (`test_wire_frame`, `test_*` with its own `main`)
-  - Homegrown `CHECK()` / `ASSERT()` / `exit(1)` harnesses
-  - Unity, Criterion, Check, Google Test, TAP mini-frameworks, or "just a small main for wire"
-  - `make test-wire` or any target that bypasses cmocka
-  - Splitting wire/Cap'n/nng coverage out of the cmocka suite
-- **Allowed non-cmocka automation (bash only, not C unit tests):**
-  - `scripts/check_shared_libs.sh` — TCB link split
-  - `scripts/smoke_serve_signal.sh` — serve SIGTERM
-  - `scripts/check-version.sh` — version single-source
-  These run via `meson test`, not as a parallel C framework.
-- New wire/codec/serve coverage → add a cmocka case in `tests/test_wire_*.c` and register it in `test_main.c` + `harness.h`. Never a standalone program.
+- Write what the package **is** and **does**; avoid long “what this is not” catalogs.
+- No debate scaffolding or workshop decision IDs.
+- No internal thought trail.
+- Document **our** glue only; link or name upstream tools instead of rewriting their manuals.
+- Prefer plain nouns; keep the single root `README.md` as the package doc map.
 
 ## Signed commits
 
 Required. Never set `commit.gpgsign false`. Use `./scripts/setup-commit-signing.sh` if commit fails on signing.
 
-## Build (pixi)
-
-Use **pixi** (see `pixi.toml`):
+## Build
 
 ```bash
 pixi install --locked
 pixi run test    # or: pixi run ci
 ```
 
-Meson is the recipe backend. Do not invent ad-hoc host toolchains for dogfood.
+## CRITICAL :: cmocka is the only host C unit framework
 
-## C style (this package)
+- Every host C unit test lives under `tests/`, is a cmocka group, linked into **one** binary: `supervisor_test`.
+- **`tests/test_main.c`** is the only `main()` among unit tests.
+- **Forbidden:** second C test binary, homegrown CHECK harnesses, bypassing cmocka.
+- New Cap'n/serve coverage → cmocka case in `tests/test_wire_*.c` registered in `test_main.c`.
 
-Follow Robert C. Seacord, *Effective C* (and CERT C where it overlaps): check
-library returns, no silent integer wrap on sizes/growth, async-signal-safe
-handlers only set flags, free on every error path, bounds on copies into fixed
-buffers. Fail closed on policy/ACL paths.
-
-## Link split (do not "simplify" by linking host into TCB)
+## Link split
 
 | Artifact | Links |
 |----------|--------|
-| `libgrok_policyd` | supervisor ABI + path helpers only. **No** nng / libsystemd / libcap / c-capnproto. |
-| `grok-policyd` CLI + wire | nng + c-capnproto + **optional** libsystemd/libcap (Meson `policyd_wire`). |
-| `supervisor_test` | TCB + wire + **cmocka** + host deps. |
+| `libgrok_policyd` | supervisor ABI + path helpers. **No** nng / libsystemd / libcap. |
+| `grok-policyd` CLI + serve | nng + c-capnproto + optional systemd/libcap |
 
 `scripts/check_shared_libs.sh` enforces the TCB `.so` DT_NEEDED gate.
 
-## Host backend (Unix seat first)
+## Host
 
-Product target is a **Unix/Linux seat**. Cap'n serve is **nng-native**
-(recv timeout + stop flag). Host glue is one file:
+`src/host.c` — SIGTERM/SIGINT stop flag; optional `sd_notify` / libcap via Meson features. Serve I/O is nng-native only.
 
-- `src/host.c` — SIGTERM/SIGINT stop flag; optional `sd_notify` / libcap via
-  Meson features `systemd` and `libcap` (`-DGROK_HAVE_SYSTEMD` / `GROK_HAVE_LIBCAP`).
-- **Do not** put serve I/O on `sd_event` / epoll. Host is notify/watchdog/caps only.
-- Process engine stays POSIX; cgroup v2 is Linux best-effort.
-
-See `docs/source/host-backends.rst`.
+Fail closed on security and policy paths.

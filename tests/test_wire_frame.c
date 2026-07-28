@@ -1,231 +1,324 @@
 /* SPDX-License-Identifier: Apache-2.0 */
-#include "wire/capnp_min.h"
-#include "wire/frame.h"
+/*
+ * Cap'n body round-trip via c-capnproto + nng loopback (no DTO layer).
+ */
+#include "harness.h"
+#include "wire/serve.h"
 
-#include <assert.h>
+#include "policy.capnp.h"
+
+#include <capnp_c.h>
 #include <errno.h>
+#include <limits.h>
+#include <nng/nng.h>
+#include <sys/stat.h>
+#include <nng/protocol/reqrep0/rep.h>
+#include <nng/protocol/reqrep0/req.h>
+#include <setjmp.h>
+#include <stdarg.h>
+#include <stddef.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/stat.h>
-#include <sys/socket.h>
 #include <unistd.h>
+#include <cmocka.h>
 
-static void ensure_fixture_dir(char *out, size_t n)
+#include "internal.h"
+
+static capn_text ctext(const char *s)
 {
-	const char *root = getenv("POLICYD_FIXTURE_DIR");
-	if (root && root[0]) {
-		snprintf(out, n, "%s", root);
-	} else {
-		/* tests/ run from package root via make */
-		snprintf(out, n, "tests/fixtures/capnp");
+	capn_text t;
+	size_t len = s ? strlen(s) : 0;
+
+	if (len > (size_t)INT_MAX)
+		len = (size_t)INT_MAX;
+	t.len = (int)len;
+	t.str = s ? s : "";
+	t.seg = NULL;
+	return t;
+}
+
+static int capn_write_grow(struct capn *c, uint8_t **out, size_t *out_len)
+{
+	uint8_t *buf = NULL;
+	size_t cap = 4096U;
+	int64_t n;
+
+	*out = NULL;
+	*out_len = 0;
+	for (;;) {
+		if (cap > 1024U * 1024U)
+			return -1;
+		buf = malloc(cap);
+		if (!buf)
+			return -1;
+		n = capn_write_mem(c, buf, cap, 0);
+		if (n >= 0)
+			break;
+		free(buf);
+		cap *= 2U;
 	}
-	if (mkdir(out, 0755) != 0 && errno != EEXIST) {
-		/* try creating parents one level */
-		char parent[512];
-		snprintf(parent, sizeof(parent), "tests/fixtures");
-		(void)mkdir("tests", 0755);
-		(void)mkdir(parent, 0755);
-		if (mkdir(out, 0755) != 0 && errno != EEXIST) {
-			perror("mkdir fixtures");
-			/* non-fatal for unit path */
-		}
-	}
+	*out = buf;
+	*out_len = (size_t)n;
+	return 0;
 }
 
-static void write_fixture(const char *dir, const char *name, const uint8_t *body,
-			  size_t len)
-{
-	char path[768];
-	FILE *f;
-
-	snprintf(path, sizeof(path), "%s/%s", dir, name);
-	f = fopen(path, "wb");
-	if (!f) {
-		perror(path);
-		return;
-	}
-	assert(fwrite(body, 1, len, f) == len);
-	fclose(f);
-	printf("ok: wrote fixture %s (%zu bytes)\n", path, len);
-}
-
-static void test_encode_decode_status_response(void)
-{
-	struct wire_response resp;
-	struct wire_request req;
-	uint8_t *body = NULL;
-	size_t len = 0;
-	char fixdir[512];
-
-	memset(&resp, 0, sizeof(resp));
-	resp.kind = WIRE_RESP_STATUS;
-	snprintf(resp.u.status.version, sizeof(resp.u.status.version), "0.1.0");
-	resp.u.status.api_version = 1;
-	snprintf(resp.u.status.state_dir, sizeof(resp.u.status.state_dir),
-		 "/fixture/state");
-	snprintf(resp.u.status.runtime_dir, sizeof(resp.u.status.runtime_dir),
-		 "/fixture/runtime");
-	snprintf(resp.u.status.socket, sizeof(resp.u.status.socket),
-		 "/fixture/policyd.sock");
-	resp.u.status.ready = 1;
-	assert(wire_encode_response(&resp, &body, &len) == 0);
-	assert(body && len > 0);
-	/* decode_request should reject response bodies */
-	memset(&req, 0, sizeof(req));
-	assert(wire_decode_request(body, len, &req) != 0);
-
-	ensure_fixture_dir(fixdir, sizeof(fixdir));
-	write_fixture(fixdir, "status_response.bin", body, len);
-
-	/* also a hex sidecar for review */
-	{
-		char path[768];
-		FILE *f;
-		size_t i;
-		snprintf(path, sizeof(path), "%s/status_response.hex", fixdir);
-		f = fopen(path, "w");
-		if (f) {
-			for (i = 0; i < len; i++)
-				fprintf(f, "%02x%s", body[i],
-					((i + 1) % 16 == 0) ? "\n" : " ");
-			if (len % 16)
-				fputc('\n', f);
-			fclose(f);
-		}
-	}
-	free(body);
-	printf("ok: encode status response\n");
-}
-
-static void test_gkpp_loopback(void)
-{
-	int sv[2];
-	const char *payload = "hello-capnp-body-pad";
-	uint8_t *body = NULL;
-	size_t blen = 0;
-
-	assert(socketpair(AF_UNIX, SOCK_STREAM, 0, sv) == 0);
-	assert(gkpp_write_frame(sv[0], (const uint8_t *)payload, strlen(payload)) ==
-	       0);
-	assert(gkpp_read_frame(sv[1], &body, &blen) == 0);
-	assert(blen == strlen(payload));
-	assert(memcmp(body, payload, blen) == 0);
-	free(body);
-	close(sv[0]);
-	close(sv[1]);
-	printf("ok: gkpp frame loopback\n");
-}
-
-static void test_gkpp_rejects_flags(void)
-{
-	int sv[2];
-	uint8_t hdr[12];
-	uint8_t *body = NULL;
-	size_t blen = 0;
-	const char *payload = "x";
-
-	assert(socketpair(AF_UNIX, SOCK_STREAM, 0, sv) == 0);
-	memcpy(hdr, "GKPP", 4);
-	hdr[4] = 1;
-	hdr[5] = 1; /* flags nonzero */
-	hdr[6] = 0;
-	hdr[7] = 0;
-	hdr[8] = 1;
-	hdr[9] = 0;
-	hdr[10] = 0;
-	hdr[11] = 0;
-	assert(write(sv[0], hdr, 12) == 12);
-	assert(write(sv[0], payload, 1) == 1);
-	assert(gkpp_read_frame(sv[1], &body, &blen) != 0);
-	close(sv[0]);
-	close(sv[1]);
-	printf("ok: gkpp rejects nonzero flags\n");
-}
-
-/* status request: body Cap'n stream matching capnp_min decode layout */
+/** Build a Cap'n status request body with c-capnproto. */
 static int encode_status_request(uint8_t **out, size_t *out_len)
 {
-	uint8_t *seg;
-	size_t words = 6;
-	uint32_t table[2];
-	size_t total;
-	uint64_t *w;
+	struct capn c;
+	capn_ptr cr;
+	struct capn_segment *cs;
+	struct PolicyEnvelope env;
+	struct PolicyRequest req;
+	PolicyEnvelope_ptr ep;
+	PolicyRequest_ptr rp;
 
-	seg = calloc(words, 8);
-	if (!seg)
-		return -1;
-	w = (uint64_t *)seg;
-	w[0] = 0 | ((uint64_t)0 << 2) | (1ull << 32) | (2ull << 48);
-	w[1] = 1ull | (0ull << 32);
-	w[2] = 0;
-	w[3] = 0 | ((uint64_t)0 << 2) | (1ull << 32) | (1ull << 48);
-	w[4] = 0;
-	w[5] = 0;
+	memset(&c, 0, sizeof(c));
+	capn_init_malloc(&c);
+	cr = capn_root(&c);
+	cs = cr.seg;
 
-	table[0] = 0;
-	table[1] = (uint32_t)words;
-	total = 8 + words * 8;
-	*out = malloc(total);
-	if (!*out) {
-		free(seg);
+	memset(&req, 0, sizeof(req));
+	req.op_which = PolicyRequest_op_status;
+	rp = new_PolicyRequest(cs);
+	write_PolicyRequest(&req, rp);
+
+	memset(&env, 0, sizeof(env));
+	env.protocolVersion = 1;
+	env.traceId = ctext("test");
+	env.body_which = PolicyEnvelope_body_request;
+	env.body.request = rp;
+	ep = new_PolicyEnvelope(cs);
+	write_PolicyEnvelope(&env, ep);
+	if (capn_setp(capn_root(&c), 0, ep.p) != 0) {
+		capn_free(&c);
 		return -1;
 	}
-	memcpy(*out, table, 8);
-	memcpy(*out + 8, seg, words * 8);
-	free(seg);
-	*out_len = total;
+	if (capn_write_grow(&c, out, out_len) != 0) {
+		capn_free(&c);
+		return -1;
+	}
+	capn_free(&c);
 	return 0;
 }
 
-static void test_decode_status_request(void)
+static void test_nng_body_loopback(void **state)
 {
-	uint8_t *body = NULL;
-	size_t len = 0;
-	struct wire_request req;
-	char fixdir[512];
+	char path[256];
+	char url[320];
+	const char *payload = "hello-capnp-body-pad";
+	nng_socket rep;
+	nng_socket req;
+	nng_msg *msg = NULL;
+	nng_msg *rmsg = NULL;
+	nng_msg *echo = NULL;
+	nng_pipe p;
+	uint64_t uid = UINT64_MAX;
+	int rc;
+	pid_t pid = getpid();
 
-	assert(encode_status_request(&body, &len) == 0);
+	(void)state;
+	memset(&rep, 0, sizeof(rep));
 	memset(&req, 0, sizeof(req));
-	assert(wire_decode_request(body, len, &req) == 0);
-	assert(req.op == WIRE_OP_STATUS);
-	ensure_fixture_dir(fixdir, sizeof(fixdir));
-	write_fixture(fixdir, "status_request.bin", body, len);
-	free(body);
-	printf("ok: decode status request\n");
+
+	snprintf(path, sizeof(path), "/var/tmp/policyd-nng-loop-%d.sock", (int)pid);
+	assert_true(snprintf(url, sizeof(url), "ipc://%s", path) < (int)sizeof(url));
+	(void)unlink(path);
+
+	rc = nng_rep0_open(&rep);
+	assert_int_equal(rc, 0);
+	rc = nng_listen(rep, url, NULL, 0);
+	assert_int_equal(rc, 0);
+	rc = nng_req0_open(&req);
+	assert_int_equal(rc, 0);
+	rc = nng_socket_set_ms(req, NNG_OPT_RECVTIMEO, 3000);
+	assert_int_equal(rc, 0);
+	rc = nng_socket_set_ms(rep, NNG_OPT_RECVTIMEO, 3000);
+	assert_int_equal(rc, 0);
+	rc = nng_dial(req, url, NULL, 0);
+	assert_int_equal(rc, 0);
+
+	rc = nng_msg_alloc(&msg, 0);
+	assert_int_equal(rc, 0);
+	rc = nng_msg_append(msg, payload, strlen(payload));
+	assert_int_equal(rc, 0);
+	rc = nng_sendmsg(req, msg, 0);
+	assert_int_equal(rc, 0);
+
+	rc = nng_recvmsg(rep, &rmsg, 0);
+	assert_int_equal(rc, 0);
+	assert_int_equal(nng_msg_len(rmsg), strlen(payload));
+	assert_memory_equal(nng_msg_body(rmsg), payload, strlen(payload));
+
+	p = nng_msg_get_pipe(rmsg);
+	rc = nng_pipe_get_uint64(p, NNG_OPT_PEER_UID, &uid);
+	assert_int_equal(rc, 0);
+	assert_int_equal(uid, (uint64_t)getuid());
+
+	rc = nng_msg_alloc(&echo, 0);
+	assert_int_equal(rc, 0);
+	rc = nng_msg_append(echo, payload, strlen(payload));
+	assert_int_equal(rc, 0);
+	nng_msg_free(rmsg);
+	rc = nng_sendmsg(rep, echo, 0);
+	assert_int_equal(rc, 0);
+	rc = nng_recvmsg(req, &rmsg, 0);
+	assert_int_equal(rc, 0);
+	assert_int_equal(nng_msg_len(rmsg), strlen(payload));
+	nng_msg_free(rmsg);
+
+	nng_close(req);
+	nng_close(rep);
+	(void)unlink(path);
 }
 
-static void test_encode_check_decision(void)
+static void test_status_request_via_handle(void **state)
 {
-	struct wire_response resp;
-	uint8_t *body = NULL;
-	size_t len = 0;
-	char fixdir[512];
+	char base[256];
+	char st[300];
+	char rt[300];
+	grok_supervisor_t *sup = NULL;
+	uint8_t *req = NULL;
+	uint8_t *resp = NULL;
+	size_t req_len = 0, resp_len = 0;
+	struct capn c;
+	PolicyEnvelope_ptr root;
+	struct PolicyEnvelope env;
+	struct PolicyResponse pr;
+	struct PolicydStatus ps;
 
-	memset(&resp, 0, sizeof(resp));
-	resp.kind = WIRE_RESP_CHECK;
-	resp.u.decision.decision = WIRE_DEC_ALLOW;
-	snprintf(resp.u.decision.reason, sizeof(resp.u.decision.reason),
-		 "seat Cap'n visibility");
-	snprintf(resp.u.decision.agent_id, sizeof(resp.u.decision.agent_id),
-		 "smoke-agent");
-	snprintf(resp.u.decision.tool, sizeof(resp.u.decision.tool), "seat");
-	snprintf(resp.u.decision.action, sizeof(resp.u.decision.action),
-		 "publish_run");
-	assert(wire_encode_response(&resp, &body, &len) == 0);
-	ensure_fixture_dir(fixdir, sizeof(fixdir));
-	write_fixture(fixdir, "check_allow_response.bin", body, len);
-	free(body);
-	printf("ok: encode check allow response\n");
+	(void)state;
+	snprintf(base, sizeof(base), "/tmp/policyd-capn-status-%d", (int)getpid());
+	snprintf(st, sizeof(st), "%s/state", base);
+	snprintf(rt, sizeof(rt), "%s/run", base);
+	assert_int_equal(mkdir(base, 0700), 0);
+	assert_int_equal(mkdir(st, 0700), 0);
+	assert_int_equal(mkdir(rt, 0700), 0);
+	assert_int_equal(grok_supervisor_open(&sup, st, rt), GROK_OK);
+	assert_non_null(sup);
+
+	assert_int_equal(encode_status_request(&req, &req_len), 0);
+	assert_true(req_len > 0);
+	assert_true(req_len <= GROK_NNG_MAX_BODY);
+
+	assert_int_equal(
+		grok_policyd_handle_capnp(sup, "/tmp/fake.sock", req, req_len,
+					  &resp, &resp_len),
+		0);
+	assert_non_null(resp);
+	assert_true(resp_len > 0);
+
+	memset(&c, 0, sizeof(c));
+	assert_int_equal(capn_init_mem(&c, resp, resp_len, 0), 0);
+	root.p = capn_getp(capn_root(&c), 0, 1);
+	read_PolicyEnvelope(&env, root);
+	assert_int_equal(env.protocolVersion, 1);
+	assert_int_equal(env.body_which, PolicyEnvelope_body_response);
+	read_PolicyResponse(&pr, env.body.response);
+	assert_int_equal(pr.ok_which, PolicyResponse_ok_status);
+	read_PolicydStatus(&ps, pr.ok.status);
+	assert_int_equal(ps.ready, 1);
+	assert_true(ps.version.len > 0);
+	capn_free(&c);
+
+	free(req);
+	free(resp);
+	grok_supervisor_close(sup);
+	/* best-effort cleanup */
+	(void)rmdir(rt);
+	(void)rmdir(st);
+	(void)rmdir(base);
 }
 
-int main(void)
+static void test_check_seat_via_handle(void **state)
 {
-	test_gkpp_loopback();
-	test_gkpp_rejects_flags();
-	test_encode_decode_status_response();
-	test_decode_status_request();
-	test_encode_check_decision();
-	printf("ok: wire unit tests\n");
-	return 0;
+	char base[256];
+	char st[300];
+	char rt[300];
+	grok_supervisor_t *sup = NULL;
+	uint8_t *reqb = NULL;
+	uint8_t *resp = NULL;
+	size_t req_len = 0, resp_len = 0;
+	struct capn c;
+	capn_ptr cr;
+	struct capn_segment *cs;
+	struct PolicyEnvelope env;
+	struct PolicyRequest preq;
+	struct PolicyCheck ch;
+	PolicyEnvelope_ptr ep;
+	PolicyRequest_ptr rp;
+	PolicyCheck_ptr cp;
+	PolicyEnvelope_ptr root;
+	struct PolicyResponse pr;
+	struct PolicyDecision d;
+
+	(void)state;
+	snprintf(base, sizeof(base), "/tmp/policyd-capn-check-%d", (int)getpid());
+	snprintf(st, sizeof(st), "%s/state", base);
+	snprintf(rt, sizeof(rt), "%s/run", base);
+	assert_int_equal(mkdir(base, 0700), 0);
+	assert_int_equal(mkdir(st, 0700), 0);
+	assert_int_equal(mkdir(rt, 0700), 0);
+	assert_int_equal(grok_supervisor_open(&sup, st, rt), GROK_OK);
+
+	memset(&c, 0, sizeof(c));
+	capn_init_malloc(&c);
+	cr = capn_root(&c);
+	cs = cr.seg;
+	memset(&ch, 0, sizeof(ch));
+	ch.agentId = ctext("smoke-agent");
+	ch.tool = ctext("seat");
+	ch.action = ctext("publish_run");
+	ch.path = ctext("run-1");
+	cp = new_PolicyCheck(cs);
+	write_PolicyCheck(&ch, cp);
+	memset(&preq, 0, sizeof(preq));
+	preq.op_which = PolicyRequest_op_check;
+	preq.op.check = cp;
+	rp = new_PolicyRequest(cs);
+	write_PolicyRequest(&preq, rp);
+	memset(&env, 0, sizeof(env));
+	env.protocolVersion = 1;
+	env.traceId = ctext("");
+	env.body_which = PolicyEnvelope_body_request;
+	env.body.request = rp;
+	ep = new_PolicyEnvelope(cs);
+	write_PolicyEnvelope(&env, ep);
+	assert_int_equal(capn_setp(capn_root(&c), 0, ep.p), 0);
+	assert_int_equal(capn_write_grow(&c, &reqb, &req_len), 0);
+	capn_free(&c);
+
+	assert_int_equal(
+		grok_policyd_handle_capnp(sup, "/tmp/fake.sock", reqb, req_len,
+					  &resp, &resp_len),
+		0);
+
+	memset(&c, 0, sizeof(c));
+	assert_int_equal(capn_init_mem(&c, resp, resp_len, 0), 0);
+	root.p = capn_getp(capn_root(&c), 0, 1);
+	read_PolicyEnvelope(&env, root);
+	read_PolicyResponse(&pr, env.body.response);
+	assert_int_equal(pr.ok_which, PolicyResponse_ok_check);
+	read_PolicyDecision(&d, pr.ok.check);
+	assert_int_equal(d.decision, Decision_allow);
+	capn_free(&c);
+
+	free(reqb);
+	free(resp);
+	grok_supervisor_close(sup);
+	(void)rmdir(rt);
+	(void)rmdir(st);
+	(void)rmdir(base);
+}
+
+int run_wire_frame_tests(void)
+{
+	const struct CMUnitTest tests[] = {
+		cmocka_unit_test(test_nng_body_loopback),
+		cmocka_unit_test(test_status_request_via_handle),
+		cmocka_unit_test(test_check_seat_via_handle),
+	};
+	return cmocka_run_group_tests_name("wire_frame", tests, NULL, NULL);
 }

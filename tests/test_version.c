@@ -19,7 +19,7 @@ static void test_version_string(void **state)
 }
 
 /*
- * Catch Makefile/header drift: package major in the header must match the
+ * Catch VERSION/header drift: package major in the header must match the
  * first component of GROK_POLICYD_VERSION (SONAME key = package major).
  * scripts/check-version.sh is the authoritative gate; this is a runtime belt.
  */

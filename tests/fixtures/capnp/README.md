@@ -1,21 +1,7 @@
-# Cap'n policy peer fixtures (#25 / Slice C)
+# Cap'n fixtures (optional)
 
-Binary Cap'n **message bodies** (no GKPP header) produced by `make test-wire`
-via `src/wire/capnp_min.c` (hand codec — **not** full capnp-c).
+Product tests build Cap'n bodies with **c-capnproto** in cmocka
+(`tests/test_wire_frame.c`) and dispatch via `grok_policyd_handle_capnp`.
 
-| File | Content |
-|------|---------|
-| `status_request.bin` | PolicyEnvelope request op=status |
-| `status_response.bin` | PolicyEnvelope response ok=status |
-| `status_response.hex` | hex dump of status_response |
-| `check_allow_response.bin` | PolicyEnvelope response ok=check allow |
-
-Regenerate:
-
-```bash
-make test-wire
-# or: POLICYD_FIXTURE_DIR=/path make test-wire
-```
-
-Session crate may copy or path-search these for optional decode tests.
-Live interop gate is `scripts/smoke_policyd_wire.sh` (Rust client ↔ `serve`).
+Checked-in `.bin` blobs (if present) are historical snapshots only; the
+suite does not require them.
