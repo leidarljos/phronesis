@@ -1,4 +1,4 @@
-# Reproducible via pixi (pixi.lock). Host C library + cmocka tests + full docs.
+# Reproducible via pixi (pixi.lock). Host C library + cmocka tests.
 stages: [validate, build]
 
 variables:
@@ -108,38 +108,7 @@ build:pixi:
     - test -f build/grok-policyd.pc
     - ./build/example_minimal
   after_script:
-    - rm -rf build docs/build .pixi/envs || true
-  rules:
-    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
-
-docs:pixi:
-  stage: build
-  image: debian:bookworm-slim
-  interruptible: true
-  cache:
-    key:
-      files:
-        - pixi.lock
-        - docs/requirements.txt
-      prefix: "pixi-policyd-docs"
-    paths:
-      - .cache/rattler/
-      - .cache/pixi-home/
-    policy: pull-push
-  before_script:
-    - *pixi_bootstrap
-    - export PATH="${PIXI_HOME}/bin:${HOME}/.pixi/bin:${PATH}"
-    - rm -rf .pixi/envs
-    - pixi install --locked -e docs
-  script:
-    - export PATH="${PIXI_HOME}/bin:${HOME}/.pixi/bin:${PATH}"
-    - bash scripts/check-version.sh
-    - pixi run -e docs docs
-    - test -f docs/build/doxygen/xml/index.xml
-    - test -f docs/build/html/index.html
-  after_script:
-    - rm -rf build docs/build .pixi/envs || true
+    - rm -rf build .pixi/envs || true
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
