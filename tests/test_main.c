@@ -14,6 +14,8 @@ int main(void)
 	fails += run_persist_tests();
 	fails += run_policy_tests();
 	fails += run_version_tests();
+	fails += run_wire_serve_tests();
+	fails += run_wire_frame_tests();
 
 	if (fails) {
 		fprintf(stderr, "FAILED: %d suite failure group(s)\n", fails);

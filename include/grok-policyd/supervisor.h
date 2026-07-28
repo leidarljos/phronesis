@@ -21,10 +21,10 @@
  * - Single source: repo ``VERSION`` + ``API_VERSION`` files
  *   (``scripts/sync-version.sh`` / ``scripts/check-version.sh``).
  *
- * @par Product split
- * Seat Cap'n (session.capnp / nng) lives on sessiond. This library is the
- * in-process policy/supervisor TCB: link and call. Callers compose any
- * Cap'n messages; simple deny/allow/prompt rules stay here.
+ * @par Cap'n Proto
+ * Sessiond peer wire (meta #70 / Slice C): schema/policy.capnp + nng Cap'n peer UDS
+ * (`grok-policyd serve`). This C ABI remains the in-process / static-link
+ * surface for hosts such as grokos-shell; the Cap'n peer wraps the library.
  */
 
 #ifndef GROK_POLICYD_SUPERVISOR_H

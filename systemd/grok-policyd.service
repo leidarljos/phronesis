@@ -1,0 +1,30 @@
+[Unit]
+Description=GrokOS policy Cap'n peer (own UDS; wraps libgrok_policyd TCB)
+Documentation=https://nova.teachx.ai/trace-analysis/grokos-packages/grok-policyd
+# Separation of concerns:
+# - This unit binds policyd.sock (policy Cap'n peer). sessiond DIALS it.
+# - Do NOT After=/Wants= sessiond — that inverts Cap'n-first and couples the
+#   policy peer to the seat server. Policyd is independent of seat lifecycle.
+# - Before= sessiond only orders start when both are enabled (soft Cap'n path).
+Before=grokos-sessiond.service
+
+[Service]
+Type=notify
+NotifyAccess=main
+WatchdogSec=30
+Restart=on-failure
+RestartSec=1
+# Absolute ipc path under XDG_RUNTIME_DIR (nng ipc:// requires absolute).
+ExecStart=/usr/local/bin/grok-policyd serve --socket %t/grokos/policyd.sock
+# State outside tmpfs so policy/action log survive reboot when desired.
+Environment=GROKOS_POLICYD_STATE_DIR=%h/.local/state/grokos/policyd
+# Hardening (user unit; no CAP_SYS_ADMIN story here)
+NoNewPrivileges=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=default.target

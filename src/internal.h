@@ -29,4 +29,22 @@ int grok_policy_eval(const char *workspace,
 		     const char *path,
 		     grok_policy_result_t *out);
 
+/* Ensure parent dirs of a socket path exist (Cap'n serve bind). */
+int grok_unix_ensure_socket_parent(const char *socket_path);
+
+/*
+ * CLI host backend (not linked into libgrok_policyd.so).
+ * Portable surface: stop flag + optional service-manager notify.
+ * Serve is nng-native; does not require sd_event.
+ */
+int grok_host_init(void);
+void grok_host_fini(void);
+int grok_host_should_stop(void);
+void grok_host_request_stop(void);
+void grok_host_notify_ready(void);
+void grok_host_notify_stopping(void);
+void grok_host_watchdog_ping(void);
+int grok_host_drop_bounding_caps(void);
+const char *grok_host_backend_name(void);
+
 #endif
