@@ -1,5 +1,5 @@
 # GrokOS policyd Cap'n peer wire (meta #70 / Slice C).
-# Not the seat bus (session.capnp / GKSP). Magic on the wire is GKPP.
+# Not the seat bus (session.capnp / nng Cap'n). Wire is nng Cap'n body (ipc://).
 # Schema SoT for this package; grokos-session pins a copy under crates/grokos-schema/schema/.
 
 @0xe2859f3833215a0b;

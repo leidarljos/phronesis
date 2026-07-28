@@ -1,5 +1,7 @@
 /* SPDX-License-Identifier: Apache-2.0 */
+#ifndef _GNU_SOURCE
 #define _GNU_SOURCE
+#endif
 #include "harness.h"
 #include "wire/serve.h"
 
@@ -63,19 +65,19 @@ static void test_map_admit_kind_known(void **state)
 	const char *action = NULL;
 
 	(void)state;
-	assert_int_equal(grok_policyd_wire_map_admit_kind("seat", &tool, &action), 0);
+	assert_int_equal(grok_policyd_map_admit_kind("seat", &tool, &action), 0);
 	assert_string_equal(tool, "seat");
 	assert_string_equal(action, "publish_run");
 
-	assert_int_equal(grok_policyd_wire_map_admit_kind("model", &tool, &action), 0);
+	assert_int_equal(grok_policyd_map_admit_kind("model", &tool, &action), 0);
 	assert_string_equal(tool, "model");
 	assert_string_equal(action, "start");
 
-	assert_int_equal(grok_policyd_wire_map_admit_kind("", &tool, &action), 0);
+	assert_int_equal(grok_policyd_map_admit_kind("", &tool, &action), 0);
 	assert_string_equal(tool, "model");
 	assert_string_equal(action, "start");
 
-	assert_int_equal(grok_policyd_wire_map_admit_kind("agent", &tool, &action), 0);
+	assert_int_equal(grok_policyd_map_admit_kind("agent", &tool, &action), 0);
 	assert_string_equal(tool, "model");
 	assert_string_equal(action, "start");
 }
@@ -86,9 +88,9 @@ static void test_map_admit_kind_unknown_fail_closed(void **state)
 	const char *action = "start";
 
 	(void)state;
-	assert_int_equal(grok_policyd_wire_map_admit_kind("weird", &tool, &action), -1);
-	assert_int_equal(grok_policyd_wire_map_admit_kind("shell", &tool, &action), -1);
-	assert_int_equal(grok_policyd_wire_map_admit_kind(NULL, &tool, &action), -1);
+	assert_int_equal(grok_policyd_map_admit_kind("weird", &tool, &action), -1);
+	assert_int_equal(grok_policyd_map_admit_kind("shell", &tool, &action), -1);
+	assert_int_equal(grok_policyd_map_admit_kind(NULL, &tool, &action), -1);
 }
 
 int run_wire_serve_tests(void)
