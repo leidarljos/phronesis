@@ -1,4 +1,4 @@
-# Reproducible via pixi (pixi.lock). Host C library + cmocka tests.
+# Reproducible via pixi (pixi.lock). Host C library + cmocka tests + full docs.
 stages: [validate, build]
 
 variables:
@@ -65,7 +65,22 @@ validate:manifest:
   script:
     - test -f README.md
     - test -f include/grok-policyd/supervisor.h
-    - test -f Makefile
+    - test -f meson.build
+    - test -f meson_options.txt
+    - test ! -f Makefile
+    - test ! -f src/host.c
+    - test ! -d src/wire
+    - test -f src/capnp_api.c
+    - test -f schema/policy.capnp
+    - test -f tests/test_main.c
+    - test -f tests/test_capnp_ffi.c
+    - test ! -f scripts/smoke_serve_signal.sh
+    # Quote: bare "! grep" is a YAML tag, not shell negation (CI #14651).
+    - |
+      if grep -q '^int main' tests/test_capnp_ffi.c; then
+        echo "FATAL: tests/test_capnp_ffi.c must not define main (cmocka suite only)" >&2
+        exit 1
+      fi
     - test -f VERSION
     - test -f API_VERSION
     - test -f pixi.toml
@@ -75,6 +90,8 @@ validate:manifest:
     - test -f scripts/check-version.sh
     - test -f scripts/sync-version.sh
     - test -f scripts/pixi_env_info.sh
+    - test -f scripts/coverage.sh
+    - test -x scripts/coverage.sh
     - bash scripts/check-version.sh
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
@@ -104,11 +121,59 @@ build:pixi:
     - bash scripts/check-version.sh
     - pixi run -e ci build
     - test -f build/libgrok_policyd.a
-    - test -f build/libgrok_policyd.so.0.1.0
-    - test -f build/grok-policyd.pc
+    - test -e build/libgrok_policyd.so -o -e build/libgrok_policyd.so.0
+    - test -x build/grok-policyd
+    - test -x build/supervisor_test
+    - pixi run -e ci bash -c 'nm build/libgrok_policyd.a | grep -q grok_policyd_handle_capnp'
+    - test -x build/example_minimal
+    - test ! -e build/test_capnp_ffi
     - ./build/example_minimal
+    - ./build/supervisor_test
   after_script:
-    - rm -rf build .pixi/envs || true
+    - rm -rf build build-cov docs/build .pixi/envs || true
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+# Meson -Db_coverage + gcovr. No percentage gate.
+coverage:pixi:
+  stage: build
+  image: debian:bookworm-slim
+  interruptible: true
+  cache:
+    key:
+      files:
+        - pixi.lock
+      prefix: "pixi-policyd"
+    paths:
+      - .cache/rattler/
+      - .cache/pixi-home/
+    policy: pull-push
+  before_script:
+    - *pixi_bootstrap
+    - export PATH="${PIXI_HOME}/bin:${HOME}/.pixi/bin:${PATH}"
+    - rm -rf .pixi/envs
+    - pixi install --locked -e ci
+  script:
+    - export PATH="${PIXI_HOME}/bin:${HOME}/.pixi/bin:${PATH}"
+    - pixi run -e ci coverage
+    - test -s coverage-out/coverage.xml
+    - test -s coverage-out/coverage.txt
+    - cat coverage-out/coverage.txt
+  artifacts:
+    when: always
+    paths:
+      - coverage-out/
+    reports:
+      coverage_report:
+        coverage_format: cobertura
+        path: coverage-out/coverage.xml
+    expire_in: 14 days
+  coverage: '/^TOTAL\s+\d+\s+\d+\s+(\d+%)/'
+  after_script:
+    # Keep coverage-out/ for artifact upload (runs after this).
+    - rm -rf build build-cov .pixi/envs || true
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+

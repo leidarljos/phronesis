@@ -14,11 +14,12 @@ int main(void)
 	fails += run_persist_tests();
 	fails += run_policy_tests();
 	fails += run_version_tests();
+	fails += run_capnp_ffi_tests();
 
 	if (fails) {
 		fprintf(stderr, "FAILED: %d suite failure group(s)\n", fails);
 		return 1;
 	}
-	printf("ok: cmocka supervisor suites passed\n");
+	printf("ok: cmocka suites passed\n");
 	return 0;
 }

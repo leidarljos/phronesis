@@ -63,9 +63,11 @@ static void test_cli_subprocess_roundtrip(void **state)
 {
 	char st[GROK_PATH_MAX], rt[GROK_PATH_MAX];
 	char cmd[1024];
-	const char *bin = "build/grok-policyd";
+	const char *bin = getenv("POLICYD_BIN");
 
 	(void)state;
+	if (!bin || !bin[0])
+		bin = "build/grok-policyd";
 	if (access(bin, X_OK) != 0) {
 		skip();
 	}

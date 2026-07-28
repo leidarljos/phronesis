@@ -21,15 +21,18 @@
  * - Single source: repo ``VERSION`` + ``API_VERSION`` files
  *   (``scripts/sync-version.sh`` / ``scripts/check-version.sh``).
  *
- * @par Cap'n Proto
- * Sessiond peer wire is a separate track (meta #70). This C ABI is the
- * in-process / static-link surface used by hosts such as grokos-shell.
+ * @par Cap'n Proto (product language)
+ * Callers speak ``schema/policy.capnp`` and call @ref grok_policyd_handle_capnp
+ * **in-process** (static link / FFI). There is no policyd socket peer; seat Cap'n
+ * (session.capnp / nng) stays on sessiond. String helpers like @ref grok_policy_check
+ * remain for tests/CLI; product path is Cap'n bodies through handle_capnp.
  */
 
 #ifndef GROK_POLICYD_SUPERVISOR_H
 #define GROK_POLICYD_SUPERVISOR_H
 
 #include <stddef.h>
+#include <stdint.h>
 #include <sys/types.h>
 
 #ifdef __cplusplus
@@ -313,6 +316,37 @@ int grok_policy_check(grok_supervisor_t *s,
 		      const char *action,
 		      const char *path,
 		      grok_policy_result_t *out);
+
+/** @} */
+
+/**
+ * @defgroup capnp Cap'n policy API
+ * @brief Product FFI: Cap'n PolicyEnvelope in, Cap'n PolicyEnvelope out.
+ * @{
+ */
+
+/** Max accepted Cap'n request / response body (bytes). */
+#define GROK_POLICY_CAPNP_MAX_BODY (64 * 1024)
+
+/**
+ * Dispatch one Cap'n PolicyEnvelope request body against the supervisor.
+ *
+ * Callers speak schema/policy.capnp and call this in-process. There is no
+ * policyd socket peer.
+ *
+ * @param sup     Open supervisor.
+ * @param in      Cap'n multi-segment message bytes (request envelope).
+ * @param in_len  Length of @a in; must be in (0, GROK_POLICY_CAPNP_MAX_BODY].
+ * @param out     On success, heap buffer with Cap'n response (caller free()).
+ * @param out_len Length of *@a out.
+ * @return 0 on success (response in *@a out), -1 on encode failure.
+ *         Invalid requests usually still return 0 with a Cap'n error body.
+ */
+int grok_policyd_handle_capnp(grok_supervisor_t *sup,
+			      const uint8_t *in,
+			      size_t in_len,
+			      uint8_t **out,
+			      size_t *out_len);
 
 /** @} */
 

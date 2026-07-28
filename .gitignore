@@ -1,6 +1,11 @@
 /build/
+/build-cov/
+/coverage-out/
 /docs/build/
 *.o
+*.gcov
+*.gcda
+*.gcno
 .DS_Store
 __pycache__/
 *.pyc
