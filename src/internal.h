@@ -17,7 +17,6 @@ int grok_action_log_append(const char *path,
 			   const char *detail);
 int grok_action_log_last(const char *path, char *buf, size_t buflen);
 
-/* Create agent cgroup under runtime if the host allows; path empty if not. */
 int grok_cgroup_create(const char *runtime_dir, const char *agent_id,
 		       char *path_out, size_t path_len);
 int grok_cgroup_attach(const char *cgroup_path, pid_t pid);
@@ -29,9 +28,5 @@ int grok_policy_eval(const char *workspace,
 		     const char *action,
 		     const char *path,
 		     grok_policy_result_t *out);
-
-/* Path mkdir helpers (Unix). */
-#include <sys/types.h>
-int grok_unix_mkdir_leaf(const char *path, mode_t mode);
 
 #endif

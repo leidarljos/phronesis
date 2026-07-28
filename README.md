@@ -38,4 +38,4 @@ tests/   cmocka
 
 ## License
 
-Apache-2.0. See `LICENSE` and `third_party/`.
+Apache-2.0. See `LICENSE`.

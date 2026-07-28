@@ -1,7 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 #
-# grok-policyd: library TCB only (no nng Cap'n serve process).
-# Host C unit tests: cmocka (one suite binary).
+# grok-policyd: library TCB only (no nng Cap'n serve, no path third_party).
 
 project(
   'grok-policyd',
@@ -30,34 +29,21 @@ soversion = ver.split('.')[0]
 cc = meson.get_compiler('c')
 add_project_arguments('-D_GNU_SOURCE', language: 'c')
 
-inc = include_directories(
-  'include',
-  'src',
-  'tests',
-  'third_party/cwalk',
-  'third_party/bsdcompat/include',
-)
+inc = include_directories('include', 'src', 'tests')
 
 cmocka_dep = dependency('cmocka', required: true)
 
 check_version = find_program('scripts/check-version.sh', required: true)
 run_command(check_version, check: true)
 
-vendor_srcs = files(
-  'third_party/cwalk/cwalk.c',
-  'third_party/bsdcompat/strlcpy.c',
-  'third_party/bsdcompat/strlcat.c',
-)
-
 lib_srcs = files(
   'src/paths.c',
-  'src/unix_dir.c',
   'src/action_log.c',
   'src/cgroup.c',
   'src/policy.c',
   'src/supervisor.c',
   'src/version.c',
-) + vendor_srcs
+)
 
 policyd_lib = library(
   'grok_policyd',

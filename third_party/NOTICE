@@ -1,6 +1,0 @@
-Vendored path helpers only (not GPL):
-
-- cwalk (MIT) — https://github.com/likle/cwalk
-- OpenBSD strlcpy/strlcat via libbsd sources (ISC)
-
-Test / build deps via conda-forge (not vendored): cmocka, meson, ninja.
