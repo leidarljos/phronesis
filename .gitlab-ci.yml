@@ -66,18 +66,18 @@ validate:manifest:
     - test -f README.md
     - test -f include/grok-policyd/supervisor.h
     - test -f meson.build
+    - test -f meson_options.txt
     - test ! -f Makefile
-    - test ! -d src/wire
-    - test ! -f src/host.c
-    - test ! -d schema
-    - test ! -d third_party
-    - test ! -f src/unix_dir.c
+    - test -f src/host.c
+    - test ! -f src/host_posix.c
+    - test ! -f src/host_linux_systemd.c
+    - test ! -f src/host_platform.c
     - test -f tests/test_main.c
-    - test ! -f tests/test_wire_frame.c
+    - test -f tests/test_wire_frame.c
+    # Quote: bare "! grep" is a YAML tag, not shell negation (CI #14651).
     - |
-      extras=$(grep -l '^int main' tests/test_*.c 2>/dev/null | grep -v 'tests/test_main.c' || true)
-      if [ -n "$extras" ]; then
-        echo "FATAL: only tests/test_main.c may define main: $extras" >&2
+      if grep -q '^int main' tests/test_wire_frame.c; then
+        echo "FATAL: tests/test_wire_frame.c must not define main (cmocka suite only)" >&2
         exit 1
       fi
     - test -f VERSION
@@ -122,6 +122,7 @@ build:pixi:
     - test -x build/grok-policyd
     - test -x build/supervisor_test
     - test -x build/example_minimal
+    - test ! -e build/test_wire_frame
     - ./build/example_minimal
     - ./build/supervisor_test
   after_script:
@@ -130,3 +131,33 @@ build:pixi:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
 
+docs:pixi:
+  stage: build
+  image: debian:bookworm-slim
+  interruptible: true
+  cache:
+    key:
+      files:
+        - pixi.lock
+        - docs/requirements.txt
+      prefix: "pixi-policyd-docs"
+    paths:
+      - .cache/rattler/
+      - .cache/pixi-home/
+    policy: pull-push
+  before_script:
+    - *pixi_bootstrap
+    - export PATH="${PIXI_HOME}/bin:${HOME}/.pixi/bin:${PATH}"
+    - rm -rf .pixi/envs
+    - pixi install --locked -e docs
+  script:
+    - export PATH="${PIXI_HOME}/bin:${HOME}/.pixi/bin:${PATH}"
+    - bash scripts/check-version.sh
+    - pixi run -e docs docs
+    - test -f docs/build/doxygen/xml/index.xml
+    - test -f docs/build/html/index.html
+  after_script:
+    - rm -rf build docs/build .pixi/envs || true
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
