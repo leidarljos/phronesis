@@ -1,0 +1,1 @@
+# Library + Cap'n FFI only (no optional nng serve host features).

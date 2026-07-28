@@ -103,6 +103,26 @@ int grok_policy_eval(const char *workspace,
 		return GROK_OK;
 	}
 
+	/*
+	 * Seat Cap'n board ops (sessiond already enforces same-uid on the UDS).
+	 * tool=seat: publish_run | read_run | list_runs | list_events
+	 */
+	if (strcmp(tool, "seat") == 0 &&
+	    (strcmp(action, "publish_run") == 0 || strcmp(action, "read_run") == 0 ||
+	     strcmp(action, "list_runs") == 0 || strcmp(action, "list_events") == 0)) {
+		out->decision = GROK_DECISION_ALLOW;
+		snprintf(out->reason, sizeof(out->reason),
+			 "seat board op allow (session plane ACL)");
+		return GROK_OK;
+	}
+
+	/* Model admit plane (path not bound; identity is agent_id). */
+	if (strcmp(tool, "model") == 0 && strcmp(action, "start") == 0) {
+		out->decision = GROK_DECISION_ALLOW;
+		snprintf(out->reason, sizeof(out->reason), "model start admit plane");
+		return GROK_OK;
+	}
+
 	if (path && path[0] &&
 	    (strcmp(action, "read") == 0 || strcmp(action, "write") == 0) &&
 	    path_under_workspace(workspace, path)) {

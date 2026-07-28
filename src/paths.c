@@ -6,13 +6,17 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <unistd.h>
 
+/* Join up to three path components with '/'. Empty/null trailing parts omitted. */
 static int join3(char *out, size_t n, const char *a, const char *b, const char *c)
 {
 	int r;
 
+	if (!out || n == 0 || !a)
+		return GROK_ERR_INVAL;
 	if (c && c[0])
-		r = snprintf(out, n, "%s/%s/%s", a, b, c);
+		r = snprintf(out, n, "%s/%s/%s", a, b ? b : "", c);
 	else if (b && b[0])
 		r = snprintf(out, n, "%s/%s", a, b);
 	else
@@ -22,9 +26,15 @@ static int join3(char *out, size_t n, const char *a, const char *b, const char *
 	return GROK_OK;
 }
 
+/*
+ * Create one directory leaf. Temporarily umask(0) so mode is exact (tests
+ * expect 0700). Existing dirs are left alone (no chmod of shared parents).
+ */
 int grok_paths_ensure_dir(const char *path, int mode)
 {
+	mode_t old;
 	struct stat st;
+	int rc;
 
 	if (!path || !path[0])
 		return GROK_ERR_INVAL;
@@ -33,9 +43,19 @@ int grok_paths_ensure_dir(const char *path, int mode)
 			return GROK_ERR_IO;
 		return GROK_OK;
 	}
-	if (mkdir(path, (mode_t)mode) != 0 && errno != EEXIST)
+	if (errno != ENOENT)
 		return GROK_ERR_IO;
-	return GROK_OK;
+	old = umask(0);
+	rc = mkdir(path, (mode_t)mode & 0777);
+	(void)umask(old);
+	if (rc == 0)
+		return GROK_OK;
+	if (errno == EEXIST) {
+		if (stat(path, &st) != 0 || !S_ISDIR(st.st_mode))
+			return GROK_ERR_IO;
+		return GROK_OK;
+	}
+	return GROK_ERR_IO;
 }
 
 static int ensure_state_tree(const char *state)
@@ -116,6 +136,5 @@ int grok_paths_resolve(char *state_dir, size_t state_len,
 		return GROK_ERR_IO;
 	if (grok_paths_ensure_dir(runtime_dir, 0700) != GROK_OK)
 		return GROK_ERR_IO;
-
 	return GROK_OK;
 }
