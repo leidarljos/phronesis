@@ -12,3 +12,16 @@ __pycache__/
 .venv/
 .pixi/
 .cache/
+
+# Secrets / credentials (basename-deny classes — match grokos-tools ci-kit/secrets)
+.env
+.env.*
+*.pem
+id_rsa
+id_ecdsa
+id_ed25519
+credentials.json
+*serviceaccount*.json
+*service-account*.json
+*service_account*.json
+
