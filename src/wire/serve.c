@@ -1,9 +1,15 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /*
  * Cap'n peer serve loop over nng req/rep IPC.
- * Payload: Cap'n body only on nng messages. ACL: NNG_OPT_PEER_UID (uint64).
+ * Payload: Cap'n body only on nng messages.
+ * ACL: NNG_OPT_PEER_UID (uint64) on Unix ipc — fail closed if unavailable.
+ *
+ * Event model: nng-native (RECV timeout + poll stop flag). Host backend is
+ * optional systemd notify/watchdog only — never sd_event-driven I/O.
  */
+#ifndef _GNU_SOURCE
 #define _GNU_SOURCE
+#endif
 #include "wire/serve.h"
 
 #include "internal.h"
@@ -148,7 +154,6 @@ static int handle_request(grok_supervisor_t *sup, const char *socket_path,
 		resp->kind = WIRE_RESP_AGENT;
 		snprintf(resp->u.agent.id, sizeof(resp->u.agent.id), "%s", st.id);
 		resp->u.agent.state = (int)st.state;
-		/* Clamp pid/pgid into int32 wire field (no silent wrap). */
 		if (st.pid > INT32_MAX || st.pid < 0)
 			resp->u.agent.pid = 0;
 		else
@@ -174,7 +179,6 @@ static int peer_uid_ok(nng_msg *msg)
 {
 	nng_pipe p = nng_msg_get_pipe(msg);
 	uint64_t uid = UINT64_MAX;
-	/* nng 1.x: PEER_UID is uint64 on the pipe (not int). */
 	int rc = nng_pipe_get_uint64(p, NNG_OPT_PEER_UID, &uid);
 
 	if (rc != 0)
@@ -243,13 +247,19 @@ int grok_policyd_serve(grok_supervisor_t *sup, const char *socket_path)
 	nng_listener lis = NNG_LISTENER_INITIALIZER;
 	char url[sizeof("ipc://") + 512];
 	int rc;
+	/* 500ms: snappy SIGTERM in smoke; watchdog pings at this cadence. */
+	const nng_duration recv_ms = 500;
 
-	if (!sup || !socket_path || socket_path[0] != '/')
+	if (!sup || !socket_path || !socket_path[0])
+		return 2;
+	/* Unix ipc paths are absolute; non-Unix hosts will use other transports. */
+	if (socket_path[0] != '/')
 		return 2;
 
 	(void)grok_host_drop_bounding_caps();
 	if (grok_host_init() != GROK_OK)
 		return 1;
+
 	if (grok_unix_ensure_socket_parent(socket_path) != GROK_OK) {
 		grok_host_fini();
 		return 1;
@@ -261,11 +271,8 @@ int grok_policyd_serve(grok_supervisor_t *sup, const char *socket_path)
 	}
 
 	rc = nng_rep0_open(&sock);
-	if (rc != 0) {
-		fprintf(stderr, "policyd serve: %s\n", nng_strerror(rc));
-		grok_host_fini();
-		return 1;
-	}
+	if (rc != 0)
+		goto fail_host;
 	rc = nng_listener_create(&lis, sock, url);
 	if (rc != 0)
 		goto fail_sock;
@@ -273,24 +280,31 @@ int grok_policyd_serve(grok_supervisor_t *sup, const char *socket_path)
 	if (rc != 0)
 		goto fail_lis;
 	(void)nng_socket_set_size(sock, NNG_OPT_RECVMAXSZ, GROK_NNG_MAX_BODY);
-	(void)nng_socket_set_ms(sock, NNG_OPT_RECVTIMEO, 250);
+	rc = nng_socket_set_ms(sock, NNG_OPT_RECVTIMEO, recv_ms);
+	if (rc != 0)
+		goto fail_lis;
 	rc = nng_listener_start(lis, 0);
 	if (rc != 0)
 		goto fail_lis;
 
-	fprintf(stderr, "grok-policyd serve: nng rep on %s\n", socket_path);
+	fprintf(stderr,
+		"grok-policyd serve: nng rep on %s (host=%s)\n", socket_path,
+		grok_host_backend_name());
 	grok_host_notify_ready();
 
 	while (!grok_host_should_stop()) {
 		nng_msg *msg = NULL;
 
+		grok_host_watchdog_ping();
 		rc = nng_recvmsg(sock, &msg, 0);
 		if (rc == NNG_ETIMEDOUT)
 			continue;
+		if (rc == NNG_ECLOSED || grok_host_should_stop())
+			break;
 		if (rc != 0) {
-			if (rc == NNG_ECLOSED || grok_host_should_stop())
-				break;
-			fprintf(stderr, "policyd serve: recv %s\n", nng_strerror(rc));
+			fprintf(stderr, "policyd serve: recv %s\n",
+				nng_strerror(rc));
+			/* transient: keep serving */
 			continue;
 		}
 		serve_one_msg(sup, socket_path, sock, msg);
@@ -307,8 +321,10 @@ int grok_policyd_serve(grok_supervisor_t *sup, const char *socket_path)
 fail_lis:
 	nng_listener_close(lis);
 fail_sock:
-	fprintf(stderr, "policyd serve: %s\n", nng_strerror(rc));
+	if (rc != 0)
+		fprintf(stderr, "policyd serve: %s\n", nng_strerror(rc));
 	nng_close(sock);
+fail_host:
 	grok_host_fini();
 	return 1;
 }
