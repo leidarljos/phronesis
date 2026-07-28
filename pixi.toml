@@ -1,9 +1,7 @@
-# Cap'n FFI library TCB. No nng policyd.sock server.
-
 [workspace]
 name = "grok-policyd"
 version = "0.1.0"
-description = "GrokOS multi-agent policy TCB — Cap'n FFI + stable C ABI"
+description = "GrokOS multi-agent policy TCB — Cap'n FFI + C ABI"
 authors = ["GrokOS contributors"]
 channels = ["https://repo.prefix.dev/rg-forge", "conda-forge"]
 platforms = ["linux-64"]
@@ -35,7 +33,6 @@ example = { cmd = "meson compile -C build example_minimal", depends-on = ["setup
 build = { depends-on = ["test", "example"] }
 cli = { cmd = "meson compile -C build grok-policyd", depends-on = ["setup"] }
 install = { cmd = "meson install -C build", depends-on = ["compile"] }
-# Separate instrumented dir; default `build` stays uninstrumented.
 coverage = "bash scripts/coverage.sh"
 ci = { depends-on = ["env-info", "build"] }
 

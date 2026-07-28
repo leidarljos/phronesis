@@ -13,10 +13,7 @@ static void usage(const char *argv0)
 		"  %s [--state-dir DIR] [--runtime-dir DIR] status <agent-id>\n"
 		"  %s [--state-dir DIR] [--runtime-dir DIR] stop <agent-id>\n"
 		"  %s [--state-dir DIR] [--runtime-dir DIR] log <agent-id> <kind> <detail>\n"
-		"  %s [--state-dir DIR] [--runtime-dir DIR] check <agent-id> <tool> <action> [path]\n"
-		"\n"
-		"Product policy path: link libgrok_policyd and call\n"
-		"grok_policyd_handle_capnp() with policy.capnp bodies (no serve socket).\n",
+		"  %s [--state-dir DIR] [--runtime-dir DIR] check <agent-id> <tool> <action> [path]\n",
 		argv0, argv0, argv0, argv0, argv0);
 }
 
@@ -63,13 +60,6 @@ int main(int argc, char **argv)
 		return 2;
 	}
 	cmd = argv[i++];
-
-	if (strcmp(cmd, "serve") == 0) {
-		fprintf(stderr,
-			"serve is removed: Cap'n is the language, not a socket peer.\n"
-			"Link libgrok_policyd and call grok_policyd_handle_capnp().\n");
-		return 2;
-	}
 
 	rc = grok_supervisor_open(&sup, state_dir, runtime_dir);
 	if (rc != GROK_OK) {
