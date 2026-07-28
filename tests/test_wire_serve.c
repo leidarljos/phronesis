@@ -3,7 +3,8 @@
 #define _GNU_SOURCE
 #endif
 #include "harness.h"
-#include "wire/serve.h"
+#include "internal.h"
+#include "grok-policyd/supervisor.h"
 
 #include <setjmp.h>
 #include <stdarg.h>

@@ -1,26 +1,21 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /*
- * Cap'n peer over nng req/rep. Body is policy.capnp via c-capnproto only —
- * no parallel wire DTO types.
+ * Cap'n policy API for in-process FFI.
+ * Callers compose PolicyEnvelope (schema/policy.capnp) and call
+ * grok_policyd_handle_capnp — no nng socket peer.
  */
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE
 #endif
-#include "wire/serve.h"
-
 #include "internal.h"
 #include "policy.capnp.h"
 
 #include <capnp_c.h>
 #include <limits.h>
-#include <nng/nng.h>
-#include <nng/protocol/reqrep0/rep.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
-
 int grok_policyd_map_admit_kind(const char *kind, const char **tool,
 				const char **action)
 {
@@ -97,7 +92,7 @@ static int capn_write_body(struct capn *c, uint8_t **out, size_t *out_len)
 			return -1;
 		cap *= 2U;
 	}
-	if ((uint64_t)n > (uint64_t)GROK_NNG_MAX_BODY) {
+	if ((uint64_t)n > (uint64_t)GROK_POLICY_CAPNP_MAX_BODY) {
 		free(buf);
 		return -1;
 	}
@@ -197,9 +192,8 @@ static int reply_error(const char *trace, int32_t code, const char *msg,
 	return encode_ok(trace, PolicyResponse_ok_error, &e, out, out_len);
 }
 
-int grok_policyd_handle_capnp(grok_supervisor_t *sup, const char *socket_path,
-			      const uint8_t *in, size_t in_len, uint8_t **out,
-			      size_t *out_len)
+int grok_policyd_handle_capnp(grok_supervisor_t *sup, const uint8_t *in,
+			      size_t in_len, uint8_t **out, size_t *out_len)
 {
 	struct capn c;
 	PolicyEnvelope_ptr root;
@@ -213,7 +207,7 @@ int grok_policyd_handle_capnp(grok_supervisor_t *sup, const char *socket_path,
 		return -1;
 	*out = NULL;
 	*out_len = 0;
-	if (!sup || !in || in_len == 0 || in_len > GROK_NNG_MAX_BODY)
+	if (!sup || !in || in_len == 0 || in_len > GROK_POLICY_CAPNP_MAX_BODY)
 		return reply_error("", GROK_ERR_INVAL, "bad request body", out,
 				   out_len);
 
@@ -252,7 +246,7 @@ int grok_policyd_handle_capnp(grok_supervisor_t *sup, const char *socket_path,
 		st.apiVersion = grok_policyd_api_version();
 		st.stateDir = ctext(grok_supervisor_state_dir(sup));
 		st.runtimeDir = ctext(grok_supervisor_runtime_dir(sup));
-		st.socket = ctext(socket_path ? socket_path : "");
+		st.socket = ctext("ffi"); /* in-process; no peer socket */
 		st.ready = 1;
 		return encode_ok(trace, PolicyResponse_ok_status, &st, out,
 				 out_len);
@@ -365,149 +359,3 @@ int grok_policyd_handle_capnp(grok_supervisor_t *sup, const char *socket_path,
 	}
 }
 
-static int peer_uid_ok(nng_msg *msg)
-{
-	nng_pipe p = nng_msg_get_pipe(msg);
-	uint64_t uid = UINT64_MAX;
-	int rc = nng_pipe_get_uint64(p, NNG_OPT_PEER_UID, &uid);
-
-	if (rc != 0)
-		return 0;
-	return uid <= (uint64_t)UINT32_MAX && (uid_t)uid == getuid();
-}
-
-static void serve_one_msg(grok_supervisor_t *sup, const char *socket_path,
-			  nng_socket sock, nng_msg *msg)
-{
-	uint8_t *out = NULL;
-	size_t out_len = 0;
-	void *body;
-	size_t body_len;
-	nng_msg *rmsg = NULL;
-	int rc;
-
-	if (!peer_uid_ok(msg)) {
-		(void)reply_error("", GROK_ERR_DENIED, "peercred uid mismatch",
-				  &out, &out_len);
-	} else {
-		body = nng_msg_body(msg);
-		body_len = nng_msg_len(msg);
-		if (!body || body_len == 0)
-			(void)reply_error("", GROK_ERR_INVAL, "empty body",
-					  &out, &out_len);
-		else if (body_len > GROK_NNG_MAX_BODY)
-			(void)reply_error("", GROK_ERR_INVAL, "body too large",
-					  &out, &out_len);
-		else if (grok_policyd_handle_capnp(sup, socket_path, body,
-						   body_len, &out,
-						   &out_len) != 0 &&
-			 !out)
-			(void)reply_error("", GROK_ERR_INVAL, "handle failed",
-					  &out, &out_len);
-	}
-
-	if (!out) {
-		fprintf(stderr, "policyd serve: no response body\n");
-		return;
-	}
-	rc = nng_msg_alloc(&rmsg, 0);
-	if (rc != 0) {
-		free(out);
-		fprintf(stderr, "policyd serve: msg_alloc %d\n", rc);
-		return;
-	}
-	rc = nng_msg_append(rmsg, out, out_len);
-	free(out);
-	if (rc != 0) {
-		nng_msg_free(rmsg);
-		fprintf(stderr, "policyd serve: msg_append %d\n", rc);
-		return;
-	}
-	rc = nng_sendmsg(sock, rmsg, 0);
-	if (rc != 0) {
-		nng_msg_free(rmsg);
-		fprintf(stderr, "policyd serve: sendmsg %d\n", rc);
-	}
-}
-
-int grok_policyd_serve(grok_supervisor_t *sup, const char *socket_path)
-{
-	nng_socket sock = NNG_SOCKET_INITIALIZER;
-	nng_listener lis = NNG_LISTENER_INITIALIZER;
-	char url[sizeof("ipc://") + 512];
-	int rc;
-	const nng_duration recv_ms = 500;
-
-	if (!sup || !socket_path || !socket_path[0] || socket_path[0] != '/')
-		return 2;
-
-	(void)grok_host_drop_bounding_caps();
-	if (grok_host_init() != GROK_OK)
-		return 1;
-	if (grok_unix_ensure_socket_parent(socket_path) != GROK_OK) {
-		grok_host_fini();
-		return 1;
-	}
-	(void)unlink(socket_path);
-	if (snprintf(url, sizeof(url), "ipc://%s", socket_path) >=
-	    (int)sizeof(url)) {
-		grok_host_fini();
-		return 1;
-	}
-
-	rc = nng_rep0_open(&sock);
-	if (rc != 0)
-		goto fail_host;
-	rc = nng_listener_create(&lis, sock, url);
-	if (rc != 0)
-		goto fail_sock;
-	rc = nng_listener_set_int(lis, NNG_OPT_IPC_PERMISSIONS, 0600);
-	if (rc != 0)
-		goto fail_lis;
-	(void)nng_socket_set_size(sock, NNG_OPT_RECVMAXSZ, GROK_NNG_MAX_BODY);
-	rc = nng_socket_set_ms(sock, NNG_OPT_RECVTIMEO, recv_ms);
-	if (rc != 0)
-		goto fail_lis;
-	rc = nng_listener_start(lis, 0);
-	if (rc != 0)
-		goto fail_lis;
-
-	fprintf(stderr, "grok-policyd serve: nng rep on %s (host=%s)\n",
-		socket_path, grok_host_backend_name());
-	grok_host_notify_ready();
-
-	while (!grok_host_should_stop()) {
-		nng_msg *msg = NULL;
-
-		grok_host_watchdog_ping();
-		rc = nng_recvmsg(sock, &msg, 0);
-		if (rc == NNG_ETIMEDOUT)
-			continue;
-		if (rc == NNG_ECLOSED || grok_host_should_stop())
-			break;
-		if (rc != 0) {
-			fprintf(stderr, "policyd serve: recv %s\n",
-				nng_strerror(rc));
-			continue;
-		}
-		serve_one_msg(sup, socket_path, sock, msg);
-		nng_msg_free(msg);
-	}
-
-	fprintf(stderr, "policyd serve: stop requested\n");
-	grok_host_notify_stopping();
-	nng_close(sock);
-	(void)unlink(socket_path);
-	grok_host_fini();
-	return 0;
-
-fail_lis:
-	nng_listener_close(lis);
-fail_sock:
-	if (rc != 0)
-		fprintf(stderr, "policyd serve: %s\n", nng_strerror(rc));
-	nng_close(sock);
-fail_host:
-	grok_host_fini();
-	return 1;
-}
