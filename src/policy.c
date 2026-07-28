@@ -104,7 +104,7 @@ int grok_policy_eval(const char *workspace,
 	}
 
 	/*
-	 * Seat Cap'n visibility channel (sessiond peercred already same-uid).
+	 * Seat Cap'n board ops (sessiond already enforces same-uid on the UDS).
 	 * tool=seat: publish_run | read_run | list_runs | list_events
 	 */
 	if (strcmp(tool, "seat") == 0 &&
@@ -112,7 +112,7 @@ int grok_policy_eval(const char *workspace,
 	     strcmp(action, "list_runs") == 0 || strcmp(action, "list_events") == 0)) {
 		out->decision = GROK_DECISION_ALLOW;
 		snprintf(out->reason, sizeof(out->reason),
-			 "seat visibility (peercred + seat policy)");
+			 "seat board op allow (session plane ACL)");
 		return GROK_OK;
 	}
 

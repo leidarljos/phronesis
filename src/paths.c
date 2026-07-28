@@ -138,34 +138,3 @@ int grok_paths_resolve(char *state_dir, size_t state_len,
 		return GROK_ERR_IO;
 	return GROK_OK;
 }
-
-int grok_unix_ensure_socket_parent(const char *socket_path)
-{
-	char dup[GROK_PATH_MAX];
-	char *slash;
-	int rc;
-
-	if (!socket_path || !socket_path[0])
-		return GROK_ERR_INVAL;
-	if (snprintf(dup, sizeof(dup), "%s", socket_path) >= (int)sizeof(dup))
-		return GROK_ERR_INVAL;
-	slash = strrchr(dup, '/');
-	if (!slash || slash == dup)
-		return GROK_OK; /* relative or root */
-	*slash = '\0';
-	/* create each component under dup */
-	{
-		char *p = dup + 1;
-		while (*p) {
-			if (*p == '/') {
-				*p = '\0';
-				rc = grok_paths_ensure_dir(dup, 0700);
-				*p = '/';
-				if (rc != GROK_OK)
-					return rc;
-			}
-			p++;
-		}
-	}
-	return grok_paths_ensure_dir(dup, 0700);
-}
