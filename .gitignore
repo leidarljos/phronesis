@@ -1,10 +1,14 @@
 /build/
+/build-cov/
+/coverage-out/
 /docs/build/
 *.o
+*.gcov
+*.gcda
+*.gcno
 .DS_Store
 __pycache__/
 *.pyc
 .venv/
 .pixi/
 .cache/
-# c-capnproto outputs are under build/ (covered by /build/). SoT: schema/policy.capnp

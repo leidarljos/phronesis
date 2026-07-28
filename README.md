@@ -49,6 +49,7 @@ String `grok_policy_check` remains for CLI/tests.
 ```bash
 pixi install --locked
 pixi run test
+pixi run coverage   # optional: Meson -Db_coverage → coverage-out/
 ```
 
 ## Layout
