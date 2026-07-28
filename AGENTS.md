@@ -7,6 +7,7 @@
 5. No secrets, no proprietary product source paste-ins, no silent stubs.
 6. Prefer host unit/contract tests; goal-path tests use a **fake model**.
 7. Root [`README.md`](./README.md) is the package map. Keep docs here simple — do not reintroduce a multi-file docs tree.
+8. **Cap'n on the wire is foundational:** sessiond, policyd, agent, and shell all speak Cap'n over nng (same body model). Product control path is Cap'n; do not invent a second wire language or treat Cap'n as “CLI-only décor” around a C-string control plane.
 
 Parent meta: https://nova.teachx.ai/trace-analysis/grokos
 

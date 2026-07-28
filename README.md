@@ -17,14 +17,25 @@ Claim work on meta issues tagged for **grok-policyd**. Every merge request shoul
 git clone git@ssh.nova.teachx.ai:trace-analysis/grokos-packages/grok-policyd.git
 ```
 
+## Cap'n on the wire (foundational)
+
+**sessiond, policyd, agent, and shell all speak Cap'n Proto over nng.** Same on-the-wire model: Cap'n multi-segment body on nng req/rep `ipc://` sockets. No parallel JSON/protobuf control plane, no second framing magic, no “this package is C strings and that one is Cap'n.”
+
+| Socket (typical) | Schema | Speakers |
+|------------------|--------|----------|
+| `sessiond.sock` | `session.capnp` | sessiond **SERVER**; agent, shell, `grokos` **CLIENT** |
+| `policyd.sock` | `policy.capnp` | policyd **peer** (binds); sessiond and agent **dial** |
+
+Different schemas, same Cap'n+nng language. Process-local C (`supervisor.h`) is the in-process TCB surface; cross-process product path is always Cap'n.
+
 ## Two planes
 
 | Plane | Package | Role |
 |-------|---------|------|
-| **Seat** session goals | [grokos-session](https://nova.teachx.ai/trace-analysis/grokos-packages/grokos-session) | Cap'n Goal / CancelGoal and run board (`session.capnp`, nng Cap'n body) |
-| **Multi-agent TCB** | **this package** | Agent start / stop / status / log and default-deny tool policy; Cap'n **peer** on `policy.capnp` |
+| **Seat** | [grokos-session](https://nova.teachx.ai/trace-analysis/grokos-packages/grokos-session) | Goal / CancelGoal and run board on `session.capnp` |
+| **Multi-agent TCB** | **this package** | Lifecycle + fail-closed policy; Cap'n peer on `policy.capnp` |
 
-Embedders use the **C library** (`libgrok_policyd`). Cross-process use is `grok-policyd serve` over nng req/rep: message body is Cap'n `schema/policy.capnp` (no stream frame). That peer **wraps** the library; it is **not** the seat Cap'n server.
+Embedders may link `libgrok_policyd` in-process. Cross-process use is `grok-policyd serve` (Cap'n body only — no stream frame). That peer wraps the library; it is not the seat server.
 
 ## What it does
 
