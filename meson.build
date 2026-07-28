@@ -34,10 +34,12 @@ inc = include_directories(
   'include',
   'src',
   'tests',
-  'third_party/c-capnproto/lib',
 )
 
 cmocka_dep = dependency('cmocka', required: true)
+# Cap'n pure-C runtime from the c-capnproto package (libcapnp_c). Do not
+# vendor/static-compile capn-malloc into the TCB — that path bit-rotted.
+capn_c_dep = dependency('c-capnproto', required: true)
 capnp = find_program('capnp', required: true)
 capnpc_c = find_program('capnpc-c', required: true)
 gen_capnp = find_program('scripts/gen-capnp-c.sh', required: true)
@@ -55,13 +57,6 @@ schema_gen = custom_target(
 
 schema_inc = include_directories('.')
 
-# Pure-C Cap'n runtime (vendored) — linked into the TCB so FFI speaks Cap'n.
-capn_runtime = files(
-  'third_party/c-capnproto/lib/capn.c',
-  'third_party/c-capnproto/lib/capn-malloc.c',
-  'third_party/c-capnproto/lib/capn-stream.c',
-)
-
 lib_srcs = files(
   'src/paths.c',
   'src/action_log.c',
@@ -70,12 +65,13 @@ lib_srcs = files(
   'src/supervisor.c',
   'src/version.c',
   'src/capnp_api.c',
-) + capn_runtime + [schema_gen]
+) + [schema_gen]
 
 policyd_lib = library(
   'grok_policyd',
   lib_srcs,
   include_directories: [inc, schema_inc],
+  dependencies: [capn_c_dep],
   version: ver,
   soversion: soversion,
   install: true,
@@ -97,6 +93,7 @@ pkg.generate(
   url: 'https://nova.teachx.ai/trace-analysis/grokos-packages/grok-policyd',
   filebase: 'grok-policyd',
   subdirs: '.',
+  requires: 'c-capnproto',
 )
 
 cli = executable(
@@ -104,6 +101,7 @@ cli = executable(
   files('src/grok-policyd.c'),
   include_directories: inc,
   link_with: policyd_lib,
+  dependencies: [capn_c_dep],
   install: true,
 )
 
@@ -112,6 +110,7 @@ example = executable(
   files('examples/c/minimal.c'),
   include_directories: inc,
   link_with: policyd_lib,
+  dependencies: [capn_c_dep],
   install: false,
 )
 
@@ -131,7 +130,7 @@ supervisor_test = executable(
   ),
   include_directories: [inc, schema_inc],
   link_with: policyd_lib,
-  dependencies: [cmocka_dep],
+  dependencies: [cmocka_dep, capn_c_dep],
   c_args: ['-Wno-format-truncation'],
   install: false,
 )
