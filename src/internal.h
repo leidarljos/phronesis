@@ -30,25 +30,8 @@ int grok_policy_eval(const char *workspace,
 		     const char *path,
 		     grok_policy_result_t *out);
 
-/* Path mkdir helpers (currently Unix; process/path backends will widen). */
+/* Path mkdir helpers (Unix). */
 #include <sys/types.h>
 int grok_unix_mkdir_leaf(const char *path, mode_t mode);
-int grok_unix_ensure_socket_parent(const char *socket_path);
-
-/*
- * CLI host backend (not linked into libgrok_policyd.so).
- * Portable surface: stop flag + optional service-manager notify.
- * Serve never requires sd_event; nng drives I/O.
- */
-int grok_host_init(void);
-void grok_host_fini(void);
-int grok_host_should_stop(void);
-void grok_host_request_stop(void);
-void grok_host_notify_ready(void);
-void grok_host_notify_stopping(void);
-void grok_host_watchdog_ping(void);
-int grok_host_drop_bounding_caps(void);
-/** Short name for logs: "posix", "linux-systemd", "linux-systemd+libcap". */
-const char *grok_host_backend_name(void);
 
 #endif

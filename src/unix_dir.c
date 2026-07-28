@@ -53,24 +53,3 @@ int grok_unix_mkdir_leaf(const char *path, mode_t mode)
 	return GROK_ERR_IO;
 }
 
-int grok_unix_ensure_socket_parent(const char *socket_path)
-{
-	char *dup;
-	char *slash;
-	int rc;
-
-	if (!socket_path || !socket_path[0])
-		return GROK_ERR_INVAL;
-	dup = strdup(socket_path);
-	if (!dup)
-		return GROK_ERR_IO;
-	slash = strrchr(dup, '/');
-	if (!slash || slash == dup) {
-		free(dup);
-		return GROK_OK;
-	}
-	*slash = '\0';
-	rc = grok_unix_mkdir_leaf(dup, 0700);
-	free(dup);
-	return rc;
-}
