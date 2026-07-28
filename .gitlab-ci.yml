@@ -1,4 +1,4 @@
-# Reproducible via pixi (pixi.lock). Host C library + cmocka tests.
+# Reproducible via pixi (pixi.lock). Host C library + cmocka tests + full docs.
 stages: [validate, build]
 
 variables:
@@ -65,7 +65,15 @@ validate:manifest:
   script:
     - test -f README.md
     - test -f include/grok-policyd/supervisor.h
-    - test -f Makefile
+    - test -f meson.build
+    - test -f meson_options.txt
+    - test ! -f Makefile
+    - test -f src/host_posix.c
+    - test -f src/host_linux_systemd.c
+    - test ! -f src/host_platform.c
+    - test -f tests/test_main.c
+    - test -f tests/test_wire_frame.c
+    - ! grep -q '^int main' tests/test_wire_frame.c
     - test -f VERSION
     - test -f API_VERSION
     - test -f pixi.toml
@@ -104,11 +112,46 @@ build:pixi:
     - bash scripts/check-version.sh
     - pixi run -e ci build
     - test -f build/libgrok_policyd.a
-    - test -f build/libgrok_policyd.so.0.1.0
-    - test -f build/grok-policyd.pc
+    - test -e build/libgrok_policyd.so -o -e build/libgrok_policyd.so.0
+    - test -x build/grok-policyd
+    - test -x build/supervisor_test
+    - test -x build/example_minimal
+    - test ! -e build/test_wire_frame
     - ./build/example_minimal
+    - ./build/supervisor_test
   after_script:
-    - rm -rf build .pixi/envs || true
+    - rm -rf build docs/build .pixi/envs || true
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+docs:pixi:
+  stage: build
+  image: debian:bookworm-slim
+  interruptible: true
+  cache:
+    key:
+      files:
+        - pixi.lock
+        - docs/requirements.txt
+      prefix: "pixi-policyd-docs"
+    paths:
+      - .cache/rattler/
+      - .cache/pixi-home/
+    policy: pull-push
+  before_script:
+    - *pixi_bootstrap
+    - export PATH="${PIXI_HOME}/bin:${HOME}/.pixi/bin:${PATH}"
+    - rm -rf .pixi/envs
+    - pixi install --locked -e docs
+  script:
+    - export PATH="${PIXI_HOME}/bin:${HOME}/.pixi/bin:${PATH}"
+    - bash scripts/check-version.sh
+    - pixi run -e docs docs
+    - test -f docs/build/doxygen/xml/index.xml
+    - test -f docs/build/html/index.html
+  after_script:
+    - rm -rf build docs/build .pixi/envs || true
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
