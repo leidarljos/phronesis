@@ -1,67 +1,120 @@
-**Agents/contributors:** [AGENTS.md](./AGENTS.md) · [CONTRIBUTING.md](./CONTRIBUTING.md). Issues: [meta](https://nova.teachx.ai/trace-analysis/grokos/-/issues).
-
 # grok-policyd
 
-Policy / multi-agent supervisor TCB for GrokOS (non-LLM). Host library + CLI for agent lifecycle and fail-closed tool checks.
+Policy and multi-agent supervisor trusted computing base for [GrokOS](https://nova.teachx.ai/trace-analysis/grokos). Non-language-model host library and command-line tool for agent lifecycle and fail-closed tool checks.
 
 | | |
 |--|--|
-| **Parent meta** | https://nova.teachx.ai/trace-analysis/grokos |
-| **Catalog** | `packages/MANIFEST.yml` in meta |
-| **Stable C ABI** | `include/grok-policyd/supervisor.h` (package version in `VERSION`, API gen in `API_VERSION`) |
+| **Meta project** | https://nova.teachx.ai/trace-analysis/grokos |
+| **Issues** | https://nova.teachx.ai/trace-analysis/grokos/-/issues |
+| **Catalog** | `packages/MANIFEST.yml` in the meta repository |
+| **Public C interface** | `include/grok-policyd/supervisor.h` |
+| **Package version** | `VERSION` |
+| **Application programming interface generation** | `API_VERSION` |
 
-## Two engines (do not confuse them)
+Claim work on meta issues tagged for **grok-policyd**. Every merge request here should link `trace-analysis/grokos#N`. Prefer host unit tests; fail closed on security and policy paths. Signed commits are required — run `./scripts/setup-commit-signing.sh` if signing fails; do not disable `commit.gpgsign`.
+
+```bash
+git clone git@ssh.nova.teachx.ai:trace-analysis/grokos-packages/grok-policyd.git
+```
+
+## Two planes
+
+GrokOS has two related but separate surfaces. Do not mix them up.
 
 | Plane | Package | Role |
 |-------|---------|------|
-| **Seat** Cap'n Goal / CancelGoal for the human session | [grokos-session](https://nova.teachx.ai/trace-analysis/grokos-packages/grokos-session) (`grokos-proc` / `InProcessSupervisor`) | Seat process tree for goals; **already live** |
-| **Multi-agent TCB** lifecycle + policy | **this package** (`grok_supervisor_*`) | Agent start/stop/status/log + default-deny tools |
+| **Seat** session goals | [grokos-session](https://nova.teachx.ai/trace-analysis/grokos-packages/grokos-session) (`grokos-proc` / `InProcessSupervisor`) | Cap'n Proto Goal / CancelGoal for the human session process tree — already live |
+| **Multi-agent trusted computing base** | **this package** (`grok_supervisor_*`) | Agent start / stop / status / log and default-deny tool policy |
 
-**Host FFI** is the stable C ABI in this package (static or shared `libgrok_policyd`). **Session ↔ policyd Cap'n peer wire** is a separate track (meta #70); it will wrap this library, not replace the header.
+The stable embedder surface here is the **C library** (static or shared `libgrok_policyd`). Cross-process use is a Cap'n **peer** (meta issue #70): own Unix domain socket, frame magic **GKPP**, schema `schema/policy.capnp`, started with `grok-policyd serve`. That peer **wraps** this library; it does not replace the header and is **not** the seat Cap'n server (seat bus stays **GKSP** / `session.capnp` in grokos-session).
 
-### Why not cbindgen?
+The implementation is pure C, so the public header is hand-maintained source of truth (not a cbindgen export). Language bindings (for example Rust in `grokos-shell`) use hand-written `extern "C"` or bindgen against this header.
 
-[rgpot](https://github.com/OmniPotentRPC/rgpot), featomic, and metatensor implement the core in **Rust** and emit C headers with **cbindgen**. This package is pure **C**: the header **is** the source of truth. The same product surface still applies — versioned library, Doxygen on the public API, Sphinx + breathe reference — without a fake cbindgen step. Language bindings (Rust) use hand `extern "C"` or bindgen *against* this header (see `grokos-shell` `product/src/policyd.rs`).
-
-## What this package does (now)
+## What it does
 
 - **start / status / stop / log** for agent processes (process-group leader)
-- **stop** = process-group SIGTERM→SIGKILL; on Linux, **best-effort `cgroup.kill`** when a writable cgroup v2 child can be created, then process-group as safety net
-- **action log** JSONL under state (`log/actions.jsonl`)
-- **policy check**: tools **default deny**; high-risk actions → **prompt**; `read`/`write` under the agent workspace root may **allow** (**lexical** allowlist: absolute paths only, rejects `..` components; **not** realpath — symlink escape still open)
-- **Installable C library**: `libgrok_policyd.a` / `.so`, pkg-config, version queries (`grok_policyd_version_string`, `grok_policyd_api_version`)
-- **Docs**: Doxygen + Sphinx/breathe (`pixi run -e docs …`)
-- **Dev env**: `pixi.toml` + `pixi.lock` (compilers, cmocka, docs)
-- Host unit tests via **cmocka** (`make test`; `pkg-config cmocka`; Alpine: `cmocka-dev`); CI runs the same
+- **stop** sends process-group `SIGTERM` then `SIGKILL`; on Linux, best-effort `cgroup.kill` when a writable cgroup version 2 child can be created, with process-group as the safety net
+- **action log** as JSON Lines under state (`log/actions.jsonl`)
+- **policy check**: tools **default deny**; high-risk actions return **prompt**; `read` / `write` under the agent workspace root may **allow** via a **lexical** allowlist (absolute paths only, rejects `..` components — not realpath, so symlink escape past the workspace is still open)
+- Installable library: `libgrok_policyd.a` / `.so`, pkg-config, version queries (`grok_policyd_version_string`, `grok_policyd_api_version`)
+- Host unit tests with **cmocka**
 
-## What this package does **not** do yet
+Current limits worth knowing when embedding: multi-UID agent identities and systemd unit templates are not shipped; macOS and locked cgroup hierarchies fall back to process-group; high-risk actions are an exact-match string table until a structured catalog lands; Cap'n codec on the peer path is a minimal hand codec until a full capnp-c cutover.
 
-- No UDS daemon / Cap'n wire between sessiond and policyd (session Cap'n Goal plane is already shipped; missing piece is the **policyd peer**, not seat Cap'n)
-- No multi-UID agent identities or systemd unit templates (meta #29)
-- No guaranteed cgroup on every host (macOS and locked cgroup hierarchies fall back to process-group; children that `setpgid` away can escape until a real delegated cgroup is required)
-- No path **canonicalization** (symlink-based escape past workspace root) — intentional stub limit
-- No fake model / capability store (other packages / tickets)
-- No full confirm UX (decision is `prompt`; human channel not implemented here)
-- High-risk actions are an exact-match string table (stub); a structured tool/action catalog is follow-up (#25 / S3)
+### Cap'n peer and seat spine
 
-## Build
+The seat Cap'n Goal plane and run board live in **grokos-session** (server). This package is the multi-agent trusted computing base and Cap'n **peer**.
 
-**Entry point is pixi** (same pattern as `grokos-session` / `grokos-shell`).
-`Makefile` is the compile recipe backend; do not invent host `apk`/`apt` toolchains for dogfood.
+| Item | Role |
+|------|------|
+| **Host C surface** | Embedders (shell/agent today) link `supervisor.h` for lifecycle and `policy_check` |
+| **Cap'n peer** (`serve`, GKPP, `policy.capnp`) | Cross-process wire; sessiond is Cap'n **client** when `policyd.sock` is present |
+| **Seat gate (skeleton)** | Same-uid peercred + socket mode is the real isolation gate; `tool=seat` and model/`start` admit stay broad ALLOW for seat dogfood; unknown admit kinds fail closed |
+
+Shell and agent stay Cap'n clients of **sessiond** only. They do not open a Cap'n listener on policyd.
+
+## Public surface
+
+Include only:
+
+```c
+#include <grok-policyd/supervisor.h>
+```
+
+Opaque handle `grok_supervisor_t` may change layout freely. Public structs, enums, fixed buffer sizes, and function signatures stay stable within a `GROK_POLICYD_API_VERSION` generation. Additive functions do not require an application programming interface bump.
+
+Three version counters (do not conflate them):
+
+| Counter | Source | Purpose |
+|---------|--------|---------|
+| Package semantic version | `VERSION` | Human / release number (`0.1.0`) |
+| Shared object name major | package major | ELF link name `libgrok_policyd.so.0` while major is 0 |
+| Application programming interface generation | `API_VERSION` | Link-compat for the C surface; embedders key on `GROK_POLICYD_API_VERSION` |
+
+Edit `VERSION` / `API_VERSION`, run `./scripts/sync-version.sh`, gate with `./scripts/check-version.sh` (also run from `make lib`).
+
+Minimal open / start / stop:
+
+```c
+#include "grok-policyd/supervisor.h"
+
+grok_supervisor_t *sup = NULL;
+char *argv[] = { "sleep", "60", NULL };
+
+if (grok_supervisor_open(&sup, state_dir, runtime_dir) != GROK_OK)
+    return 1;
+grok_supervisor_start(sup, "agent-a", "agent", workspace, argv);
+grok_supervisor_stop(sup, "agent-a");
+grok_supervisor_close(sup);
+```
+
+Version check at load time:
+
+```c
+if (grok_policyd_api_version() < GROK_POLICYD_API_VERSION) {
+    /* headers newer than linked library */
+}
+```
+
+## Build and test
+
+**Entry point is pixi** (same pattern as `grokos-session` / `grokos-shell`). The `Makefile` is the compile recipe backend; do not invent ad-hoc host package-manager toolchains for day-to-day work.
 
 ```bash
 pixi install --locked
-pixi run test                 # lib + CLI + cmocka suites
-pixi run lib                  # static + shared lib + pkg-config
+pixi run test                 # library + command-line tool + cmocka suites
+pixi run lib                  # static + shared library + pkg-config
 pixi run example              # examples/c/minimal.c
 pixi run build                # lib + test + example
-pixi run ci                   # env-info + build (CI gate)
-pixi run install              # PREFIX default /usr/local (override with make)
+pixi run ci                   # env-info + build (continuous integration gate)
+pixi run install              # PREFIX default /usr/local
 ```
 
-Host tests use **cmocka** from the pixi env (`pkg-config cmocka`).
+Host tests need **cmocka** from the pixi environment (`pkg-config cmocka`). Suites live under `tests/test_*.c` (paths, lifecycle, kill tree, action log, persistence, policy, version).
 
-Version single-source: edit `VERSION` / `API_VERSION`, run `./scripts/sync-version.sh`, gate with `./scripts/check-version.sh` (also `make lib`). SONAME follows **package major**; embedders key on `GROK_POLICYD_API_VERSION` (see docs architecture).
+### Command-line smoke
+
+Runtime root under `/tmp` is rejected. Prefer cache or `/var/tmp`.
 
 ```bash
 STATE=$(mktemp -d -p "${XDG_CACHE_HOME:-$HOME/.cache}")
@@ -73,42 +126,27 @@ RUN=$(mktemp -d -p "${XDG_CACHE_HOME:-$HOME/.cache}")
 ./build/grok-policyd --state-dir "$STATE" --runtime-dir "$RUN" stop agent-a
 ```
 
-Paths: `GROKOS_STATE_DIR`, `GROKOS_RUNTIME_DIR`, `GROKOS_ACTION_LOG`, else XDG host defaults. Runtime root `/tmp` is rejected.
+Paths resolve from `GROKOS_STATE_DIR`, `GROKOS_RUNTIME_DIR`, `GROKOS_ACTION_LOG`, else XDG host defaults.
 
-### Documentation
-
-```bash
-pixi install --locked -e docs
-pixi run -e docs doxygen      # HTML + XML (breathe)
-pixi run -e docs docs         # doxygen + Sphinx HTML
-```
-
-Architecture notes: `docs/source/architecture.rst`, `docs/orgmode/architecture.org`.
-Host tests (cmocka): `docs/source/testing.rst`.
-
-### Embedding (C)
+### Link from C
 
 ```bash
 cc $(pkg-config --cflags grok-policyd) myapp.c \
    $(pkg-config --libs grok-policyd) -o myapp
 ```
 
-Public header only: `#include <grok-policyd/supervisor.h>`.
+Or vendor `src/*.c` into a static archive (as `grokos-shell` does). pkg-config template: `packaging/grok-policyd.pc.in` (expanded by `make pc` / `make install`).
 
 ## Layout
 
 ```
-include/grok-policyd/   public headers (stable C ABI)
-src/                    library + CLI
+include/grok-policyd/   public headers (stable C interface)
+src/                    library + command-line tool
 tests/                  host tests (cmocka)
 examples/c/             minimal C consumer
-docs/                   Doxygen + Sphinx/breathe
 packaging/              pkg-config template
+scripts/                version sync, signing setup
 build/                  outputs (gitignored)
 ```
 
-## Clone
-
-```bash
-git clone git@ssh.nova.teachx.ai:trace-analysis/grokos-packages/grok-policyd.git
-```
+License: Apache-2.0 (`LICENSE`).
