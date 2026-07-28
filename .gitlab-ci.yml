@@ -68,8 +68,9 @@ validate:manifest:
     - test -f meson.build
     - test -f meson_options.txt
     - test ! -f Makefile
-    - test -f src/host_posix.c
-    - test -f src/host_linux_systemd.c
+    - test -f src/host.c
+    - test ! -f src/host_posix.c
+    - test ! -f src/host_linux_systemd.c
     - test ! -f src/host_platform.c
     - test -f tests/test_main.c
     - test -f tests/test_wire_frame.c

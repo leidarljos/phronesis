@@ -135,30 +135,22 @@ pkg.generate(
   subdirs: '.',
 )
 
-# --- host backend: one of posix | linux-systemd ---
-if have_systemd
-  host_srcs = files('src/host_linux_systemd.c')
-else
-  host_srcs = files('src/host_posix.c')
-endif
-
-wire_srcs = files(
-  'src/wire/codec_c_capn.c',
-  'src/wire/serve.c',
-) + host_srcs
-
+# --- CLI host glue (signals + optional systemd/libcap); not in TCB .so ---
 host_dep = [nng_dep, capnp_c_dep]
+host_c_args = ['-Wno-unused-parameter']
 if have_systemd
   host_dep += [systemd_dep]
+  host_c_args += ['-DGROK_HAVE_SYSTEMD=1']
 endif
 if have_libcap
   host_dep += [cap_dep]
-endif
-
-host_c_args = ['-Wno-unused-parameter']
-if have_libcap
   host_c_args += ['-DGROK_HAVE_LIBCAP=1']
 endif
+
+wire_srcs = files(
+  'src/wire/serve.c',
+  'src/host.c',
+)
 
 wire_lib = static_library(
   'policyd_wire',

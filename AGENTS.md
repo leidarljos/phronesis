@@ -81,13 +81,12 @@ buffers. Fail closed on policy/ACL paths.
 
 ## Host backend (Unix seat first)
 
-Product target is a **Unix/Linux seat** (Windows/macOS later). Cap'n serve is
-**nng-native** (recv timeout + stop flag) on all builds.
+Product target is a **Unix/Linux seat**. Cap'n serve is **nng-native**
+(recv timeout + stop flag). Host glue is one file:
 
-- `src/host_posix.c` — signals only (`-Dsystemd=disabled` or auto miss).
-- `src/host_linux_systemd.c` — sd_notify READY/STOPPING/WATCHDOG + optional libcap (`-Dsystemd=auto|enabled`).
-- **Do not** put serve I/O back on `sd_event` / epoll. Host is notify/watchdog/caps only.
-- Meson options: `systemd` and `libcap` features (default `auto`).
-- Process engine stays POSIX (`fork`/`setpgid`/process-group); cgroup v2 is Linux best-effort.
+- `src/host.c` — SIGTERM/SIGINT stop flag; optional `sd_notify` / libcap via
+  Meson features `systemd` and `libcap` (`-DGROK_HAVE_SYSTEMD` / `GROK_HAVE_LIBCAP`).
+- **Do not** put serve I/O on `sd_event` / epoll. Host is notify/watchdog/caps only.
+- Process engine stays POSIX; cgroup v2 is Linux best-effort.
 
 See `docs/source/host-backends.rst`.

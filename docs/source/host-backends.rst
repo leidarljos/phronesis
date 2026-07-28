@@ -23,7 +23,7 @@ Layers
      - **POSIX today** (``fork`` / ``setpgid`` / process-group kill)
    * - cgroup v2 (``cgroup.c``)
      - Linux accelerator; no-op stubs elsewhere
-   * - Host backend (``host_*.c``)
+   * - Host (``host.c``)
      - Optional seat glue — **not** required for Cap'n I/O
 
 Serve is never driven by ``sd_event``. Linux units still get ``READY=`` /
@@ -36,7 +36,7 @@ Meson features
 .. code-block:: bash
 
    meson setup build                     # auto: systemd+libcap if present
-   meson setup build -Dsystemd=disabled  # posix host only (no libsystemd)
+   meson setup build -Dsystemd=disabled  # no libsystemd / sd_notify
    meson setup build -Dlibcap=disabled   # no capability drop
 
 .. list-table::
@@ -48,16 +48,15 @@ Meson features
      - Effect
    * - ``systemd``
      - ``auto``
-     - ``host_linux_systemd.c`` vs ``host_posix.c``
+     - ``-DGROK_HAVE_SYSTEMD`` + link libsystemd for ``sd_notify``
    * - ``libcap``
      - ``auto``
-     - ``GROK_HAVE_LIBCAP`` + link ``-lcap`` for drop-when-root
+     - ``-DGROK_HAVE_LIBCAP`` + link ``-lcap`` for drop-when-root
 
 Host API (CLI only)
 -------------------
 
-Implemented by exactly one of ``src/host_posix.c`` or
-``src/host_linux_systemd.c``:
+One file: ``src/host.c`` (ifdefs for systemd/libcap):
 
 * ``grok_host_init`` / ``fini``
 * ``grok_host_should_stop`` / ``request_stop``
