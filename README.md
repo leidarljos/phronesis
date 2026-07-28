@@ -10,18 +10,11 @@ Policy and multi-agent supervisor **TCB** for [GrokOS](https://nova.teachx.ai/tr
 | **Product API** | `grok_policyd_handle_capnp()` (in-process FFI) |
 | **C helpers** | `include/grok-policyd/supervisor.h` |
 
-## Cap'n language, FFI call path
+## Cap'n FFI
 
-**Everyone talks Cap'n.** Callers (sessiond, agent, shell) compose `PolicyEnvelope`
-bodies and call **into this library** — they do **not** dial a policyd socket.
-
-| Plane | How |
-|-------|-----|
-| Seat control | Cap'n + nng → **sessiond** (`session.capnp`) |
-| Policy / multi-agent TCB | Cap'n body → **`grok_policyd_handle_capnp`** (this package, linked) |
-
-There is **no** `grok-policyd serve` / `policyd.sock` product path. nng stays on
-the seat bus only.
+Callers (sessiond, agent, shell) compose `PolicyEnvelope` bodies and call
+**`grok_policyd_handle_capnp`** on a linked `libgrok_policyd`. Cap'n pure-C
+runtime is the **c-capnproto** package (`libcapnp_c`).
 
 ```c
 #include <grok-policyd/supervisor.h>
@@ -39,8 +32,7 @@ if (grok_policyd_handle_capnp(sup, req, req_len, &resp, &resp_len) == 0) {
 grok_supervisor_close(sup);
 ```
 
-Ops on the Cap'n surface: `status`, `check`, `admit`, `agentStatus`
-(see `schema/policy.capnp`).
+Ops: `status`, `check`, `admit`, `agentStatus` (see `schema/policy.capnp`).
 
 String `grok_policy_check` remains for CLI/tests.
 
@@ -49,7 +41,7 @@ String `grok_policy_check` remains for CLI/tests.
 ```bash
 pixi install --locked
 pixi run test
-pixi run coverage   # optional: Meson -Db_coverage → coverage-out/
+pixi run coverage   # optional gcovr
 ```
 
 ## Layout
@@ -59,7 +51,7 @@ schema/policy.capnp          Cap'n SoT
 include/grok-policyd/        Public C ABI (includes handle_capnp)
 src/capnp_api.c              Cap'n dispatch → TCB
 src/policy.c supervisor.c …  TCB
-tests/                       cmocka (incl. Cap'n body round-trips)
+tests/                       cmocka (Cap'n FFI + lifecycle)
 ```
 
 ## License

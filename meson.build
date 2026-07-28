@@ -125,7 +125,7 @@ supervisor_test = executable(
     'tests/test_persist.c',
     'tests/test_policy.c',
     'tests/test_version.c',
-    'tests/test_wire_frame.c',
+    'tests/test_capnp_ffi.c',
     'tests/test_main.c',
   ),
   include_directories: [inc, schema_inc],

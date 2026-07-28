@@ -322,12 +322,12 @@ static void test_admit_model_via_handle(void **state)
 	(void)rmdir(base);
 }
 
-int run_wire_frame_tests(void)
+int run_capnp_ffi_tests(void)
 {
 	const struct CMUnitTest tests[] = {
 		cmocka_unit_test(test_status_request_via_handle),
 		cmocka_unit_test(test_check_seat_via_handle),
 		cmocka_unit_test(test_admit_model_via_handle),
 	};
-	return cmocka_run_group_tests_name("wire_frame", tests, NULL, NULL);
+	return cmocka_run_group_tests_name("capnp_ffi", tests, NULL, NULL);
 }
