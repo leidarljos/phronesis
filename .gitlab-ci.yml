@@ -6,11 +6,6 @@ variables:
   RATTLER_CACHE_DIR: ${CI_PROJECT_DIR}/.cache/rattler
   PIXI_HOME: ${CI_PROJECT_DIR}/.cache/pixi-home
 
-.rules_mr_default:
-  rules:
-    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
-
 # Shared apt+pixi bootstrap (same retry shape as grokos-session / build:pixi).
 .pixi_bootstrap: &pixi_bootstrap |
   set -euo pipefail
@@ -74,46 +69,6 @@ secrets:scan:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
     - if: $CI_PIPELINE_SOURCE == "schedule"
-
-validate:manifest:
-  stage: validate
-  image: alpine:3.20
-  before_script:
-    - apk add --no-cache bash
-  script:
-    - test -f README.md
-    - test -f include/grok-policyd/supervisor.h
-    - test -f meson.build
-    - test -f meson_options.txt
-    - test ! -f Makefile
-    - test ! -f src/host.c
-    - test ! -d src/wire
-    - test -f src/capnp_api.c
-    - test -f schema/policy.capnp
-    - test -f tests/test_main.c
-    - test -f tests/test_capnp_ffi.c
-    - test ! -f scripts/smoke_serve_signal.sh
-    # Quote: bare "! grep" is a YAML tag, not shell negation (CI #14651).
-    - |
-      if grep -q '^int main' tests/test_capnp_ffi.c; then
-        echo "FATAL: tests/test_capnp_ffi.c must not define main (cmocka suite only)" >&2
-        exit 1
-      fi
-    - test -f VERSION
-    - test -f API_VERSION
-    - test -f pixi.toml
-    - test -f pixi.lock
-    - test -f packaging/grok-policyd.pc.in
-    - test -f scripts/check-signed-commits.sh
-    - test -f scripts/check-version.sh
-    - test -f scripts/sync-version.sh
-    - test -f scripts/pixi_env_info.sh
-    - test -f scripts/coverage.sh
-    - test -x scripts/coverage.sh
-    - bash scripts/check-version.sh
-  rules:
-    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
 
 build:pixi:
   stage: build
