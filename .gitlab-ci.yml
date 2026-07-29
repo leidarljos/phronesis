@@ -6,11 +6,6 @@ variables:
   RATTLER_CACHE_DIR: ${CI_PROJECT_DIR}/.cache/rattler
   PIXI_HOME: ${CI_PROJECT_DIR}/.cache/pixi-home
 
-.rules_mr_default:
-  rules:
-    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
-
 # Shared apt+pixi bootstrap (same retry shape as grokos-session / build:pixi).
 .pixi_bootstrap: &pixi_bootstrap |
   set -euo pipefail
