@@ -1,0 +1,23 @@
+# Mull mutation testing — used when building with -Dmutation=true.
+# Scope: policy evaluation + Cap'n dispatch (high-value, pure logic).
+# https://mull.readthedocs.io/en/latest/MullConfig.html
+
+# Focus on decision / comparison logic. free()/capn_free and magic return
+# replacements are mostly noise for this core (cleanup paths rarely asserted).
+mutators:
+  - cxx_eq_to_ne
+  - cxx_ne_to_eq
+  - cxx_lt_to_le
+  - cxx_le_to_lt
+  - cxx_gt_to_ge
+  - cxx_ge_to_gt
+  - cxx_logical
+
+includePaths:
+  - .*/src/policy\.c$
+  - .*/src/capnp_api\.c$
+
+excludePaths:
+  - .*/tests/.*
+  - .*/policy\.capnp\.c$
+  - .*/examples/.*

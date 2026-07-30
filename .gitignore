@@ -1,5 +1,6 @@
 /build/
 /build-cov/
+/build-mull/
 /coverage-out/
 /docs/build/
 *.o
