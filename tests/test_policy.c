@@ -31,6 +31,7 @@ static void test_tools_default_deny(void **state)
 	(void)state;
 	assert_int_equal(t_open_pair(&s, st, sizeof(st), rt, sizeof(rt), "pol"), GROK_OK);
 	assert_int_equal(grok_supervisor_start(s, "agent-a", NULL, "/ws/proj", argv), GROK_OK);
+	/* shell/exec with empty path or outside workspace stays deny */
 	assert_int_equal(grok_policy_check(s, "agent-a", "shell", "exec", NULL, &pr), GROK_OK);
 	assert_int_equal(pr.decision, GROK_DECISION_DENY);
 	assert_int_equal(grok_policy_check(s, "agent-a", "shell", "exec", "/etc/passwd", &pr), GROK_OK);
@@ -38,6 +39,61 @@ static void test_tools_default_deny(void **state)
 	assert_int_equal(grok_policy_check(s, "agent-a", "", "read", "/ws/proj/a", &pr), GROK_OK);
 	assert_int_equal(pr.decision, GROK_DECISION_DENY);
 	assert_int_equal(grok_supervisor_stop(s, "agent-a"), GROK_OK);
+	grok_supervisor_close(s);
+	t_rm_rf(st);
+	t_rm_rf(rt);
+}
+
+static void test_shell_exec_workspace_allow(void **state)
+{
+	grok_supervisor_t *s = NULL;
+	char st[GROK_PATH_MAX], rt[GROK_PATH_MAX];
+	grok_policy_result_t pr;
+	char *argv[] = { "true", NULL };
+
+	(void)state;
+	assert_int_equal(t_open_pair(&s, st, sizeof(st), rt, sizeof(rt), "shx"), GROK_OK);
+	assert_int_equal(grok_supervisor_start(s, "agent-a", NULL, "/ws/proj", argv), GROK_OK);
+
+	/* path = absolute cwd / target root under workspace → allow */
+	assert_int_equal(grok_policy_check(s, "agent-a", "shell", "exec", "/ws/proj", &pr),
+			 GROK_OK);
+	assert_int_equal(pr.decision, GROK_DECISION_ALLOW);
+	assert_non_null(strstr(pr.reason, "shell exec under workspace"));
+	assert_int_equal(grok_policy_check(s, "agent-a", "shell", "exec", "/ws/proj/sub", &pr),
+			 GROK_OK);
+	assert_int_equal(pr.decision, GROK_DECISION_ALLOW);
+
+	/* empty path, outside workspace, unclean → deny */
+	assert_int_equal(grok_policy_check(s, "agent-a", "shell", "exec", NULL, &pr), GROK_OK);
+	assert_int_equal(pr.decision, GROK_DECISION_DENY);
+	assert_int_equal(grok_policy_check(s, "agent-a", "shell", "exec", "/ws/other", &pr),
+			 GROK_OK);
+	assert_int_equal(pr.decision, GROK_DECISION_DENY);
+	assert_int_equal(grok_policy_check(s, "agent-a", "shell", "exec",
+					   "/ws/proj/../etc", &pr),
+			 GROK_OK);
+	assert_int_equal(pr.decision, GROK_DECISION_DENY);
+
+	/* high-risk action still prompts (precedence over shell allow) */
+	assert_int_equal(grok_policy_check(s, "agent-a", "shell", "sudo", "/ws/proj", &pr),
+			 GROK_OK);
+	assert_int_equal(pr.decision, GROK_DECISION_PROMPT);
+
+	/* no workspace on agent → deny even under a path that looks absolute */
+	assert_int_equal(grok_supervisor_start(s, "agent-b", NULL, NULL, argv), GROK_OK);
+	assert_int_equal(grok_policy_check(s, "agent-b", "shell", "exec", "/ws/proj", &pr),
+			 GROK_OK);
+	assert_int_equal(pr.decision, GROK_DECISION_DENY);
+
+	/* unknown agent → empty workspace → deny */
+	assert_int_equal(grok_policy_check(s, "agent-missing", "shell", "exec", "/ws/proj",
+					   &pr),
+			 GROK_OK);
+	assert_int_equal(pr.decision, GROK_DECISION_DENY);
+
+	wait_stopped(s, "agent-a");
+	wait_stopped(s, "agent-b");
 	grok_supervisor_close(s);
 	t_rm_rf(st);
 	t_rm_rf(rt);
@@ -136,6 +192,7 @@ int run_policy_tests(void)
 {
 	const struct CMUnitTest tests[] = {
 		cmocka_unit_test(test_tools_default_deny),
+		cmocka_unit_test(test_shell_exec_workspace_allow),
 		cmocka_unit_test(test_workspace_allowlist),
 		cmocka_unit_test(test_high_risk_prompt),
 		cmocka_unit_test(test_policy_logged),
