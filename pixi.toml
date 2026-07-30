@@ -34,7 +34,7 @@ build = { depends-on = ["test", "example"] }
 cli = { cmd = "meson compile -C build grok-policyd", depends-on = ["setup"] }
 install = { cmd = "meson install -C build", depends-on = ["compile"] }
 coverage = "bash scripts/coverage.sh"
-ci = { depends-on = ["env-info", "build"] }
+ci = { depends-on = ["build"] }
 
 [environments]
 default = { solve-group = "default" }

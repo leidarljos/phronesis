@@ -1,6 +1,12 @@
 # Reproducible via pixi (pixi.lock). Host C library + cmocka tests + full docs.
 stages: [validate, build]
 
+# Cancel redundant pipelines on the same ref when a newer commit is pushed.
+# Jobs must be interruptible: true for running work to stop (not only pending).
+workflow:
+  auto_cancel:
+    on_new_commit: interruptible
+
 variables:
   FF_USE_FASTZIP: "true"
   RATTLER_CACHE_DIR: ${CI_PROJECT_DIR}/.cache/rattler
@@ -39,9 +45,35 @@ variables:
   hash -r
   pixi --version
 
+.pixi_cache: &pixi_cache
+  key:
+    files:
+      - pixi.lock
+    prefix: "pixi-policyd"
+  paths:
+    - .cache/rattler/
+    - .cache/pixi-home/
+  policy: pull-push
+
+.pixi_prepare: &pixi_prepare
+  - *pixi_bootstrap
+  - export PATH="${PIXI_HOME}/bin:${HOME}/.pixi/bin:${PATH}"
+  - rm -rf .pixi/envs
+  - pixi install --locked -e ci
+
+# Policy / Cap'n surface — when these change, run mutation.
+.mutation_paths: &mutation_paths
+  - src/policy.c
+  - src/capnp_api.c
+  - schema/policy.capnp
+  - mull.yml
+  - tests/test_policy.c
+  - tests/test_capnp_ffi.c
+
 commits:signed:
   stage: validate
   image: python:3.12-alpine
+  interruptible: true
   variables:
     GIT_DEPTH: "100"
   before_script:
@@ -52,11 +84,11 @@ commits:signed:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
 
-
 # Secrets gate via grokos-tools kit (pin + fetch). See SECRETS_TOOLS_PIN.
 secrets:scan:
   stage: validate
   image: alpine:3.20
+  interruptible: true
   variables:
     GIT_DEPTH: "0"
   before_script:
@@ -74,34 +106,13 @@ build:pixi:
   stage: build
   image: debian:bookworm-slim
   interruptible: true
-  cache:
-    key:
-      files:
-        - pixi.lock
-      prefix: "pixi-policyd"
-    paths:
-      - .cache/rattler/
-      - .cache/pixi-home/
-    policy: pull-push
-  before_script:
-    - *pixi_bootstrap
-    - export PATH="${PIXI_HOME}/bin:${HOME}/.pixi/bin:${PATH}"
-    - rm -rf .pixi/envs
-    - pixi install --locked -e ci
+  cache: *pixi_cache
+  before_script: *pixi_prepare
   script:
     - export PATH="${PIXI_HOME}/bin:${HOME}/.pixi/bin:${PATH}"
-    - pixi run -e ci env-info
-    - bash scripts/check-version.sh
+    # pixi `build` = meson test + example (suite is the gate; version checked at meson setup).
+    - export POLICYD_BIN="${CI_PROJECT_DIR}/build/grok-policyd"
     - pixi run -e ci build
-    - test -f build/libgrok_policyd.a
-    - test -e build/libgrok_policyd.so -o -e build/libgrok_policyd.so.0
-    - test -x build/grok-policyd
-    - test -x build/supervisor_test
-    - pixi run -e ci bash -c 'nm build/libgrok_policyd.a | grep -q grok_policyd_handle_capnp'
-    - test -x build/example_minimal
-    - test ! -e build/test_capnp_ffi
-    - ./build/example_minimal
-    - ./build/supervisor_test
   after_script:
     - rm -rf build build-cov docs/build .pixi/envs || true
   rules:
@@ -113,26 +124,11 @@ coverage:pixi:
   stage: build
   image: debian:bookworm-slim
   interruptible: true
-  cache:
-    key:
-      files:
-        - pixi.lock
-      prefix: "pixi-policyd"
-    paths:
-      - .cache/rattler/
-      - .cache/pixi-home/
-    policy: pull-push
-  before_script:
-    - *pixi_bootstrap
-    - export PATH="${PIXI_HOME}/bin:${HOME}/.pixi/bin:${PATH}"
-    - rm -rf .pixi/envs
-    - pixi install --locked -e ci
+  cache: *pixi_cache
+  before_script: *pixi_prepare
   script:
     - export PATH="${PIXI_HOME}/bin:${HOME}/.pixi/bin:${PATH}"
     - pixi run -e ci coverage
-    - test -s coverage-out/coverage.xml
-    - test -s coverage-out/coverage.txt
-    - cat coverage-out/coverage.txt
   artifacts:
     when: always
     paths:
@@ -150,3 +146,71 @@ coverage:pixi:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
 
+# Mull on policy/Cap'n. Soft on survivors via mull-runner --allow-surviving
+# (Meson run_target); job fails only on install/build/tool errors.
+mutation:mull:
+  stage: build
+  # Mull Cloudsmith packages are Ubuntu-only (not Debian bookworm).
+  image: ubuntu:24.04
+  interruptible: true
+  timeout: 30m
+  # Pixi cache + apt .deb archive cache (Ubuntu noble only — do not share with bookworm jobs).
+  cache:
+    - key:
+        files:
+          - pixi.lock
+        prefix: "pixi-policyd"
+      paths:
+        - .cache/rattler/
+        - .cache/pixi-home/
+      policy: pull-push
+    - key: "apt-mull-ubuntu-24.04"
+      paths:
+        - .cache/apt/archives/
+      policy: pull-push
+  before_script:
+    - *pixi_prepare
+    # Quiet apt repo (avoid Cloudsmith setup.deb.sh banner / NOPE noise).
+    # Cache .debs under .cache/apt/archives so reinstalls skip re-download.
+    - export DEBIAN_FRONTEND=noninteractive
+    - export APT_ARCHIVES="${CI_PROJECT_DIR}/.cache/apt/archives"
+    - mkdir -p "${APT_ARCHIVES}/partial"
+    - apt-get update -qq
+    - apt-get install -y -qq -o Dir::Cache::Archives="${APT_ARCHIVES}" --no-install-recommends ca-certificates curl gnupg
+    - install -d /usr/share/keyrings
+    - curl -fsSL https://dl.cloudsmith.io/public/mull-project/mull-stable/gpg.41DB35380DE6BD6F.key | gpg --dearmor -o /usr/share/keyrings/mull-project-mull-stable-archive-keyring.gpg
+    - echo 'deb [signed-by=/usr/share/keyrings/mull-project-mull-stable-archive-keyring.gpg] https://dl.cloudsmith.io/public/mull-project/mull-stable/deb/ubuntu noble main' > /etc/apt/sources.list.d/mull-stable.list
+    - apt-get update -qq
+    - apt-get install -y -qq -o Dir::Cache::Archives="${APT_ARCHIVES}" --no-install-recommends clang-19 mull-19
+    - rm -rf /var/lib/apt/lists/*
+  script:
+    # Use pixi env for meson/pkg-config deps only. Do not `pixi run`: that
+    # activates conda compilers and overrides CC to gcc, which breaks Mull.
+    - PIXI_ENV="${CI_PROJECT_DIR}/.pixi/envs/ci"
+    - export PATH="${PIXI_ENV}/bin:${PIXI_HOME}/bin:${PATH}"
+    - export PKG_CONFIG_PATH="${PIXI_ENV}/lib/pkgconfig${PKG_CONFIG_PATH:+:${PKG_CONFIG_PATH}}"
+    - export LD_LIBRARY_PATH="${PIXI_ENV}/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
+    - export CC=/usr/bin/clang-19
+    - rm -rf build-mull
+    - meson setup build-mull -Dmutation=true -Dbuildtype=debug
+    - meson compile -C build-mull mutation
+    # IDE reporter is a file; echo survivors into the job log (no triage script).
+    - |
+      if [ -f build-mull/mull-report/grok-policyd.txt ]; then
+        echo "======== Mull survivors ========"
+        cat build-mull/mull-report/grok-policyd.txt
+        echo "======== end Mull survivors ========"
+      fi
+  artifacts:
+    when: always
+    paths:
+      - build-mull/mull-report/
+    expire_in: 14 days
+  after_script:
+    - rm -rf .pixi/envs || true
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      changes: *mutation_paths
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      changes: *mutation_paths
+    - if: $CI_PIPELINE_SOURCE == "schedule"

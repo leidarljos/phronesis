@@ -6,7 +6,6 @@
 #include <stddef.h>
 #include <cmocka.h>
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 
@@ -59,45 +58,11 @@ static void test_corrupt_slot(void **state)
 	t_rm_rf(rt);
 }
 
-static void test_cli_subprocess_roundtrip(void **state)
-{
-	char st[GROK_PATH_MAX], rt[GROK_PATH_MAX];
-	char cmd[1024];
-	const char *bin = getenv("POLICYD_BIN");
-
-	(void)state;
-	if (!bin || !bin[0])
-		bin = "build/grok-policyd";
-	if (access(bin, X_OK) != 0) {
-		skip();
-	}
-	assert_int_equal(t_tmpdir(st, sizeof(st), "gp-cli-st"), 0);
-	assert_int_equal(t_tmpdir(rt, sizeof(rt), "gp-cli-rt"), 0);
-	snprintf(cmd, sizeof(cmd),
-		 "%s --state-dir '%s' --runtime-dir '%s' start agent-cli -- sleep 60",
-		 bin, st, rt);
-	assert_int_equal(system(cmd), 0);
-	snprintf(cmd, sizeof(cmd),
-		 "%s --state-dir '%s' --runtime-dir '%s' status agent-cli | grep -q running",
-		 bin, st, rt);
-	assert_int_equal(system(cmd), 0);
-	snprintf(cmd, sizeof(cmd),
-		 "%s --state-dir '%s' --runtime-dir '%s' stop agent-cli", bin, st, rt);
-	assert_int_equal(system(cmd), 0);
-	snprintf(cmd, sizeof(cmd),
-		 "%s --state-dir '%s' --runtime-dir '%s' status agent-cli | grep -q stopped",
-		 bin, st, rt);
-	assert_int_equal(system(cmd), 0);
-	t_rm_rf(st);
-	t_rm_rf(rt);
-}
-
 int run_persist_tests(void)
 {
 	const struct CMUnitTest tests[] = {
 		cmocka_unit_test(test_slot_survives_reopen),
 		cmocka_unit_test(test_corrupt_slot),
-		cmocka_unit_test(test_cli_subprocess_roundtrip),
 	};
 	return cmocka_run_group_tests_name("persist", tests, NULL, NULL);
 }

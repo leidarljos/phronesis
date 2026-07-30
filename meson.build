@@ -47,6 +47,53 @@ gen_capnp = find_program('scripts/gen-capnp-c.sh', required: true)
 check_version = find_program('scripts/check-version.sh', required: true)
 run_command(check_version, check: true)
 
+fs = import('fs')
+
+# --- Mull mutation testing (optional, Clang-only) -------------------------
+# Enable:  CC=clang-19 meson setup build-mull -Dmutation=true -Dbuildtype=debug
+# Run:     meson compile -C build-mull mutation
+mull_c_args = []
+if get_option('mutation')
+  if cc.get_id() != 'clang'
+    error('mutation=true requires Clang as the C compiler (set CC=clang-N)')
+  endif
+  mull_runner = find_program(
+    'mull-runner-19',
+    'mull-runner-18',
+    'mull-runner-20',
+    'mull-runner',
+    required: true,
+  )
+  mull_plugin = get_option('mull_pass_plugin')
+  if mull_plugin == ''
+    # Derive /usr/lib/mull-ir-frontend-N from mull-runner-N (override with option).
+    runner_base = fs.name(mull_runner.full_path())
+    ver_suffix = runner_base.replace('mull-runner-', '').replace('mull-runner', '')
+    if ver_suffix != ''
+      cand = '/usr/lib/mull-ir-frontend-' + ver_suffix
+      if fs.exists(cand)
+        mull_plugin = cand
+      endif
+    endif
+  endif
+  if mull_plugin == '' or not fs.exists(mull_plugin)
+    error(
+      'mutation=true: set -Dmull_pass_plugin=/path/to/mull-ir-frontend-N '
+      + '(or install Mull so /usr/lib/mull-ir-frontend-N exists)',
+    )
+  endif
+  mull_c_args = [
+    '-fpass-plugin=' + mull_plugin,
+    '-g',
+    '-grecord-command-line',
+    '-O0',
+  ]
+  message('Mull mutation: runner=@0@ plugin=@1@'.format(
+    mull_runner.full_path(),
+    mull_plugin,
+  ))
+endif
+
 schema_gen = custom_target(
   'policy_capnp',
   input: files('schema/policy.capnp'),
@@ -67,6 +114,9 @@ lib_srcs = files(
   'src/capnp_api.c',
 ) + [schema_gen]
 
+# Default-hidden visibility: only GROK_POLICYD_API symbols leave the .so.
+# Tests link the static archive so they can exercise internal helpers without
+# exporting those helpers to embedders.
 policyd_lib = library(
   'grok_policyd',
   lib_srcs,
@@ -75,7 +125,8 @@ policyd_lib = library(
   version: ver,
   soversion: soversion,
   install: true,
-  gnu_symbol_visibility: 'default',
+  gnu_symbol_visibility: 'hidden',
+  c_args: mull_c_args,
 )
 
 install_headers(
@@ -129,9 +180,10 @@ supervisor_test = executable(
     'tests/test_main.c',
   ),
   include_directories: [inc, schema_inc],
-  link_with: policyd_lib,
+  # Static so tests can use a few internal helpers without exporting them on the .so.
+  link_with: policyd_lib.get_static_lib(),
   dependencies: [cmocka_dep, capn_c_dep],
-  c_args: ['-Wno-format-truncation'],
+  c_args: ['-Wno-format-truncation'] + mull_c_args,
   install: false,
 )
 
@@ -141,17 +193,45 @@ test(
   protocol: 'exitcode',
   timeout: 120,
   workdir: meson.project_source_root(),
+  env: {
+    'POLICYD_BUILD_DIR': meson.project_build_root(),
+  },
 )
 
+# Product link-line for the shipped .so (export + Cap'n runtime + no peer stack).
 bash = find_program('bash', required: true)
 test(
-  'check_shared_libs',
+  'shared_link',
   bash,
-  args: [meson.project_source_root() / 'scripts/check_shared_libs.sh'],
+  args: [meson.project_source_root() / 'scripts/check_shared_link.sh'],
   env: {'POLICYD_BUILD_DIR': meson.project_build_root()},
   depends: [policyd_lib],
   workdir: meson.project_source_root(),
 )
+
+if get_option('mutation')
+  # Optional mutation signal on policy/Cap'n. Soft on survivors until Cap'n
+  # fail-closed asserts own more of the kill set.
+  mull_report_dir = meson.current_build_dir() / 'mull-report'
+  run_target(
+    'mutation',
+    command: [
+      mull_runner,
+      '--timeout', '15000',
+      '--allow-surviving',
+      '--report-name', 'grok-policyd',
+      '--report-dir', mull_report_dir,
+      '--reporters', 'Elements',
+      '--reporters', 'IDE',
+      supervisor_test,
+    ],
+    depends: [supervisor_test],
+    env: {
+      'MULL_CONFIG': meson.project_source_root() / 'mull.yml',
+      'POLICYD_BUILD_DIR': meson.project_build_root(),
+    },
+  )
+endif
 
 alias_target('lib', policyd_lib)
 alias_target('cli', cli)
