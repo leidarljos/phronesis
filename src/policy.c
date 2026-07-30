@@ -131,6 +131,19 @@ int grok_policy_eval(const char *workspace,
 		return GROK_OK;
 	}
 
+	/*
+	 * shell/exec: path is absolute cwd or target root for the proposed
+	 * command (no argv on the wire). Lexical workspace allowlist only.
+	 * Empty workspace, empty path, unclean path, or outside → deny.
+	 */
+	if (strcmp(tool, "shell") == 0 && strcmp(action, "exec") == 0 &&
+	    path && path[0] && path_under_workspace(workspace, path)) {
+		out->decision = GROK_DECISION_ALLOW;
+		snprintf(out->reason, sizeof(out->reason),
+			 "shell exec under workspace allowlist");
+		return GROK_OK;
+	}
+
 	out->decision = GROK_DECISION_DENY;
 	if (path && path[0] && !path_under_workspace(workspace, path))
 		snprintf(out->reason, sizeof(out->reason), "path outside workspace (deny)");

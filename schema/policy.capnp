@@ -38,11 +38,15 @@ struct PolicyRequest {
 struct PolicyCheck {
   # Agent identity string chosen by the caller (e.g. seat run id).
   agentId @0 :Text;
-  # Tool namespace: "seat", "model", or path-policy tools.
+  # Tool namespace: "seat", "model", "fs", "shell", or other path-policy tools.
   tool @1 :Text;
-  # Action under tool: publish_run|read_run|list_runs|list_events|start|read|write|…
+  # Action under tool: publish_run|read_run|list_runs|list_events|start|read|write|
+  # exec|…  High-risk action names (delete, network, sudo, …) → Decision.prompt.
   action @2 :Text;
-  # Optional path or run id; empty when unused. Path checks are lexical only.
+  # Optional absolute path; empty when unused. Path checks are lexical only
+  # (no realpath). For tool=shell action=exec: absolute cwd or target root of the
+  # proposed command — must sit under the agent workspace for Decision.allow.
+  # Argv is not on this wire in Track 1 (meta #88).
   path @3 :Text;
 }
 
