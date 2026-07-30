@@ -1,1 +1,19 @@
 # Library + Cap'n FFI only (no optional nng serve host features).
+
+# Instrument with Mull (Clang pass plugin) and expose `meson compile mutation`.
+# Requires Clang as CC and a matching mull-runner / mull-ir-frontend install.
+option(
+  'mutation',
+  type: 'boolean',
+  value: false,
+  description: 'Build with Mull IR frontend; enable mutation run target',
+)
+
+# Path to mull-ir-frontend-N shared object. Empty → search common install paths
+# from the discovered mull-runner version suffix.
+option(
+  'mull_pass_plugin',
+  type: 'string',
+  value: '',
+  description: 'Path to mull-ir-frontend pass plugin (.so)',
+)
