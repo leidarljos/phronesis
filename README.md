@@ -1,6 +1,6 @@
 # grok-policyd
 
-Policy and multi-agent supervisor **TCB** for [GrokOS](https://nova.teachx.ai/trace-analysis/grokos).
+Policy and multi-agent supervisor (security-critical core) for [GrokOS](https://nova.teachx.ai/trace-analysis/grokos).
 
 | | |
 |--|--|
@@ -67,14 +67,45 @@ pixi run test
 pixi run coverage   # optional gcovr
 ```
 
+### Mutation testing (Mull)
+
+Optional. Needs **Clang** and a matching **Mull** install (`mull-runner-N` +
+`mull-ir-frontend-N` from [Mull packages](https://mull.readthedocs.io/en/latest/Installation.html)).
+Config: [`mull.yml`](mull.yml) (scopes mutants to `src/policy.c` and
+`src/capnp_api.c`).
+
+```bash
+pixi install --locked
+export PATH="$PWD/.pixi/envs/ci/bin:$PATH"
+export PKG_CONFIG_PATH="$PWD/.pixi/envs/ci/lib/pkgconfig"
+export LD_LIBRARY_PATH="$PWD/.pixi/envs/ci/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+export CC=clang-19   # must be real Clang; not conda gcc from `pixi run`
+meson setup build-mull -Dmutation=true -Dbuildtype=debug
+meson compile -C build-mull mutation
+# report: build-mull/mull-report/
+```
+
+Optional: `-Dmull_pass_plugin=/path/to/mull-ir-frontend-19`.
+
+The Meson `mutation` target passes `--allow-surviving` so the report is always
+produced without failing the build on known survivors. To gate later: drop that
+flag or set Mull’s `--mutation-score-threshold`.
+
+### Continuous integration
+
+Job **`mutation:mull`**: Ubuntu 24.04, system Clang + Mull, pixi for deps only
+(`CC=/usr/bin/clang-19`). Path-triggered on policy/Cap'n changes and on
+schedules. Prints the IDE survivor list at the end of the job log; full report
+under artifact `build-mull/mull-report/`.
+
 ## Layout
 
 ```text
-schema/policy.capnp          Cap'n SoT
-include/grok-policyd/        Public C ABI (includes handle_capnp)
-src/capnp_api.c              Cap'n dispatch → TCB
-src/policy.c supervisor.c …  TCB
-tests/                       cmocka (Cap'n FFI + lifecycle)
+schema/policy.capnp          Cap'n schema (source of truth)
+include/grok-policyd/        Public C API (includes handle_capnp)
+src/capnp_api.c              Cap'n dispatch
+src/policy.c supervisor.c …  Policy / supervisor core
+tests/                       cmocka (Cap'n handle_capnp + lifecycle)
 ```
 
 ## License

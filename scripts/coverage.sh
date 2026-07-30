@@ -15,6 +15,8 @@ command -v gcovr >/dev/null 2>&1 || {
 rm -rf "$B" "$OUT"
 meson setup "$B" -Db_coverage=true -Dbuildtype=debug
 meson compile -C "$B"
+export POLICYD_BUILD_DIR="$ROOT/$B"
+export POLICYD_BIN="$ROOT/$B/grok-policyd"
 meson test -C "$B" --print-errorlogs
 
 mkdir -p "$OUT"

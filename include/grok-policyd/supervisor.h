@@ -64,14 +64,24 @@ extern "C" {
 #define GROK_POLICYD_API_VERSION 1
 
 /**
+ * ELF visibility for the public ABI. Internal helpers stay hidden when the
+ * shared library is built with default-hidden visibility (see meson.build).
+ */
+#if defined(__GNUC__) || defined(__clang__)
+#define GROK_POLICYD_API __attribute__((visibility("default")))
+#else
+#define GROK_POLICYD_API
+#endif
+
+/**
  * @return Runtime package version string (matches @ref GROK_POLICYD_VERSION).
  */
-const char *grok_policyd_version_string(void);
+GROK_POLICYD_API const char *grok_policyd_version_string(void);
 
 /**
  * @return Runtime API generation (matches @ref GROK_POLICYD_API_VERSION).
  */
-int grok_policyd_api_version(void);
+GROK_POLICYD_API int grok_policyd_api_version(void);
 
 /** @} */
 
@@ -205,30 +215,30 @@ typedef struct grok_supervisor grok_supervisor_t;
  * @note Paths are created as needed. Concurrent opens of the same dirs from
  *       multiple processes are not coordinated (single-host TCB assumption).
  */
-int grok_supervisor_open(grok_supervisor_t **out,
-			 const char *state_dir,
-			 const char *runtime_dir);
+GROK_POLICYD_API int grok_supervisor_open(grok_supervisor_t **out,
+					  const char *state_dir,
+					  const char *runtime_dir);
 
 /**
  * Close @a s and free all resources. Safe with NULL.
  */
-void grok_supervisor_close(grok_supervisor_t *s);
+GROK_POLICYD_API void grok_supervisor_close(grok_supervisor_t *s);
 
 /**
  * @return Absolute path of the JSONL action log, or empty string if unset.
  *         Valid until @ref grok_supervisor_close.
  */
-const char *grok_supervisor_action_log_path(const grok_supervisor_t *s);
+GROK_POLICYD_API const char *grok_supervisor_action_log_path(const grok_supervisor_t *s);
 
 /**
  * @return Resolved state directory. Valid until close.
  */
-const char *grok_supervisor_state_dir(const grok_supervisor_t *s);
+GROK_POLICYD_API const char *grok_supervisor_state_dir(const grok_supervisor_t *s);
 
 /**
  * @return Resolved runtime directory. Valid until close.
  */
-const char *grok_supervisor_runtime_dir(const grok_supervisor_t *s);
+GROK_POLICYD_API const char *grok_supervisor_runtime_dir(const grok_supervisor_t *s);
 
 /** @} */
 
@@ -247,20 +257,20 @@ const char *grok_supervisor_runtime_dir(const grok_supervisor_t *s);
  * @param argv        NULL-terminated argv; argv[0] is the executable.
  * @return @ref GROK_OK, @ref GROK_ERR_EXISTS, @ref GROK_ERR_SPAWN, etc.
  */
-int grok_supervisor_start(grok_supervisor_t *s,
-			  const char *agent_id,
-			  const char *mode,
-			  const char *workspace,
-			  char *const argv[]);
+GROK_POLICYD_API int grok_supervisor_start(grok_supervisor_t *s,
+					   const char *agent_id,
+					   const char *mode,
+					   const char *workspace,
+					   char *const argv[]);
 
 /**
  * Fill @a out with the current status of @a agent_id (reaps zombies).
  *
  * @return @ref GROK_OK or @ref GROK_ERR_NOTFOUND / @ref GROK_ERR_INVAL.
  */
-int grok_supervisor_status(grok_supervisor_t *s,
-			   const char *agent_id,
-			   grok_agent_status_t *out);
+GROK_POLICYD_API int grok_supervisor_status(grok_supervisor_t *s,
+					    const char *agent_id,
+					    grok_agent_status_t *out);
 
 /**
  * Stop @a agent_id: SIGTERM→SIGKILL on the process group; best-effort
@@ -268,24 +278,25 @@ int grok_supervisor_status(grok_supervisor_t *s,
  *
  * @return @ref GROK_OK or @ref GROK_ERR_NOTFOUND / @ref GROK_ERR_STATE.
  */
-int grok_supervisor_stop(grok_supervisor_t *s, const char *agent_id);
+GROK_POLICYD_API int grok_supervisor_stop(grok_supervisor_t *s,
+					  const char *agent_id);
 
 /**
  * Append a structured line to the action log for @a agent_id.
  */
-int grok_supervisor_log(grok_supervisor_t *s,
-			const char *agent_id,
-			const char *kind,
-			const char *detail);
+GROK_POLICYD_API int grok_supervisor_log(grok_supervisor_t *s,
+					 const char *agent_id,
+					 const char *kind,
+					 const char *detail);
 
 /**
  * Copy the last action-log line into @a buf (NUL-terminated, truncated).
  *
  * @return @ref GROK_OK or @ref GROK_ERR_IO / @ref GROK_ERR_INVAL.
  */
-int grok_supervisor_log_last(const grok_supervisor_t *s,
-			     char *buf,
-			     size_t buflen);
+GROK_POLICYD_API int grok_supervisor_log_last(const grok_supervisor_t *s,
+					      char *buf,
+					      size_t buflen);
 
 /** @} */
 
@@ -310,12 +321,12 @@ int grok_supervisor_log_last(const grok_supervisor_t *s,
  * @return @ref GROK_OK on a completed evaluation (including deny/prompt).
  *         Negative codes only for invalid inputs / missing agent.
  */
-int grok_policy_check(grok_supervisor_t *s,
-		      const char *agent_id,
-		      const char *tool,
-		      const char *action,
-		      const char *path,
-		      grok_policy_result_t *out);
+GROK_POLICYD_API int grok_policy_check(grok_supervisor_t *s,
+				       const char *agent_id,
+				       const char *tool,
+				       const char *action,
+				       const char *path,
+				       grok_policy_result_t *out);
 
 /** @} */
 
@@ -342,11 +353,11 @@ int grok_policy_check(grok_supervisor_t *s,
  * @return 0 on success (response in *@a out), -1 on encode failure.
  *         Invalid requests usually still return 0 with a Cap'n error body.
  */
-int grok_policyd_handle_capnp(grok_supervisor_t *sup,
-			      const uint8_t *in,
-			      size_t in_len,
-			      uint8_t **out,
-			      size_t *out_len);
+GROK_POLICYD_API int grok_policyd_handle_capnp(grok_supervisor_t *sup,
+					       const uint8_t *in,
+					       size_t in_len,
+					       uint8_t **out,
+					       size_t *out_len);
 
 /** @} */
 
