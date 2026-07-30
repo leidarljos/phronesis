@@ -36,6 +36,7 @@ inc = include_directories(
   'tests',
 )
 
+# cmocka for unit tests (CI + Mull). Library itself only needs c-capnproto.
 cmocka_dep = dependency('cmocka', required: true)
 # Cap'n pure-C runtime from the c-capnproto package (libcapnp_c). Do not
 # vendor/static-compile capn-malloc into the TCB — that path bit-rotted.
@@ -136,6 +137,7 @@ install_headers(
 
 # Install schema SoT for embedders / code generation.
 install_data('schema/policy.capnp', install_dir: get_option('datadir') / 'grok-policyd')
+install_data('schema/util.capnp', install_dir: get_option('datadir') / 'grok-policyd')
 
 pkg.generate(
   policyd_lib,
