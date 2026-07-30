@@ -27,7 +27,8 @@ env-info = "bash scripts/pixi_env_info.sh"
 clean = "rm -rf build build-cov coverage-out"
 setup = { cmd = "bash -c 'if [ -f build/build.ninja ]; then meson setup build --reconfigure; else meson setup build; fi'" }
 compile = { cmd = "meson compile -C build", depends-on = ["setup"] }
-lib = { cmd = "meson compile -C build grok_policyd", depends-on = ["setup"] }
+# Both shared + static (default_library=both); name disambiguated for Meson.
+lib = { cmd = "meson compile -C build grok_policyd:shared_library grok_policyd:static_library", depends-on = ["setup"] }
 test = { cmd = "meson compile -C build && meson test -C build --print-errorlogs", depends-on = ["setup"] }
 example = { cmd = "meson compile -C build example_minimal", depends-on = ["setup"] }
 build = { depends-on = ["test", "example"] }

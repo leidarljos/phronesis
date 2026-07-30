@@ -13,8 +13,13 @@ Policy and multi-agent supervisor (security-critical core) for [GrokOS](https://
 ## Cap'n FFI
 
 Callers (sessiond, agent, shell) compose `PolicyEnvelope` bodies and call
-**`grok_policyd_handle_capnp`** on a linked `libgrok_policyd`. Cap'n pure-C
-runtime is the **c-capnproto** package (`libcapnp_c`).
+**`grok_policyd_handle_capnp`** on a **linked** `libgrok_policyd` (shared or
+static). Cap'n pure-C runtime is the **c-capnproto** package (`libcapnp_c`).
+
+Do **not** copy this tree into consumer `vendor/policyd/` and recompile with
+`cc` — that drifts from the TCB and breaks the packaging story. Consumers use
+`pkg-config grok-policyd` or monorepo `GROK_POLICYD_DIR=$PWD/build` after
+`pixi run lib`.
 
 ```c
 #include <grok-policyd/supervisor.h>
