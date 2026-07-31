@@ -1,3 +1,9 @@
+# Host hygiene: tools just door (signed-commits + secrets).
+include:
+  - project: 'trace-analysis/grokos-packages/grokos-tools'
+    ref: main
+    file: '/ci-kit/bootstrap/package-validate.gitlab-ci.yml'
+
 # Reproducible via pixi (pixi.lock). Host C library + cmocka tests + full docs.
 stages: [validate, build]
 
@@ -70,37 +76,6 @@ variables:
   - tests/test_policy.c
   - tests/test_capnp_ffi.c
 
-commits:signed:
-  stage: validate
-  image: python:3.12-alpine
-  interruptible: true
-  variables:
-    GIT_DEPTH: "100"
-  before_script:
-    - apk add --no-cache bash curl git
-  script:
-    - ./scripts/check-signed-commits.sh
-  rules:
-    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
-
-# Secrets gate via grokos-tools kit (pin + fetch). See SECRETS_TOOLS_PIN.
-secrets:scan:
-  stage: validate
-  image: alpine:3.20
-  interruptible: true
-  variables:
-    GIT_DEPTH: "0"
-  before_script:
-    - apk add --no-cache bash git python3 coreutils
-  script:
-    - KIT="$(bash scripts/secrets/fetch-tools.sh)"
-    - bash "${KIT}/self-test.sh"
-    - SECRETS_SCAN_ROOT="$PWD" bash "${KIT}/check-no-secrets.sh"
-  rules:
-    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
-    - if: $CI_PIPELINE_SOURCE == "schedule"
 
 build:pixi:
   stage: build
