@@ -1,158 +1,198 @@
-# GrokOS policyd Cap'n language.
-# Product API: grok_policyd_handle_capnp(sup, request_body, …) with PolicyEnvelope
-# messages. Schema SoT; embedders pin a copy for Rust/C codegen.
+# GrokOS policyd Cap'n API (TCB FFI language).
+# Source of truth: trace-analysis/grokos-packages/grokos-schema
+#
+# Role
+# ----
+# Product API is grok_policyd_handle_capnp(sup, request_body, …) with
+# PolicyEnvelope messages. In-process only (static link / FFI). There is no
+# policyd.sock product peer for seat/model admit.
+#
+# Speakers: grok-policyd tests/CLI; sessiond / grokos-agent / grokos-shell
+# embed the same schema for Cap'n check/admit.
+#
+# Trust
+# -----
+# agentId on this FFI is Text holding the 32-char lowercase hex of
+# Util.AgentId (xxh3-128). It is NOT free-form open content / labels.
+# The TCB does not authenticate agentId; seat plane joins it to GROKOS_RUN_ID
+# by convention. Path checks are lexical only (no symlink resolution).
+# Fail closed on overlong Cap'n text relative to internal C buffers.
+#
+# Evolution
+# ---------
+# protocolVersion must be 1. Prefer new union arms over reusing ordinals.
+# deprecated fields stay until all embedders migrate (Sandstorm style).
 
 @0xe2859f3833215a0b;
 
-# Top-level FFI message. Set body to request (caller→TCB) or response (TCB→caller).
+using Util = import "util.capnp";
+
+# ------------------------------------------------------------------------------
+# Envelope
+# ------------------------------------------------------------------------------
+
 struct PolicyEnvelope {
-  # Envelope version. Handler requires 1.
+  # Top-level FFI message. Set body to request (caller→TCB) or response (TCB→caller).
+
   protocolVersion @0 :UInt32 = 1;
-  # Optional correlation id for logs (may be empty). Not authorization.
+  # Handler requires 1.
+
   traceId @1 :Text;
+  # Optional correlation for logs. Not authorization. May be empty.
+
   body :union {
-    # Inbound op (status | check | admit | agentStatus).
     request @2 :PolicyRequest;
-    # Outbound result (status | check | admit | agentStatus | error).
     response @3 :PolicyResponse;
   }
 }
 
-# Inbound op. Exactly one arm of op.
+# ------------------------------------------------------------------------------
+# Request
+# ------------------------------------------------------------------------------
+
 struct PolicyRequest {
+  # Exactly one op.
+
   op :union {
-    # Supervisor open snapshot: version, apiVersion, paths, ready.
     status @0 :Void;
-    # Path/tool policy evaluation → PolicyDecision on response.check.
+    # Supervisor open snapshot → PolicydStatus.
+
     check @1 :PolicyCheck;
-    # Coarse admit by kind string → PolicyDecision on response.admit.
-    # kind map: "seat"→seat/publish_run; "model"|"agent"|""→model/start;
-    # other kind → response.error fail-closed.
+    # Path/tool policy evaluation → PolicyDecision on response.check.
+
     admit @2 :PolicyAdmit;
-    # Look up one agent slot → response.agentStatus (or error if missing).
+    # Coarse admit by kind → PolicyDecision on response.admit.
+    # Mapping (fail-closed on unknown kind):
+    #   seat  → tool=seat,  action=publish_run (or SeatAction via check)
+    #   model → tool=model, action=start
+    #   agent → tool=model, action=start (alias)
+    #   ""    → tool=model, action=start (legacy empty)
+
     agentStatus @3 :AgentQuery;
+    # Look up one agent slot → response.agentStatus (or error if missing).
   }
 }
 
-# check arm payload.
 struct PolicyCheck {
-  # Agent identity string chosen by the caller (e.g. seat run id).
+  # Full tool/action/path check (seat, model, or filesystem tools).
+
   agentId @0 :Text;
-  # Tool namespace: "seat", "model", "fs", "shell", or other path-policy tools.
+  # 32-hex of Util.AgentId (or empty). Not a free label.
+
   tool @1 :Text;
-  # Action under tool: publish_run|read_run|list_runs|list_events|start|read|write|
-  # exec|…  High-risk action names (delete, network, sudo, …) → Decision.prompt.
+  # Tool namespace. Canonical closed values used by product:
+  #   "seat"  — seat board ops (see seatAction)
+  #   "model" — model process admit
+  #   "fs"|"shell"|… — path policy (open set for tools)
+  # Prefer exact tokens above; unknown tools fail closed or deny per TCB.
+
   action @2 :Text;
-  # Optional absolute path; empty when unused. Path checks are lexical only
-  # (no realpath). For tool=shell action=exec: absolute cwd or target root of the
-  # proposed command — must sit under the agent workspace for Decision.allow.
-  # Argv is not on this wire in Track 1 (meta #88).
+  # Action under tool. Canonical seat actions: publish_run, list_runs, read_run,
+  # list_events. Canonical model action: start. Filesystem: read, write, exec, …
+
   path @3 :Text;
+  # Optional path or run id; empty when unused. Path checks are lexical only.
 }
 
-# admit arm payload.
 struct PolicyAdmit {
-  # Same identity convention as PolicyCheck.agentId.
+  # Coarse admit. Prefer check() when tool/action are known.
+
   agentId @0 :Text;
-  # Admit kind (see PolicyRequest.op.admit). Unknown kinds fail closed.
+  # 32-hex of Util.AgentId (or empty). Not a free label.
   kind @1 :Text;
-  # Free-form log detail; not used as a filesystem path.
+  # Admit kind string (see PolicyRequest.op.admit mapping). Unknown → error.
   detail @2 :Text;
+  # Free-form log detail; not used as a filesystem path.
 }
 
-# agentStatus arm payload.
 struct AgentQuery {
-  # Agent id to query via grok_supervisor_status.
   agentId @0 :Text;
+  # 32-hex of Util.AgentId to query via grok_supervisor_status.
 }
 
-# Outbound result. Exactly one arm of ok.
+# ------------------------------------------------------------------------------
+# Response
+# ------------------------------------------------------------------------------
+
 struct PolicyResponse {
+  # Exactly one ok arm.
+
   ok :union {
-    # Filled for status.
     status @0 :PolicydStatus;
-    # Filled for check.
     check @1 :PolicyDecision;
-    # Filled for admit (same shape as check).
     admit @2 :PolicyDecision;
-    # Filled for agentStatus.
+    # Same shape as check.
     agentStatus @3 :AgentStatusWire;
-    # Protocol/TCB failure (not Decision.deny). Unknown op, bad fields, etc.
     error @4 :PolicyError;
+    # Protocol/TCB failure (not Decision.deny). Unknown op, bad fields, etc.
   }
 }
 
-# status arm payload: open supervisor snapshot.
 struct PolicydStatus {
-  # Package version string (GROK_POLICYD_VERSION).
   version @0 :Text;
-  # ABI generation (GROK_POLICYD_API_VERSION).
+  # Package version string (GROK_POLICYD_VERSION).
   apiVersion @1 :Int32;
-  # Resolved state directory.
+  # ABI generation (GROK_POLICYD_API_VERSION).
   stateDir @2 :Text;
-  # Resolved runtime directory.
   runtimeDir @3 :Text;
-  # Legacy field name. Handler sets the literal "ffi" (in-process Cap'n).
   socket @4 :Text;
-  # True when the supervisor handle is open and ready for further ops.
+  # Legacy field name. Handler sets the literal "ffi" (in-process Cap'n).
+  # Not a filesystem path to a daemon. Prefer ignoring for product control.
   ready @5 :Bool;
+  # True when the supervisor handle is open and ready for further ops.
 }
 
-# Decision enum for PolicyDecision.decision.
 enum Decision {
-  # Hard deny.
+  # Outcome of PolicyDecision.decision.
   deny @0;
-  # Allowed.
+  # Hard deny.
   allow @1;
-  # Needs confirm. Some seat callers treat prompt as allow; check the caller.
+  # Allowed.
   prompt @2;
+  # Needs confirm. Some seat callers treat prompt as allow; check the caller.
 }
 
-# Shared decision body for check and admit responses.
 struct PolicyDecision {
-  # Outcome enum.
   decision @0 :Decision;
-  # Human-readable reason. Cap'n text longer than TCB buffers fails closed.
   reason @1 :Text;
-  # Echo of agent id used for the decision.
+  # Human-readable reason. Overlong Cap'n text vs TCB buffers fails closed.
   agentId @2 :Text;
-  # Echo of tool (after admit.kind mapping when from admit).
+  # Echo of agent id (32-hex AgentId) used for the decision.
   tool @3 :Text;
-  # Echo of action (after admit.kind mapping when from admit).
+  # Echo of tool (after admit.kind mapping when from admit).
   action @4 :Text;
+  # Echo of action (after admit.kind mapping when from admit).
 }
 
-# Process state for AgentStatusWire.state.
 enum AgentStateWire {
+  # Process state for AgentStatusWire.state.
   stopped @0;
   running @1;
   failed @2;
 }
 
-# agentStatus arm payload.
 struct AgentStatusWire {
-  # Agent id.
   id @0 :Text;
-  # Running / stopped / failed.
+  # 32-hex of Util.AgentId (C buffer boundary; not free-form identity).
   state @1 :AgentStateWire;
-  # Process id when running; 0 otherwise.
   pid @2 :Int32;
-  # Process group id when running; 0 otherwise.
+  # Process id when running; 0 otherwise.
   pgid @3 :Int32;
-  # Wait-style exit status when stopped/failed; 0 if still running.
+  # Process group id when running; 0 otherwise.
   exitStatus @4 :Int32;
-  # Supervisor mode string (e.g. develop).
+  # Wait-style exit status when stopped/failed; 0 if still running.
   mode @5 :Text;
-  # Workspace path if set.
+  # Supervisor mode string (e.g. develop). Prefer Util.SeatMode names when set.
   workspace @6 :Text;
-  # True when a cgroup path is attached for the agent.
   hasCgroup @7 :Bool;
+  # True when a cgroup path is attached for the agent.
 }
 
-# error arm payload (protocol / TCB errors, not policy deny).
 struct PolicyError {
-  # grok errno-style code (GROK_ERR_*).
+  # Protocol / TCB errors, not policy deny (see Decision.deny).
+
   code @0 :Int32;
-  # Short message for logs.
+  # grok errno-style code (GROK_ERR_*).
   message @1 :Text;
+  # Short message for logs.
 }

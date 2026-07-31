@@ -6,15 +6,20 @@ Policy and multi-agent supervisor (security-critical core) for [GrokOS](https://
 |--|--|
 | **Meta** | https://nova.teachx.ai/trace-analysis/grokos |
 | **Issues** | https://nova.teachx.ai/trace-analysis/grokos/-/issues |
-| **Language** | `schema/policy.capnp` |
+| **Language** | `schema/policy.capnp` (+ `schema/util.capnp`) — SoT also in [grokos-schema](https://nova.teachx.ai/trace-analysis/grokos-packages/grokos-schema) |
 | **Product API** | `grok_policyd_handle_capnp()` (in-process FFI) |
 | **C helpers** | `include/grok-policyd/supervisor.h` |
 
 ## Cap'n FFI
 
 Callers (sessiond, agent, shell) compose `PolicyEnvelope` bodies and call
-**`grok_policyd_handle_capnp`** on a linked `libgrok_policyd`. Cap'n pure-C
-runtime is the **c-capnproto** package (`libcapnp_c`).
+**`grok_policyd_handle_capnp`** on a **linked** `libgrok_policyd` (shared or
+static). Cap'n pure-C runtime is the **c-capnproto** package (`libcapnp_c`).
+
+Do **not** copy this tree into consumer `vendor/policyd/` and recompile with
+`cc` — that drifts from the TCB and breaks the packaging story. Consumers use
+`pkg-config grok-policyd` or monorepo `GROK_POLICYD_DIR=$PWD/build` after
+`pixi run lib`.
 
 ```c
 #include <grok-policyd/supervisor.h>
@@ -59,13 +64,19 @@ Per-tool gates inside the agent model loop are Track 2 (agent package).
 Lexical workspace rules match `fs` path checks: absolute paths only; reject
 empty components, `.`, and `..`. No `realpath` (symlink escape remains open).
 
-## Build
+## Build / test / coverage (pixi only)
 
 ```bash
+# once: https://pixi.sh
 pixi install --locked
-pixi run test
-pixi run coverage   # optional gcovr
+pixi run env-info
+pixi run test                 # meson compile + cmocka (incl. Cap'n FFI)
+pixi run coverage             # Meson -Db_coverage + gcovr → coverage-out/
+# CI: coverage:pixi job runs the same `pixi run coverage` and requires
+# coverage-out/coverage.xml + coverage.txt (no optional path).
 ```
+
+Do **not** hand-edit `pixi.lock`. Refresh with `pixi lock` on a builder that has network.
 
 ### Mutation testing (Mull)
 
@@ -101,11 +112,13 @@ under artifact `build-mull/mull-report/`.
 ## Layout
 
 ```text
-schema/policy.capnp          Cap'n schema (source of truth)
-include/grok-policyd/        Public C API (includes handle_capnp)
-src/capnp_api.c              Cap'n dispatch
-src/policy.c supervisor.c …  Policy / supervisor core
-tests/                       cmocka (Cap'n handle_capnp + lifecycle)
+schema/policy.capnp          Cap'n API (pin from grokos-schema)
+schema/util.capnp            Shared vocab (RunState, …); imported by policy
+include/grok-policyd/        Public C ABI (includes handle_capnp)
+src/capnp_api.c              Cap'n dispatch → TCB
+src/policy.c supervisor.c …  TCB
+tests/                       cmocka (Cap'n FFI + lifecycle)
+scripts/coverage.sh          gcovr report (hard-requires gcovr from pixi)
 ```
 
 ## License
