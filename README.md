@@ -124,3 +124,7 @@ scripts/coverage.sh          gcovr report (hard-requires gcovr from pixi)
 ## License
 
 Apache-2.0. See `LICENSE` and `third_party/NOTICE`.
+
+## Deny-all (tests / lockdown)
+
+Set `GROKOS_POLICYD_DENY_ALL=1` (or `true`/`yes`) to force every `policy_check` / Cap'n check to **deny**. Used to prove agent/sessiond fail closed under a hard seat. Unset for normal allowlists.
