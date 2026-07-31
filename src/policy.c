@@ -3,6 +3,7 @@
 
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
 
 static int is_high_risk(const char *action)
 {
@@ -87,6 +88,17 @@ int grok_policy_eval(const char *workspace,
 		return GROK_ERR_INVAL;
 	memset(out, 0, sizeof(*out));
 	out->decision = GROK_DECISION_DENY;
+
+	{
+		const char *da = getenv("GROKOS_POLICYD_DENY_ALL");
+		if (da && da[0] &&
+		    (strcmp(da, "1") == 0 || strcmp(da, "true") == 0 || strcmp(da, "yes") == 0 ||
+		     strcmp(da, "TRUE") == 0 || strcmp(da, "YES") == 0)) {
+			snprintf(out->reason, sizeof(out->reason), "deny-all (GROKOS_POLICYD_DENY_ALL)");
+			return GROK_OK;
+		}
+	}
+
 
 	if (!tool || !tool[0]) {
 		snprintf(out->reason, sizeof(out->reason), "missing tool");

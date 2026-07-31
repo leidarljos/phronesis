@@ -5,6 +5,7 @@
 #include <stdarg.h>
 #include <stddef.h>
 #include <cmocka.h>
+#include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 
@@ -19,6 +20,48 @@ static void wait_stopped(grok_supervisor_t *s, const char *id)
 			return;
 		usleep(10 * 1000);
 	}
+}
+
+
+static void test_deny_all_env(void **state)
+{
+	grok_supervisor_t *s = NULL;
+	grok_policy_result_t pr;
+	char tmpl_s[] = "/tmp/gpd-denys-XXXXXX";
+	char tmpl_r[] = "/tmp/gpd-denyr-XXXXXX";
+	char *state_dir;
+	char *run_dir;
+	(void)state;
+
+	state_dir = mkdtemp(tmpl_s);
+	run_dir = mkdtemp(tmpl_r);
+	assert_non_null(state_dir);
+	assert_non_null(run_dir);
+	assert_int_equal(grok_supervisor_open(&s, state_dir, run_dir), GROK_OK);
+	assert_non_null(s);
+
+	setenv("GROKOS_POLICYD_DENY_ALL", "1", 1);
+	assert_int_equal(
+		grok_policy_check(s, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "model", "start",
+				  "/bin/true", &pr),
+		GROK_OK);
+	assert_int_equal(pr.decision, GROK_DECISION_DENY);
+	assert_non_null(strstr(pr.reason, "deny-all"));
+
+	assert_int_equal(
+		grok_policy_check(s, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "seat", "publish_run",
+				  "x", &pr),
+		GROK_OK);
+	assert_int_equal(pr.decision, GROK_DECISION_DENY);
+
+	unsetenv("GROKOS_POLICYD_DENY_ALL");
+	assert_int_equal(
+		grok_policy_check(s, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "model", "start",
+				  "/bin/true", &pr),
+		GROK_OK);
+	assert_int_equal(pr.decision, GROK_DECISION_ALLOW);
+
+	grok_supervisor_close(s);
 }
 
 static void test_tools_default_deny(void **state)
@@ -191,6 +234,7 @@ static void test_lexical_rejects_dot_and_slashslash(void **state)
 int run_policy_tests(void)
 {
 	const struct CMUnitTest tests[] = {
+		cmocka_unit_test(test_deny_all_env),
 		cmocka_unit_test(test_tools_default_deny),
 		cmocka_unit_test(test_shell_exec_workspace_allow),
 		cmocka_unit_test(test_workspace_allowlist),
