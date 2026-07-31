@@ -5,3 +5,12 @@ mod? tools "../grokos-tools"
 default:
     @just --list
 
+test:
+    pixi run test
+
+build:
+    pixi run build
+
+ci:
+    pixi run ci
+
