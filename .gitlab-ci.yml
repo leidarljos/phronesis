@@ -1,8 +1,7 @@
 # Host hygiene: tools just door (signed-commits + secrets).
 include:
   - project: 'trace-analysis/grokos-packages/grokos-tools'
-    # Use tools branch until nvm-rust-f51 kit lands on main (!13).
-    ref: feat/nvm-rust-f51-image
+    ref: main
     file: '/ci-kit/bootstrap/package-validate.gitlab-ci.yml'
 
 # Reproducible via pixi (pixi.lock). Host C library + cmocka tests + full docs.
