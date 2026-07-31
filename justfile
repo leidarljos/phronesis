@@ -1,4 +1,4 @@
-# Host hygiene — delegate to grokos-tools (same verbs CI runs via package-validate).
+# Host hygiene — tools justfile (issue 101). CI uses package-validate include.
 
 set shell := ["bash", "-euo", "pipefail", "-c"]
 
