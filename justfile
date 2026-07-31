@@ -1,15 +1,16 @@
-# Host hygiene — tools justfile (issue 101). CI uses package-validate include.
+# Host hygiene via grokos-tools module (issue 101).
+# CI: include tools package-validate. Local: monorepo sibling.
 
 set shell := ["bash", "-euo", "pipefail", "-c"]
 
-tools_just := justfile_directory() + "/../grokos-tools/justfile"
+mod? tools "../grokos-tools"
 
 default:
     @just --list
 
 check-signed-commits:
-    just --justfile {{tools_just}} --working-directory {{justfile_directory()}} check-signed-commits
+    just tools check-signed-commits
 
 check-secrets:
-    just --justfile {{tools_just}} --working-directory {{justfile_directory()}} check-secrets-ci
+    just tools check-secrets-ci
 
