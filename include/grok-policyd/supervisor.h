@@ -189,7 +189,9 @@ typedef enum {
 	GROK_REASON_PYTHON_REQUIRES_UV_RUN = 17,
 	GROK_REASON_PYTHON_DASH_C_DENIED = 18,
 	GROK_REASON_PYTHON_MISSING_PEP723 = 19,
-	GROK_REASON_SHELL_EXEC_ALLOW = 20
+	GROK_REASON_SHELL_EXEC_ALLOW = 20,
+	GROK_REASON_PACK_RELOADED = 21,
+	GROK_REASON_PACK_PATH_INVALID = 22
 } grok_policy_reason_t;
 
 /**
@@ -440,6 +442,25 @@ GROK_POLICYD_API void grok_policyd_agent_status(grok_supervisor_t *sup,
 						size_t in_len,
 						uint8_t **out,
 						size_t *out_len);
+
+/** reloadShellPack → in ReloadShellPack, out PolicyDecision. */
+GROK_POLICYD_API void grok_policyd_reload_shell_pack(grok_supervisor_t *sup,
+						     const uint8_t *in,
+						     size_t in_len,
+						     uint8_t **out,
+						     size_t *out_len);
+
+/**
+ * Unload any loaded Janet shell pack and load @a path (absolute).
+ *
+ * @param path  Absolute path to a .janet pack file; must not be NULL/empty.
+ * @return @ref GROK_OK on successful load; @ref GROK_ERR_INVAL for bad path;
+ *         @ref GROK_ERR_IO when the file cannot be loaded as a pack.
+ *
+ * Threading: not concurrent with checkShell. Product path is single-threaded
+ * TCB per process (same as other policy methods).
+ */
+GROK_POLICYD_API int grok_policy_shell_pack_reload(const char *path);
 
 /** @} */
 
