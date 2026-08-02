@@ -8,6 +8,7 @@
 #define _GNU_SOURCE
 #endif
 #include "internal.h"
+#include "policy_janet.h"
 #include "policy.capnp.h"
 #include "util.capnp.h"
 
@@ -123,8 +124,10 @@ static void emit_decision(const grok_policy_result_t *pr, struct AgentId agent,
 	capn_init_malloc(&c);
 	memset(&d, 0, sizeof(d));
 	d.decision = (enum Decision)pr->decision;
-	d.reason = ctext(pr->reason);
+	/* TCB leaves reason empty; product packs set reason on Cap'n passthrough. */
+	d.reason = ctext("");
 	d.agentId = put_agent(capn_root(&c).seg, agent.hi, agent.lo);
+	d.code = (enum PolicyReason)pr->code;
 	dp = new_PolicyDecision(capn_root(&c).seg);
 	write_PolicyDecision(&d, dp);
 	if (capn_setp(capn_root(&c), 0, dp.p) != 0) {
@@ -135,15 +138,19 @@ static void emit_decision(const grok_policy_result_t *pr, struct AgentId agent,
 	capn_free(&c);
 }
 
-static void deny_msg(struct AgentId agent, const char *reason, uint8_t **out,
-		     size_t *out_len)
+static void emit_code(grok_decision_t decision, grok_policy_reason_t code,
+		      struct AgentId agent, uint8_t **out, size_t *out_len)
 {
 	grok_policy_result_t pr;
 
-	memset(&pr, 0, sizeof(pr));
-	pr.decision = GROK_DECISION_DENY;
-	snprintf(pr.reason, sizeof(pr.reason), "%s", reason ? reason : "deny");
+	grok_policy_result_set(&pr, decision, code);
 	emit_decision(&pr, agent, out, out_len);
+}
+
+static void deny_msg(struct AgentId agent, grok_policy_reason_t code,
+		     uint8_t **out, size_t *out_len)
+{
+	emit_code(GROK_DECISION_DENY, code, agent, out, out_len);
 }
 
 static int open_in(const uint8_t *in, size_t in_len, struct capn *c)
@@ -194,25 +201,23 @@ void grok_policyd_check_seat(grok_supervisor_t *sup, const uint8_t *in,
 	(void)sup;
 	memset(&agent, 0, sizeof(agent));
 	if (open_in(in, in_len, &c) != 0) {
-		deny_msg(agent, "invalid SeatCheck message", out, out_len);
+		deny_msg(agent, GROK_REASON_INVALID_MESSAGE, out, out_len);
 		return;
 	}
 	root.p = capn_getp(capn_root(&c), 0, 1);
 	read_SeatCheck(&sc, root);
 	read_agent(sc.agentId, &agent);
-	memset(&pr, 0, sizeof(pr));
 	switch (sc.action) {
 	case SeatAction_publishRun:
 	case SeatAction_readRun:
 	case SeatAction_listRuns:
 	case SeatAction_listEvents:
-		pr.decision = GROK_DECISION_ALLOW;
-		snprintf(pr.reason, sizeof(pr.reason),
-			 "seat board op allow (session plane ACL)");
+		grok_policy_result_set(&pr, GROK_DECISION_ALLOW,
+				       GROK_REASON_SEAT_BOARD_ALLOW);
 		break;
 	default:
-		pr.decision = GROK_DECISION_DENY;
-		snprintf(pr.reason, sizeof(pr.reason), "unknown seat action");
+		grok_policy_result_set(&pr, GROK_DECISION_DENY,
+				       GROK_REASON_UNKNOWN_SEAT_ACTION);
 		break;
 	}
 	capn_free(&c);
@@ -231,15 +236,14 @@ void grok_policyd_check_model(grok_supervisor_t *sup, const uint8_t *in,
 	(void)sup;
 	memset(&agent, 0, sizeof(agent));
 	if (open_in(in, in_len, &c) != 0) {
-		deny_msg(agent, "invalid ModelCheck message", out, out_len);
+		deny_msg(agent, GROK_REASON_INVALID_MESSAGE, out, out_len);
 		return;
 	}
 	root.p = capn_getp(capn_root(&c), 0, 1);
 	read_ModelCheck(&mc, root);
 	read_agent(mc.agentId, &agent);
-	memset(&pr, 0, sizeof(pr));
-	pr.decision = GROK_DECISION_ALLOW;
-	snprintf(pr.reason, sizeof(pr.reason), "model start admit plane");
+	grok_policy_result_set(&pr, GROK_DECISION_ALLOW,
+			       GROK_REASON_MODEL_START_ALLOW);
 	capn_free(&c);
 	emit_decision(&pr, agent, out, out_len);
 }
@@ -259,7 +263,7 @@ void grok_policyd_check_path(grok_supervisor_t *sup, const uint8_t *in,
 
 	memset(&agent, 0, sizeof(agent));
 	if (open_in(in, in_len, &c) != 0) {
-		deny_msg(agent, "invalid PathCheck message", out, out_len);
+		deny_msg(agent, GROK_REASON_INVALID_MESSAGE, out, out_len);
 		return;
 	}
 	root.p = capn_getp(capn_root(&c), 0, 1);
@@ -269,7 +273,7 @@ void grok_policyd_check_path(grok_supervisor_t *sup, const uint8_t *in,
 	pl = pc.path.len > 0 ? (size_t)pc.path.len : 0;
 	if (pl >= sizeof(path) || (pl > 0 && !pc.path.str)) {
 		capn_free(&c);
-		deny_msg(agent, "path too long", out, out_len);
+		deny_msg(agent, GROK_REASON_FIELD_TOO_LONG, out, out_len);
 		return;
 	}
 	if (pl)
@@ -305,7 +309,7 @@ void grok_policyd_check_shell(grok_supervisor_t *sup, const uint8_t *in,
 
 	memset(&agent, 0, sizeof(agent));
 	if (open_in(in, in_len, &c) != 0) {
-		deny_msg(agent, "invalid ShellCheck message", out, out_len);
+		deny_msg(agent, GROK_REASON_INVALID_MESSAGE, out, out_len);
 		return;
 	}
 	root.p = capn_getp(capn_root(&c), 0, 1);
@@ -315,19 +319,40 @@ void grok_policyd_check_shell(grok_supervisor_t *sup, const uint8_t *in,
 	cl = sc.cwd.len > 0 ? (size_t)sc.cwd.len : 0;
 	if (cl >= sizeof(cwd) || (cl > 0 && !sc.cwd.str)) {
 		capn_free(&c);
-		deny_msg(agent, "cwd too long", out, out_len);
+		deny_msg(agent, GROK_REASON_FIELD_TOO_LONG, out, out_len);
 		return;
 	}
 	if (cl)
 		memcpy(cwd, sc.cwd.str, cl);
 	cwd[cl] = '\0';
 
-	/* path-only shell allow, then argv content gate via decide_shell */
+	/* Path plane first; content pack returns Cap'n PolicyDecision for passthrough. */
 	(void)grok_policy_eval(ws, "shell", "exec", cwd[0] ? cwd : NULL, &pr);
-	if (pr.decision == GROK_DECISION_ALLOW && sc.argv.type != CAPN_NULL &&
-	    sc.argv.len > 0) {
-		/* content gate: build via grok_policy_decide_shell if present */
-		grok_policy_shell_gate(ws, cwd, sc.argv, &pr);
+	if (pr.decision != GROK_DECISION_ALLOW) {
+		capn_free(&c);
+		emit_decision(&pr, agent, out, out_len);
+		return;
+	}
+	/*
+	 * Generated read_ShellCheck uses capn_getp(..., 0): argv may be an
+	 * unresolved far pointer with len==0. Resolve before testing length
+	 * (same idea as c-capnproto's capn_len macro).
+	 */
+	capn_resolve(&sc.argv);
+	if (sc.argv.type != CAPN_NULL && sc.argv.len > 0) {
+		uint8_t *pack_out = NULL;
+		size_t pack_len = 0;
+
+		grok_policy_shell_pack(ws, cwd, sc.argv, &pack_out, &pack_len);
+		capn_free(&c);
+		if (pack_out && pack_len) {
+			/* Passthrough pack Cap'n PolicyDecision (reason from pack). */
+			*out = pack_out;
+			*out_len = pack_len;
+			return;
+		}
+		deny_msg(agent, GROK_REASON_PACK_BAD_RESULT, out, out_len);
+		return;
 	}
 	capn_free(&c);
 	emit_decision(&pr, agent, out, out_len);
@@ -345,16 +370,14 @@ void grok_policyd_check_risk(grok_supervisor_t *sup, const uint8_t *in,
 	(void)sup;
 	memset(&agent, 0, sizeof(agent));
 	if (open_in(in, in_len, &c) != 0) {
-		deny_msg(agent, "invalid RiskCheck message", out, out_len);
+		deny_msg(agent, GROK_REASON_INVALID_MESSAGE, out, out_len);
 		return;
 	}
 	root.p = capn_getp(capn_root(&c), 0, 1);
 	read_RiskCheck(&rc, root);
 	read_agent(rc.agentId, &agent);
 	memset(&pr, 0, sizeof(pr));
-	pr.decision = GROK_DECISION_PROMPT;
-	snprintf(pr.reason, sizeof(pr.reason),
-		 "high-risk action requires confirm");
+	grok_policy_result_set(&pr, GROK_DECISION_PROMPT, GROK_REASON_HIGH_RISK_PROMPT);
 	capn_free(&c);
 	emit_decision(&pr, agent, out, out_len);
 }
@@ -374,7 +397,7 @@ void grok_policyd_admit_seat(grok_supervisor_t *sup, const uint8_t *in,
 	(void)sup;
 	memset(&agent, 0, sizeof(agent));
 	if (open_in(in, in_len, &c) != 0) {
-		deny_msg(agent, "invalid AdmitSeat message", out, out_len);
+		deny_msg(agent, GROK_REASON_INVALID_MESSAGE, out, out_len);
 		return;
 	}
 	{
@@ -396,7 +419,7 @@ void grok_policyd_admit_seat(grok_supervisor_t *sup, const uint8_t *in,
 	if (capn_setp(capn_root(&synth), 0, sp.p) != 0 ||
 	    write_msg(&synth, &inner, &inner_len) != 0) {
 		capn_free(&synth);
-		deny_msg(agent, "admitSeat encode failed", out, out_len);
+		deny_msg(agent, GROK_REASON_INVALID_MESSAGE, out, out_len);
 		return;
 	}
 	capn_free(&synth);
@@ -418,7 +441,7 @@ void grok_policyd_admit_model(grok_supervisor_t *sup, const uint8_t *in,
 
 	memset(&agent, 0, sizeof(agent));
 	if (open_in(in, in_len, &c) != 0) {
-		deny_msg(agent, "invalid AdmitModel message", out, out_len);
+		deny_msg(agent, GROK_REASON_INVALID_MESSAGE, out, out_len);
 		return;
 	}
 	{
@@ -439,7 +462,7 @@ void grok_policyd_admit_model(grok_supervisor_t *sup, const uint8_t *in,
 	if (capn_setp(capn_root(&synth), 0, mp.p) != 0 ||
 	    write_msg(&synth, &inner, &inner_len) != 0) {
 		capn_free(&synth);
-		deny_msg(agent, "admitModel encode failed", out, out_len);
+		deny_msg(agent, GROK_REASON_INVALID_MESSAGE, out, out_len);
 		return;
 	}
 	capn_free(&synth);

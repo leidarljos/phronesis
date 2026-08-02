@@ -44,8 +44,8 @@ int grok_policy_eval(const char *workspace,
 
 #include <capnp_c.h>
 
-/** Shell argv content gate (Cap'n List(Text) argv, live segment). */
-void grok_policy_shell_gate(const char *workspace, const char *cwd,
-			    capn_ptr argv, grok_policy_result_t *out);
+/** Resolve script path against cwd (workspace-bound callers only). */
+int grok_policy_resolve_script(const char *cwd, const char *script, char *out,
+			       size_t out_n);
 
 #endif

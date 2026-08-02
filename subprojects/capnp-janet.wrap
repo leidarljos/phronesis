@@ -1,0 +1,9 @@
+[wrap-git]
+directory = capnp-janet
+url = https://github.com/HaoZeke/capnp-janet.git
+revision = main
+depth = 1
+
+[provide]
+capnp-janet = capnp_janet_dep
+dependency_names = capnp-janet
