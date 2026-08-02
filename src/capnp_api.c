@@ -87,17 +87,25 @@ static void read_agent(AgentId_ptr p, struct AgentId *out)
 	read_AgentId(out, p);
 }
 
-static const char *workspace_for(grok_supervisor_t *sup, struct AgentId id)
+/* Copy agent workspace into caller buffer; never return a pointer into a local. */
+static const char *workspace_for(grok_supervisor_t *sup, struct AgentId id,
+				 char *ws_buf, size_t ws_len)
 {
 	char hex[GROK_ID_MAX];
 	grok_agent_status_t st;
 
+	if (!ws_buf || ws_len == 0)
+		return NULL;
+	ws_buf[0] = '\0';
 	grok_agent_id_to_hex(id.hi, id.lo, hex);
 	if (!hex[0])
 		return NULL;
 	if (grok_supervisor_status(sup, hex, &st) != GROK_OK)
 		return NULL;
-	return st.workspace[0] ? st.workspace : NULL;
+	if (!st.workspace[0])
+		return NULL;
+	snprintf(ws_buf, ws_len, "%s", st.workspace);
+	return ws_buf;
 }
 
 static void emit_decision(const grok_policy_result_t *pr, struct AgentId agent,
@@ -243,6 +251,7 @@ void grok_policyd_check_path(grok_supervisor_t *sup, const uint8_t *in,
 	struct PathCheck pc;
 	struct AgentId agent;
 	char path[GROK_PATH_MAX];
+	char ws_buf[GROK_PATH_MAX];
 	const char *ws;
 	grok_policy_result_t pr;
 	PathCheck_ptr root;
@@ -256,7 +265,7 @@ void grok_policyd_check_path(grok_supervisor_t *sup, const uint8_t *in,
 	root.p = capn_getp(capn_root(&c), 0, 1);
 	read_PathCheck(&pc, root);
 	read_agent(pc.agentId, &agent);
-	ws = workspace_for(sup, agent);
+	ws = workspace_for(sup, agent, ws_buf, sizeof(ws_buf));
 	pl = pc.path.len > 0 ? (size_t)pc.path.len : 0;
 	if (pl >= sizeof(path) || (pl > 0 && !pc.path.str)) {
 		capn_free(&c);
@@ -287,6 +296,7 @@ void grok_policyd_check_shell(grok_supervisor_t *sup, const uint8_t *in,
 	struct capn c;
 	struct ShellCheck sc;
 	struct AgentId agent;
+	char ws_buf[GROK_PATH_MAX];
 	const char *ws;
 	char cwd[GROK_PATH_MAX];
 	grok_policy_result_t pr;
@@ -301,7 +311,7 @@ void grok_policyd_check_shell(grok_supervisor_t *sup, const uint8_t *in,
 	root.p = capn_getp(capn_root(&c), 0, 1);
 	read_ShellCheck(&sc, root);
 	read_agent(sc.agentId, &agent);
-	ws = workspace_for(sup, agent);
+	ws = workspace_for(sup, agent, ws_buf, sizeof(ws_buf));
 	cl = sc.cwd.len > 0 ? (size_t)sc.cwd.len : 0;
 	if (cl >= sizeof(cwd) || (cl > 0 && !sc.cwd.str)) {
 		capn_free(&c);
