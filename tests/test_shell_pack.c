@@ -275,6 +275,83 @@ static void test_python_dash_c_deny(void **state)
 	free(out);
 }
 
+static void test_reload_shell_pack_hot_load(void **state)
+{
+	struct shell_fix *f = *state;
+	char pack_a[GROK_PATH_MAX], pack_b[GROK_PATH_MAX];
+	char *argv[] = { "python3", "x.py", NULL };
+	uint8_t *in = NULL, *out = NULL;
+	size_t in_len = 0, out_len = 0;
+	enum Decision dec;
+	enum PolicyReason code;
+	const char *src = getenv("POLICYD_SOURCE_ROOT");
+	struct capn c;
+	struct ReloadShellPack rp;
+	ReloadShellPack_ptr root;
+	int rc;
+
+	if (!src || !src[0])
+		src = ".";
+	snprintf(pack_a, sizeof(pack_a), "%s/policy/shell.janet", src);
+	/* pack_b: allow-all shell pack (no python law) */
+	snprintf(pack_b, sizeof(pack_b), "%s/allow_all.janet", f->ws);
+	{
+		FILE *fp = fopen(pack_b, "w");
+
+		assert_non_null(fp);
+		fputs("(defn shell-check [buf]\n"
+		      "  (capnp/build-message 1 2\n"
+		      "    @[[:u16 0 1] [:u16 2 20] [:text 0 \"allow all pack\"]]))\n",
+		      fp);
+		fclose(fp);
+	}
+
+	/* Reload to product UV pack → bare python deny */
+	rc = grok_policy_shell_pack_reload(pack_a);
+	assert_int_equal(rc, GROK_OK);
+	build_shell_check(f->ws, argv, 2, &in, &in_len);
+	grok_policyd_check_shell(f->sup, in, in_len, &out, &out_len);
+	free(in);
+	read_decision(out, out_len, &dec, &code, NULL, 0);
+	free(out);
+	assert_int_equal(dec, Decision_deny);
+	assert_int_equal(code, PolicyReason_pythonRequiresUvRun);
+
+	/* Hot-load allow-all pack → same argv allows */
+	rc = grok_policy_shell_pack_reload(pack_b);
+	assert_int_equal(rc, GROK_OK);
+	build_shell_check(f->ws, argv, 2, &in, &in_len);
+	grok_policyd_check_shell(f->sup, in, in_len, &out, &out_len);
+	free(in);
+	read_decision(out, out_len, &dec, &code, NULL, 0);
+	free(out);
+	assert_int_equal(dec, Decision_allow);
+	assert_int_equal(code, PolicyReason_shellExecAllow);
+
+	/* Cap'n reloadShellPack method */
+	memset(&c, 0, sizeof(c));
+	capn_init_malloc(&c);
+	memset(&rp, 0, sizeof(rp));
+	rp.path = ctext(pack_a);
+	root = new_ReloadShellPack(capn_root(&c).seg);
+	write_ReloadShellPack(&rp, root);
+	assert_int_equal(capn_setp(capn_root(&c), 0, root.p), 0);
+	assert_int_equal(write_msg(&c, &in, &in_len), 0);
+	capn_free(&c);
+	grok_policyd_reload_shell_pack(f->sup, in, in_len, &out, &out_len);
+	free(in);
+	read_decision(out, out_len, &dec, &code, NULL, 0);
+	free(out);
+	assert_int_equal(dec, Decision_allow);
+	assert_int_equal(code, PolicyReason_packReloaded);
+
+	/* Invalid path */
+	rc = grok_policy_shell_pack_reload("/no/such/pack.janet");
+	assert_int_equal(rc, GROK_ERR_INVAL);
+	rc = grok_policy_shell_pack_reload("relative.janet");
+	assert_int_equal(rc, GROK_ERR_INVAL);
+}
+
 int run_shell_pack_tests(void)
 {
 	const struct CMUnitTest tests[] = {
@@ -287,6 +364,8 @@ int run_shell_pack_tests(void)
 		cmocka_unit_test_setup_teardown(test_uv_run_missing_pep723_deny,
 						shell_setup, shell_teardown),
 		cmocka_unit_test_setup_teardown(test_python_dash_c_deny,
+						shell_setup, shell_teardown),
+		cmocka_unit_test_setup_teardown(test_reload_shell_pack_hot_load,
 						shell_setup, shell_teardown),
 	};
 	return cmocka_run_group_tests_name("shell_pack", tests, NULL, NULL);

@@ -171,7 +171,7 @@ struct Request {
     # Peers snoop via status.voice, voiceStatus, and watchVoiceEvents.
     # No raw PCM / Data audio frames on this bus (debug dumps stay off-wire).
     # Same-uid peercred ACL only; policyd gates arm/inject (Track E).
-    # Text length fail-closed: see Voice* field comments + consts below.
+    # Text length fail-closed: implementer policy (see VoiceSize); not schema consts.
     # ------------------------------------------------------------------
 
     voiceStatus @31 :Void;
@@ -863,17 +863,26 @@ struct WorkClaimed {
 
 # --- Voice plane (listen + STT text; no PCM on Cap'n) ------------------------
 #
-# Bounds (UTF-8 byte lengths; sessiond enforces). Product fail-closed policy:
-#   - Live STT partial/final: may truncate to voiceTextMaxBytes.
+# Text fields are implementer-bounded UTF-8 (sessiond chooses ceilings). Product
+# fail-closed policy still applies at the server:
+#   - Live STT partial/final: may truncate to the implementer text ceiling.
 #   - voicePushUtterance / client-supplied text: reject with error.invalid if over.
-#   - Meta Text (backend, modelId, lang): voiceMetaMaxBytes; sourceNode: voiceSourceMaxBytes.
-#   - lastError: voiceErrorMaxBytes (truncate ok for diagnostics).
+#   - Meta Text (backend, modelId, lang) and sourceNode: implementer meta/source ceilings.
+#   - lastError: implementer error ceiling (truncate ok for diagnostics).
 # No Data / raw audio fields. Debug PCM dumps stay off this bus (local escape only).
+# Prefer ASAP transcription; do not ship bulk audio on this control plane.
 
-const voiceTextMaxBytes :UInt32 = 4096;
-const voiceMetaMaxBytes :UInt32 = 128;
-const voiceSourceMaxBytes :UInt32 = 256;
-const voiceErrorMaxBytes :UInt32 = 512;
+struct VoiceSize {
+  # Empty on purpose: schema describes message shape, not product byte ceilings.
+  # UTF-8 length limits for voice Text fields (transcript, meta, sourceNode,
+  # lastError) are left to implementers (sessiond config / policy). Baking
+  # fixed consts into the IDL would freeze policy as protocol law and force
+  # Schema bumps when operators tune limits. See voice-plane header above for
+  # fail-closed guidance implementers should still follow.
+  # Intentional exception to SCHEMA_STYLE "const limits" (Sandstorm
+  # Manifest.sizeLimitInWords): those are for true protocol invariants; this
+  # marker is for operator/policy ceilings only — do not thrash back to consts.
+}
 
 struct VoiceArm {
   # Request body for voiceArm. Minimal knobs only (A4).
@@ -886,11 +895,11 @@ struct VoiceArm {
 
   lang @1 :Text;
   # Preferred language hint (BCP-47-ish open text). Empty = sessiond default (often "en").
-  # Max voiceMetaMaxBytes; overlong → error.invalid.
+  # Implementer-bounded (meta); overlong → error.invalid.
 
   sourceNode @2 :Text;
   # Optional PipeWire source node name/id. Empty = WirePlumber default source.
-  # Max voiceSourceMaxBytes; overlong → error.invalid.
+  # Implementer-bounded (source); overlong → error.invalid.
   # Display/selection only — not a filesystem path and not secrets.
 }
 
@@ -900,7 +909,8 @@ struct VoicePushUtterance {
   # Trust: same-uid can forge; not an authz channel. confidence is not authz.
 
   text @0 :Text;
-  # Required non-empty. Max voiceTextMaxBytes; overlong → error.invalid (no truncate).
+  # Required non-empty. Implementer-bounded (transcript); overlong → error.invalid
+  # (no truncate on inject).
 
   asFinal @1 :Bool = true;
   # true → emit final (and update state.final); false → partial only.
@@ -909,7 +919,7 @@ struct VoicePushUtterance {
   # -1.0 = unknown. Not used for seat ACL or shell/exec authz.
 
   lang @3 :Text;
-  # Optional; empty keeps current listen lang. Max voiceMetaMaxBytes.
+  # Optional; empty keeps current listen lang. Implementer-bounded (meta).
 }
 
 struct WatchVoiceEvents {
@@ -954,7 +964,7 @@ struct VoiceEvent {
 
   text @2 :Text;
   # partial/final body, or error diagnostic. Empty for armed/disarmed when unused.
-  # Max voiceTextMaxBytes (or voiceErrorMaxBytes when kind=error).
+  # Implementer-bounded (transcript, or error ceiling when kind=error).
 
   confidence @3 :Float32 = -1.0;
   # -1.0 = unknown. Meaningful for partial/final; not authz (A14).
@@ -992,24 +1002,26 @@ struct VoiceListenState {
 
   backend @2 :Text;
   # STT backend id echo: "whisper.cpp" | "faster-whisper" | … Empty if unknown/off.
-  # Max voiceMetaMaxBytes. Open set — Text is correct (not a closed enum).
+  # Implementer-bounded (meta). Open set — Text is correct (not a closed enum).
 
   modelId @3 :Text;
   # Model pin id echo (not weights, not filesystem dump). Empty if unknown/off.
-  # Max voiceMetaMaxBytes.
+  # Implementer-bounded (meta).
 
   sourceNode @4 :Text;
-  # Active capture source display. Empty if disarmed/unknown. Max voiceSourceMaxBytes.
+  # Active capture source display. Empty if disarmed/unknown.
+  # Implementer-bounded (source).
 
   partial @5 :Text;
   # Last partial transcript only (not a full history). Empty if none.
-  # Max voiceTextMaxBytes; live STT may truncate.
+  # Implementer-bounded (transcript); live STT may truncate.
 
   final @6 :Text;
-  # Last committed final transcript. Empty if none. Max voiceTextMaxBytes.
+  # Last committed final transcript. Empty if none.
+  # Implementer-bounded (transcript).
 
   lang @7 :Text;
-  # Active language hint. Empty if unset. Max voiceMetaMaxBytes.
+  # Active language hint. Empty if unset. Implementer-bounded (meta).
 
   confidence @8 :Float32 = -1.0;
   # Last partial/final confidence. -1.0 = unknown. Not authz (A14).
@@ -1026,7 +1038,7 @@ struct VoiceListenState {
 
   lastError @12 :Text;
   # Bounded diagnostic when arm/STT/capture fails. Empty if ok.
-  # Max voiceErrorMaxBytes; servers may truncate.
+  # Implementer-bounded (error); servers may truncate.
   # Wake live-bit (heard this window) is deferred until a wake product path
   # lands; use wakeRequired config echo + event trail then, not a premature field.
 }
