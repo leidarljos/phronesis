@@ -70,6 +70,21 @@ enum RunState {
 # working|done until a future schema-v1 pin.
 
 # ------------------------------------------------------------------------------
+# Agent product surface (what the seat UI presents). Orthogonal to RunState.
+# ------------------------------------------------------------------------------
+
+enum AgentSurface {
+  # Default / not classified. Peers must not invent Text surface tokens.
+  unset @0;
+  # Generic board row; no special plan/question pane surface.
+  board @1;
+  # Plan mode finished; plan body lives in ReportAgent.resultTail.
+  planAwaitingApproval @2;
+  # User question / comments gate; questions JSON in resultTail.
+  userQuestion @3;
+}
+
+# ------------------------------------------------------------------------------
 # Seat product mode. Closed allowlist (shell-init / sessiond mode).
 # ------------------------------------------------------------------------------
 

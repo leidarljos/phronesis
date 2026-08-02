@@ -26,7 +26,11 @@ test -x "$capnpc_c" || command -v "$capnpc_c" >/dev/null || {
 	echo "capnpc-c not found: $capnpc_c" >&2
 	exit 1
 }
+# util first (AgentId/TraceId), then policy (imports util).
+(cd "$outdir" && capnp compile -I. -o"$capnpc_c" util.capnp)
 (cd "$outdir" && capnp compile -I. -o"$capnpc_c" policy.capnp)
+test -f "$outdir/util.capnp.c"
+test -f "$outdir/util.capnp.h"
 test -f "$outdir/policy.capnp.c"
 test -f "$outdir/policy.capnp.h"
 # Meson @OUTPUT@ may be the same paths; copy if names ever diverge.
@@ -36,3 +40,4 @@ fi
 if [[ "$(realpath "$out_h")" != "$(realpath "$outdir/policy.capnp.h")" ]]; then
 	cp -f -- "$outdir/policy.capnp.h" "$out_h"
 fi
+# util outputs sit next to policy (Meson lists them as @OUTPUT2@/@OUTPUT3@).
