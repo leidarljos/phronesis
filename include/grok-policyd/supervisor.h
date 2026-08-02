@@ -22,16 +22,12 @@
  *   (``scripts/sync-version.sh`` / ``scripts/check-version.sh``).
  *
  * @par Cap'n Proto (product language)
- * Product API is ``interface Policyd`` in ``schema/policy.capnp``: methods
- * ``status`` / ``check`` / ``admit`` / ``agentStatus`` return typed
- * ``*Results`` unions (``ok`` domain value | ``err`` protocol failure).
- * Policy ``Decision`` is **never** a C errno.
- *
- * Hosts without Cap'n RPC pack ``CallEnvelope`` and call
- * @ref grok_policyd_handle_capnp **in-process**. There is no policyd socket
- * peer; seat Cap'n (session.capnp / nng) stays on sessiond.
- *
- * @ref grok_policy_check is a CLI/string bridge only (legacy tool/action text).
+ * Cap'n is **always** linked. Product API is ``interface Policyd``: one C
+ * entry point per method. Params message root in, result message root out
+ * (zero-copy mappable Cap'n segments). No CallEnvelope, no ok|err unions.
+ * Every check/admit method returns Cap'n ``PolicyDecision`` (deny/allow/prompt);
+ * protocol failure is fail-closed deny. Lifecycle open/start/stop stay C.
+ * @ref grok_policy_check is CLI string bridge only.
  */
 
 #ifndef GROK_POLICYD_SUPERVISOR_H
@@ -67,7 +63,7 @@ extern "C" {
  * changing semantics of existing return codes in a breaking way.
  * Additive APIs keep the same value.
  */
-#define GROK_POLICYD_API_VERSION 1
+#define GROK_POLICYD_API_VERSION 2
 
 /**
  * ELF visibility for the public ABI. Internal helpers stay hidden when the
@@ -337,34 +333,77 @@ GROK_POLICYD_API int grok_policy_check(grok_supervisor_t *s,
 /** @} */
 
 /**
- * @defgroup capnp Cap'n policy API
- * @brief Product FFI: Cap'n PolicyEnvelope in, Cap'n PolicyEnvelope out.
+ * @defgroup capnp Cap'n Policyd methods
+ * @brief Cap'n params message in, Cap'n result message out (always).
+ *
+ * No Decision-in-int. Out root is always the method's result type
+ * (PolicyDecision, PolicydStatus, or AgentStatus). On OOM *@a out may be NULL.
  * @{
  */
 
-/** Max accepted Cap'n request / response body (bytes). */
+/** Max accepted Cap'n params / results body (bytes). */
 #define GROK_POLICY_CAPNP_MAX_BODY (64 * 1024)
 
-/**
- * Dispatch one Cap'n CallEnvelope (interface Policyd method call).
- *
- * Request body is a method params arm (status / check / admit / agentStatus).
- * Response body is the matching *Results union (ok | err). Policy deny/allow
- * lives inside CheckResults.ok : PolicyDecision — not in the C return code.
- *
- * @param sup     Open supervisor.
- * @param in      Cap'n multi-segment CallEnvelope bytes.
- * @param in_len  Length of @a in; must be in (0, GROK_POLICY_CAPNP_MAX_BODY].
- * @param out     On success, heap Cap'n CallEnvelope response (caller free()).
- * @param out_len Length of *@a out.
- * @return 0 when a Cap'n response was produced (including Results.err),
- *         -1 only if the response itself could not be encoded.
- */
-GROK_POLICYD_API int grok_policyd_handle_capnp(grok_supervisor_t *sup,
+/** status() → out root PolicydStatus. */
+GROK_POLICYD_API void grok_policyd_status(grok_supervisor_t *sup,
+					  uint8_t **out,
+					  size_t *out_len);
+
+/** checkSeat → in SeatCheck, out PolicyDecision. */
+GROK_POLICYD_API void grok_policyd_check_seat(grok_supervisor_t *sup,
+					      const uint8_t *in,
+					      size_t in_len,
+					      uint8_t **out,
+					      size_t *out_len);
+
+/** checkModel → in ModelCheck, out PolicyDecision. */
+GROK_POLICYD_API void grok_policyd_check_model(grok_supervisor_t *sup,
 					       const uint8_t *in,
 					       size_t in_len,
 					       uint8_t **out,
 					       size_t *out_len);
+
+/** checkPath → in PathCheck, out PolicyDecision. */
+GROK_POLICYD_API void grok_policyd_check_path(grok_supervisor_t *sup,
+					      const uint8_t *in,
+					      size_t in_len,
+					      uint8_t **out,
+					      size_t *out_len);
+
+/** checkShell → in ShellCheck, out PolicyDecision. */
+GROK_POLICYD_API void grok_policyd_check_shell(grok_supervisor_t *sup,
+					       const uint8_t *in,
+					       size_t in_len,
+					       uint8_t **out,
+					       size_t *out_len);
+
+/** checkRisk → in RiskCheck, out PolicyDecision. */
+GROK_POLICYD_API void grok_policyd_check_risk(grok_supervisor_t *sup,
+					      const uint8_t *in,
+					      size_t in_len,
+					      uint8_t **out,
+					      size_t *out_len);
+
+/** admitSeat → in AdmitSeat, out PolicyDecision. */
+GROK_POLICYD_API void grok_policyd_admit_seat(grok_supervisor_t *sup,
+					      const uint8_t *in,
+					      size_t in_len,
+					      uint8_t **out,
+					      size_t *out_len);
+
+/** admitModel → in AdmitModel, out PolicyDecision. */
+GROK_POLICYD_API void grok_policyd_admit_model(grok_supervisor_t *sup,
+					       const uint8_t *in,
+					       size_t in_len,
+					       uint8_t **out,
+					       size_t *out_len);
+
+/** agentStatus → in AgentQuery, out AgentStatus. */
+GROK_POLICYD_API void grok_policyd_agent_status(grok_supervisor_t *sup,
+						const uint8_t *in,
+						size_t in_len,
+						uint8_t **out,
+						size_t *out_len);
 
 /** @} */
 

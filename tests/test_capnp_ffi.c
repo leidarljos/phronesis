@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /*
- * interface Policyd via CallEnvelope: typed CheckResults (ok|err).
+ * Policyd Cap'n methods: params root in, PolicyDecision root out (no unions).
  */
 #include "harness.h"
 #include "grok-policyd/supervisor.h"
@@ -31,7 +31,6 @@ static int capn_setup(void **state)
 	assert_int_equal(t_open_pair(&f->sup, f->st, sizeof(f->st), f->rt,
 				     sizeof(f->rt), "capn"),
 			 GROK_OK);
-	assert_non_null(f->sup);
 	*state = f;
 	return 0;
 }
@@ -50,42 +49,28 @@ static int capn_teardown(void **state)
 	return 0;
 }
 
-static capn_text ctext(const char *s)
+static int write_msg(struct capn *c, uint8_t **out, size_t *out_len)
 {
-	capn_text t;
-	size_t len = s ? strlen(s) : 0;
-
-	if (len > (size_t)INT_MAX)
-		len = (size_t)INT_MAX;
-	t.len = (int)len;
-	t.str = s ? s : "";
-	t.seg = NULL;
-	return t;
-}
-
-static int capn_write_grow(struct capn *c, uint8_t **out, size_t *out_len)
-{
-	uint8_t *buf = NULL;
-	size_t cap = 4096U;
+	uint8_t *buf;
+	size_t cap = 4096;
 	int64_t n;
 
 	*out = NULL;
 	*out_len = 0;
 	for (;;) {
+		buf = malloc(cap);
+		assert_non_null(buf);
+		n = capn_write_mem(c, buf, cap, 0);
+		if (n >= 0) {
+			*out = buf;
+			*out_len = (size_t)n;
+			return 0;
+		}
+		free(buf);
+		cap *= 2;
 		if (cap > 1024U * 1024U)
 			return -1;
-		buf = malloc(cap);
-		if (!buf)
-			return -1;
-		n = capn_write_mem(c, buf, cap, 0);
-		if (n >= 0)
-			break;
-		free(buf);
-		cap *= 2U;
 	}
-	*out = buf;
-	*out_len = (size_t)n;
-	return 0;
 }
 
 static AgentId_ptr mk_agent(struct capn_segment *seg, uint64_t hi, uint64_t lo)
@@ -97,192 +82,103 @@ static AgentId_ptr mk_agent(struct capn_segment *seg, uint64_t hi, uint64_t lo)
 	return p;
 }
 
-static int encode_status(uint8_t **out, size_t *out_len)
+static void expect_decision(const uint8_t *msg, size_t len, enum Decision want)
 {
 	struct capn c;
-	struct CallEnvelope env;
-	CallEnvelope_ptr ep;
-
-	memset(&c, 0, sizeof(c));
-	capn_init_malloc(&c);
-	memset(&env, 0, sizeof(env));
-	env.protocolVersion = 1;
-	env.body_which = CallEnvelope_body_status;
-	ep = new_CallEnvelope(capn_root(&c).seg);
-	write_CallEnvelope(&env, ep);
-	if (capn_setp(capn_root(&c), 0, ep.p) != 0 ||
-	    capn_write_grow(&c, out, out_len) != 0) {
-		capn_free(&c);
-		return -1;
-	}
-	capn_free(&c);
-	return 0;
-}
-
-static int encode_seat_check(uint64_t hi, uint64_t lo, enum SeatAction act,
-			     uint8_t **out, size_t *out_len)
-{
-	struct capn c;
-	struct CallEnvelope env;
-	struct CheckParams params;
-	struct CheckBody body;
-	CheckParams_ptr pp;
-	CheckBody_ptr bp;
-	CallEnvelope_ptr ep;
-
-	memset(&c, 0, sizeof(c));
-	capn_init_malloc(&c);
-	memset(&body, 0, sizeof(body));
-	body.which = CheckBody_seat;
-	body.seat = act;
-	bp = new_CheckBody(capn_root(&c).seg);
-	write_CheckBody(&body, bp);
-	memset(&params, 0, sizeof(params));
-	params.agentId = mk_agent(capn_root(&c).seg, hi, lo);
-	params.body = bp;
-	pp = new_CheckParams(capn_root(&c).seg);
-	write_CheckParams(&params, pp);
-	memset(&env, 0, sizeof(env));
-	env.protocolVersion = 1;
-	env.body_which = CallEnvelope_body_check;
-	env.body.check = pp;
-	ep = new_CallEnvelope(capn_root(&c).seg);
-	write_CallEnvelope(&env, ep);
-	if (capn_setp(capn_root(&c), 0, ep.p) != 0 ||
-	    capn_write_grow(&c, out, out_len) != 0) {
-		capn_free(&c);
-		return -1;
-	}
-	capn_free(&c);
-	return 0;
-}
-
-static int encode_admit(uint64_t hi, uint64_t lo, enum AdmitKind kind,
-			uint8_t **out, size_t *out_len)
-{
-	struct capn c;
-	struct CallEnvelope env;
-	struct AdmitParams ap;
-	AdmitParams_ptr app;
-	CallEnvelope_ptr ep;
-
-	memset(&c, 0, sizeof(c));
-	capn_init_malloc(&c);
-	memset(&ap, 0, sizeof(ap));
-	ap.agentId = mk_agent(capn_root(&c).seg, hi, lo);
-	ap.kind = kind;
-	ap.detail = ctext("");
-	app = new_AdmitParams(capn_root(&c).seg);
-	write_AdmitParams(&ap, app);
-	memset(&env, 0, sizeof(env));
-	env.protocolVersion = 1;
-	env.body_which = CallEnvelope_body_admit;
-	env.body.admit = app;
-	ep = new_CallEnvelope(capn_root(&c).seg);
-	write_CallEnvelope(&env, ep);
-	if (capn_setp(capn_root(&c), 0, ep.p) != 0 ||
-	    capn_write_grow(&c, out, out_len) != 0) {
-		capn_free(&c);
-		return -1;
-	}
-	capn_free(&c);
-	return 0;
-}
-
-static void expect_check_ok(grok_supervisor_t *sup, const uint8_t *req,
-			    size_t req_len, enum Decision want)
-{
-	uint8_t *resp = NULL;
-	size_t resp_len = 0;
-	struct capn c;
-	CallEnvelope_ptr root;
-	struct CallEnvelope env;
-	struct CheckResults cr;
+	PolicyDecision_ptr root;
 	struct PolicyDecision d;
 
-	assert_int_equal(grok_policyd_handle_capnp(sup, req, req_len, &resp,
-						   &resp_len),
-			 0);
-	assert_non_null(resp);
+	assert_non_null(msg);
 	memset(&c, 0, sizeof(c));
-	assert_int_equal(capn_init_mem(&c, resp, resp_len, 0), 0);
+	assert_int_equal(capn_init_mem(&c, msg, len, 0), 0);
 	root.p = capn_getp(capn_root(&c), 0, 1);
-	read_CallEnvelope(&env, root);
-	assert_true(env.body_which == CallEnvelope_body_checkResults ||
-		    env.body_which == CallEnvelope_body_admitResults);
-	if (env.body_which == CallEnvelope_body_checkResults)
-		read_CheckResults(&cr, env.body.checkResults);
-	else
-		read_CheckResults(&cr, env.body.admitResults);
-	assert_int_equal(cr.which, CheckResults_ok);
-	read_PolicyDecision(&d, cr.ok);
+	read_PolicyDecision(&d, root);
 	assert_int_equal(d.decision, want);
 	capn_free(&c);
-	free(resp);
 }
 
-static void test_status_request_via_handle(void **state)
+static void test_status(void **state)
 {
 	struct capn_fix *f = *state;
-	uint8_t *req = NULL, *resp = NULL;
-	size_t req_len = 0, resp_len = 0;
+	uint8_t *out = NULL;
+	size_t out_len = 0;
 	struct capn c;
-	CallEnvelope_ptr root;
-	struct CallEnvelope env;
-	struct StatusResults sr;
+	PolicydStatus_ptr root;
 	struct PolicydStatus st;
 
-	assert_int_equal(encode_status(&req, &req_len), 0);
-	assert_int_equal(grok_policyd_handle_capnp(f->sup, req, req_len, &resp,
-						   &resp_len),
-			 0);
-	free(req);
+	grok_policyd_status(f->sup, &out, &out_len);
+	assert_non_null(out);
 	memset(&c, 0, sizeof(c));
-	assert_int_equal(capn_init_mem(&c, resp, resp_len, 0), 0);
+	assert_int_equal(capn_init_mem(&c, out, out_len, 0), 0);
 	root.p = capn_getp(capn_root(&c), 0, 1);
-	read_CallEnvelope(&env, root);
-	assert_int_equal(env.body_which, CallEnvelope_body_statusResults);
-	read_StatusResults(&sr, env.body.statusResults);
-	assert_int_equal(sr.which, StatusResults_ok);
-	read_PolicydStatus(&st, sr.ok);
+	read_PolicydStatus(&st, root);
 	assert_int_equal(st.ready, 1);
 	capn_free(&c);
-	free(resp);
+	free(out);
 }
 
-static void test_check_seat_via_handle(void **state)
+static void test_check_seat_allow(void **state)
 {
 	struct capn_fix *f = *state;
-	uint8_t *req = NULL;
-	size_t req_len = 0;
+	struct capn c;
+	struct SeatCheck sc;
+	SeatCheck_ptr sp;
+	uint8_t *in = NULL, *out = NULL;
+	size_t in_len = 0, out_len = 0;
 
-	assert_int_equal(encode_seat_check(1, 2, SeatAction_publishRun, &req,
-					   &req_len),
-			 0);
-	expect_check_ok(f->sup, req, req_len, Decision_allow);
-	free(req);
+	memset(&c, 0, sizeof(c));
+	capn_init_malloc(&c);
+	memset(&sc, 0, sizeof(sc));
+	sc.agentId = mk_agent(capn_root(&c).seg, 1, 2);
+	sc.action = SeatAction_publishRun;
+	sp = new_SeatCheck(capn_root(&c).seg);
+	write_SeatCheck(&sc, sp);
+	assert_int_equal(capn_setp(capn_root(&c), 0, sp.p), 0);
+	assert_int_equal(write_msg(&c, &in, &in_len), 0);
+	capn_free(&c);
+
+	grok_policyd_check_seat(f->sup, in, in_len, &out, &out_len);
+	free(in);
+	expect_decision(out, out_len, Decision_allow);
+	free(out);
 }
 
-static void test_admit_model_via_handle(void **state)
+static void test_admit_model_allow(void **state)
 {
 	struct capn_fix *f = *state;
-	uint8_t *req = NULL;
-	size_t req_len = 0;
+	struct capn c;
+	struct AdmitModel am;
+	AdmitModel_ptr ap;
+	uint8_t *in = NULL, *out = NULL;
+	size_t in_len = 0, out_len = 0;
 
-	assert_int_equal(encode_admit(1, 2, AdmitKind_model, &req, &req_len),
-			 0);
-	expect_check_ok(f->sup, req, req_len, Decision_allow);
-	free(req);
+	memset(&c, 0, sizeof(c));
+	capn_init_malloc(&c);
+	memset(&am, 0, sizeof(am));
+	am.agentId = mk_agent(capn_root(&c).seg, 3, 4);
+	am.detail.len = 0;
+	am.detail.str = "";
+	am.detail.seg = NULL;
+	ap = new_AdmitModel(capn_root(&c).seg);
+	write_AdmitModel(&am, ap);
+	assert_int_equal(capn_setp(capn_root(&c), 0, ap.p), 0);
+	assert_int_equal(write_msg(&c, &in, &in_len), 0);
+	capn_free(&c);
+
+	grok_policyd_admit_model(f->sup, in, in_len, &out, &out_len);
+	free(in);
+	expect_decision(out, out_len, Decision_allow);
+	free(out);
 }
 
 int run_capnp_ffi_tests(void)
 {
 	const struct CMUnitTest tests[] = {
-		cmocka_unit_test_setup_teardown(test_status_request_via_handle,
+		cmocka_unit_test_setup_teardown(test_status, capn_setup,
+						capn_teardown),
+		cmocka_unit_test_setup_teardown(test_check_seat_allow,
 						capn_setup, capn_teardown),
-		cmocka_unit_test_setup_teardown(test_check_seat_via_handle,
-						capn_setup, capn_teardown),
-		cmocka_unit_test_setup_teardown(test_admit_model_via_handle,
+		cmocka_unit_test_setup_teardown(test_admit_model_allow,
 						capn_setup, capn_teardown),
 	};
 	return cmocka_run_group_tests_name("capnp_ffi", tests, NULL, NULL);

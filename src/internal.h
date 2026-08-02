@@ -42,10 +42,10 @@ int grok_policy_eval(const char *workspace,
 		     const char *path,
 		     grok_policy_result_t *out);
 
-/* Cap'n CheckParams path (defined in policy.c; needs policy.capnp.h at call site). */
-struct CheckParams;
-void grok_policy_decide_params(const char *workspace,
-			       const struct CheckParams *params,
-			       grok_policy_result_t *out);
+#include <capnp_c.h>
+
+/** Shell argv content gate (Cap'n List(Text) argv, live segment). */
+void grok_policy_shell_gate(const char *workspace, const char *cwd,
+			    capn_ptr argv, grok_policy_result_t *out);
 
 #endif

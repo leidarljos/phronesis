@@ -12,65 +12,49 @@ Policy and multi-agent supervisor (security-critical core) for [GrokOS](https://
 
 ## Cap'n product API (`interface Policyd`)
 
-Schema SoT: `schema/policy.capnp` (from grokos-schema). Product surface is
-**methods with typed results**, not free tool/action Text and not C errno for
-policy outcomes.
+Schema SoT: `schema/policy.capnp`. Cap'n is **always** linked. One method per
+domain (no ok|err unions, no CheckBody union). Params message in / result
+message out — zero-copy mappable segments across agent, sessiond, shell.
 
-| Method | Params | Results |
-|--------|--------|---------|
-| `status` | — | `StatusResults` = `PolicydStatus` \| `Err` |
-| `check` | `CheckParams` | `CheckResults` = `PolicyDecision` \| `Err` |
-| `admit` | `AdmitParams` | `CheckResults` (same) |
-| `agentStatus` | `AgentStatusParams` | `AgentStatusResults` = `AgentStatus` \| `Err` |
+| Method | Params root | Result root |
+|--------|-------------|-------------|
+| `status` | — | `PolicydStatus` |
+| `checkSeat` | `SeatCheck` | `PolicyDecision` |
+| `checkModel` | `ModelCheck` | `PolicyDecision` |
+| `checkPath` | `PathCheck` | `PolicyDecision` |
+| `checkShell` | `ShellCheck` | `PolicyDecision` |
+| `checkRisk` | `RiskCheck` | `PolicyDecision` |
+| `admitSeat` / `admitModel` | `AdmitSeat` / `AdmitModel` | `PolicyDecision` |
+| `agentStatus` | `AgentQuery` | `AgentStatus` |
 
-- **`Decision`** (deny/allow/prompt) lives inside `CheckResults.ok`.
-- **`Err`** is protocol/TCB failure — distinct from deny.
-- **`CheckParams.body`** is a domain **union**: `seat` \| `model` \| `path` \|
-  `shell` \| `risk` (invalid tool×action pairs are unrepresentable).
-- **Identity** is `Util.AgentId` / `Util.TraceId` bits only (never Text hex).
-- **Shell content** is `ShellOp { cwd, argv : List(Text) }` (spawn argv).
-
-Hosts without Cap'n RPC pack **`CallEnvelope`** and call
-`grok_policyd_handle_capnp` (in-process). c-capnproto does not emit interface
-stubs; Params/Results structs are the wire shapes.
+- **Identity**: `Util.AgentId` bits only.
+- **Shell**: `ShellCheck.argv : List(Text)` (spawn argv).
+- **Protocol failure**: `PolicyDecision.decision = deny` (fail closed).
+- C entry points are `void` and always write a Cap'n result message (or NULL on OOM).
 
 ```c
 #include <grok-policyd/supervisor.h>
 
-grok_supervisor_t *sup = NULL;
-uint8_t *req = /* Cap'n CallEnvelope: body.check = CheckParams */;
-size_t req_len = /* ... */;
-uint8_t *resp = NULL;
-size_t resp_len = 0;
-
-grok_supervisor_open(&sup, state_dir, runtime_dir);
-if (grok_policyd_handle_capnp(sup, req, req_len, &resp, &resp_len) == 0) {
-    /* resp: CallEnvelope body.checkResults = CheckResults { ok | err } */
-    free(resp);
-}
-grok_supervisor_close(sup);
+/* in: Cap'n ShellCheck root; out: Cap'n PolicyDecision root */
+uint8_t *out = NULL;
+size_t out_len = 0;
+grok_policyd_check_shell(sup, shell_msg, shell_len, &out, &out_len);
+/* decode PolicyDecision from out; free(out) */
 ```
 
-`grok_policy_check` remains a **CLI string bridge** only (legacy tool/action
-text). Product agents speak Cap'n methods.
+`grok_policy_check` is CLI string bridge only.
 
-### CheckBody decision table
+### Decision table (by method)
 
-| body arm | condition | Decision |
-|----------|-----------|----------|
-| `seat` | publishRun / readRun / listRuns / listEvents | allow |
-| `model` | ModelOp (empty model ok) | allow |
-| `path` | read/write, clean abs under workspace | allow |
-| `path` | delete | prompt |
-| `shell` | cwd under workspace, empty argv | allow |
-| `shell` | cwd under workspace, argv Python without `uv`+`run` | **deny** |
-| `shell` | argv `uv run` + `.py` without PEP 723 | **deny** |
-| `shell` | argv `uv run` + `.py` with PEP 723 `# /// script` | allow |
-| `risk` | any set RiskAction | prompt |
-| other | — | deny |
+| Method | allow when | deny / prompt |
+|--------|------------|---------------|
+| checkSeat | publishRun / readRun / listRuns / listEvents | unknown action → deny |
+| checkModel | always (admit plane) | — |
+| checkPath | read/write under workspace | outside → deny; delete → prompt |
+| checkShell | cwd under workspace; Python only via uv run + PEP 723 | bare python / missing PEP 723 → deny |
+| checkRisk | — | always prompt |
 
-Lexical workspace rules: absolute paths only; reject `//`, `.`, `..`. No
-`realpath`.
+Lexical paths: absolute only; reject `//`, `.`, `..`. No `realpath`.
 
 ## Build / test / coverage (pixi only)
 

@@ -3,46 +3,42 @@
 #
 # Role
 # ----
-# Product surface is interface Policyd (methods + typed results). Callers
-# (sessiond, agent, shell) and the TCB speak the same methods; transport is
-# in-process FFI today (static link). There is no policyd.sock peer.
+# Product API is interface Policyd: one method per domain, Cap'n always linked.
+# Each method is zero-copy mappable Cap'n messages (params root in, result root
+# out). No CallEnvelope. No ok|err unions. No tool×action free Text.
 #
-# Seat Cap'n (session.capnp / nng) is a separate server. Do not fold seat Goal
-# into this interface.
+# Speakers: grok-policyd (TCB); sessiond / grokos-agent / grokos-shell.
+# Seat Cap'n (session.capnp) is a separate server — do not fold Goal here.
 #
 # Trust
 # -----
-# - Identity: Util.AgentId / Util.TraceId only (fixed-width). Never Text hex
-#   identity on the wire (util.capnp). CLI 32-hex is off-wire display only.
-# - Path checks: lexical only (no realpath). Overlong Cap'n text → Err.
-# - Decision is a *return value*, not a C errno. Protocol failure is Err, not
-#   Decision.deny.
+# - Identity: Util.AgentId only (fixed-width). Never Text hex on the wire.
+# - Path checks: lexical only (no realpath). Overlong text → fail-closed deny.
+# - Policy outcome is always PolicyDecision (deny | allow | prompt). Protocol /
+#   parse failures are Decision.deny with a reason (fail closed) — not a second
+#   error channel.
+# - TCB does not authenticate agentId; seat joins it to GROKOS_RUN_ID by convention.
 #
 # Design
 # ------
-# 1. interface methods are the API (Sandstorm-style). Params/Results are the
-#    wire structs (c-capnproto does not emit RPC stubs; methods still define
-#    the product contract and the shapes implementers encode).
-# 2. Check body is a domain union (seat|model|path|shell|risk) — invalid
-#    tool×action pairs are unrepresentable.
-# 3. Shell content is ShellOp.argv : List(Text), never a shell command string.
-# 4. No parallel free-Text tool/action vocabulary.
+# Separate methods beat unions: invalid cross-domain combos are unrepresentable
+# because they are different entry points. Shared result type is PolicyDecision.
+# Shell content is argv : List(Text) on checkShell — never a shell string.
 #
 # Evolution
 # ---------
-# Prefer new methods / union arms over renumber. deprecated* stays until
-# embedders migrate. protocolVersion on CallEnvelope must be 1.
+# Prefer new methods over reshaping existing ones. deprecated* until migrate.
 
 @0xe2859f3833215a0b;
 
 using Util = import "util.capnp";
 
 # ==============================================================================
-# Shared value types
+# Shared values
 # ==============================================================================
 
 enum Decision {
-  # Policy outcome. Always a method result field — never a C return code.
+  # Policy outcome. Always the method result's decision field.
   deny @0;
   allow @1;
   # Confirm class. Product hard seats may fail-closed on prompt.
@@ -59,99 +55,36 @@ enum SeatAction {
 enum PathAction {
   read @0;
   write @1;
-  # TCB returns Decision.prompt.
+  # High-risk → Decision.prompt.
   delete @2;
 }
 
 enum RiskAction {
-  unset @0;
-  network @1;
-  secretExport @2;
-  sudo @3;
-  pay @4;
-  auth @5;
-  osChange @6;
-  privilege @7;
-}
-
-enum AdmitKind {
-  # Coarse admit → maps to a CheckBody arm (fail-closed on unset).
-  unset @0;
-  seat @1;   # → seat = publishRun
-  model @2;  # → model start
-  agent @3;  # alias of model
+  network @0;
+  secretExport @1;
+  sudo @2;
+  pay @3;
+  auth @4;
+  osChange @5;
+  privilege @6;
 }
 
 enum AgentState {
-  # Process slot state (not Util.RunState).
+  # Process slot only (not Util.RunState).
   stopped @0;
   running @1;
   failed @2;
-}
-
-enum ErrCode {
-  # Protocol / TCB failure codes (method result Err.code). Not Decision.
-  unset @0;
-  inval @1;
-  notFound @2;
-  io @3;
-  state @4;
-  internal @5;
-}
-
-struct ModelOp {
-  # Open model catalog / invoke id. Empty allowed.
-  model @0 :Text;
-}
-
-struct PathOp {
-  action @0 :PathAction;
-  # Clean absolute path under agent workspace for allow. Empty → deny.
-  path @1 :Text;
-}
-
-struct ShellOp {
-  # Absolute cwd / target root for workspace allowlist.
-  cwd @0 :Text;
-  # spawn(2) argv. Empty = path-only (no content gate).
-  # Non-empty: product content gates (Python → uv run + PEP 723 on .py).
-  # Caller supplies argv; TCB does not shell-tokenize a string.
-  argv @1 :List(Text);
-}
-
-struct RiskOp {
-  action @0 :RiskAction;
-  path @1 :Text;  # optional context; may be empty
-}
-
-struct CheckBody {
-  # Exactly one domain op. This is the closed product law for checks.
-  union {
-    seat @0 :SeatAction;
-    model @1 :ModelOp;
-    path @2 :PathOp;
-    shell @3 :ShellOp;
-    risk @4 :RiskOp;
-  }
+  # Slot missing / query invalid (fail-closed status).
+  missing @3;
 }
 
 struct PolicyDecision {
+  # Sole result type for every check/admit method.
   decision @0 :Decision;
   reason @1 :Text;
-  # Short human reason. Not a second protocol.
+  # Short human reason. Protocol failures use deny + reason (fail closed).
   agentId @2 :Util.AgentId;
-  # Echo of the checked agent.
-}
-
-struct AgentStatus {
-  id @0 :Util.AgentId;
-  state @1 :AgentState;
-  pid @2 :Int32;
-  pgid @3 :Int32;
-  exitStatus @4 :Int32;
-  mode @5 :Util.SeatMode;
-  workspace @6 :Text;
-  hasCgroup @7 :Bool;
+  # Echo of the checked agent (zero if unset / invalid).
 }
 
 struct PolicydStatus {
@@ -160,121 +93,100 @@ struct PolicydStatus {
   stateDir @2 :Text;
   runtimeDir @3 :Text;
   ready @4 :Bool;
-  # Always true when the supervisor handle is open for further methods.
+  # False only if supervisor handle is unusable.
 }
 
-struct Err {
-  # Method-level failure. Distinct from Decision.deny.
-  code @0 :ErrCode;
-  message @1 :Text;
+struct AgentStatus {
+  id @0 :Util.AgentId;
+  state @1 :AgentState;
+  # missing → other fields zero/empty.
+  pid @2 :Int32;
+  pgid @3 :Int32;
+  exitStatus @4 :Int32;
+  mode @5 :Util.SeatMode;
+  workspace @6 :Text;
+  hasCgroup @7 :Bool;
+  detail @8 :Text;
+  # Human note when state=missing or failed; empty otherwise.
 }
 
 # ==============================================================================
-# Method params / results (typed returns — not int out-params)
+# Method params (flat structs — one method, one params type)
 # ==============================================================================
 
-struct StatusResults {
-  union {
-    ok @0 :PolicydStatus;
-    err @1 :Err;
-  }
-}
-
-struct CheckParams {
+struct SeatCheck {
   agentId @0 :Util.AgentId;
-  # Zero = no workspace bind (path/shell fail closed).
-  body @1 :CheckBody;
-  # Required. Unset body → Err.inval.
+  action @1 :SeatAction;
 }
 
-struct CheckResults {
-  # check() and admit() both return this.
-  union {
-    ok @0 :PolicyDecision;
-    err @1 :Err;
-  }
-}
-
-struct AdmitParams {
+struct ModelCheck {
   agentId @0 :Util.AgentId;
-  kind @1 :AdmitKind;
-  # unset → Err.inval. Prefer check() when the domain is known.
-  detail @2 :Text;
+  # Open catalog / invoke id. Empty allowed.
+  model @1 :Text;
+}
+
+struct PathCheck {
+  agentId @0 :Util.AgentId;
+  action @1 :PathAction;
+  # Clean absolute path under workspace for allow. Empty → deny.
+  path @2 :Text;
+}
+
+struct ShellCheck {
+  agentId @0 :Util.AgentId;
+  # Absolute cwd / target root for workspace allowlist.
+  cwd @1 :Text;
+  # spawn(2) argv. Empty = path-only (no content gate).
+  # Non-empty: Python scripts require uv+run and PEP 723 on the .py file.
+  argv @2 :List(Text);
+}
+
+struct RiskCheck {
+  agentId @0 :Util.AgentId;
+  action @1 :RiskAction;
+  # Optional path context; may be empty.
+  path @2 :Text;
+}
+
+struct AdmitSeat {
+  agentId @0 :Util.AgentId;
+  detail @1 :Text;
   # Log-only. Not a path. Not identity.
 }
 
-struct AgentStatusParams {
+struct AdmitModel {
   agentId @0 :Util.AgentId;
-  # Zero → Err.inval.
+  detail @1 :Text;
 }
 
-struct AgentStatusResults {
-  union {
-    ok @0 :AgentStatus;
-    err @1 :Err;
-  }
+struct AgentQuery {
+  agentId @0 :Util.AgentId;
 }
 
 # ==============================================================================
-# Product API — methods with typed results
+# interface Policyd — methods only (no unions)
 # ==============================================================================
 
 interface Policyd {
-  # In-process TCB capability. Host holds a supervisor; methods evaluate against
-  # that supervisor's agent slots / action log.
+  # Cap'n always linked. C entry points mirror methods: Cap'n params message
+  # root in, Cap'n result message root out (zero-copy mappable segments).
   #
-  # Caller: sessiond, grokos-agent, grokos-shell (linked libgrok_policyd).
-  # Callee: grok-policyd implementation of these methods.
-  # Never expose across uid boundaries without a new trust review.
-  #
-  # Every method returns a Results union: ok = domain value, err = protocol/TCB
-  # failure. Policy deny/allow/prompt is always inside ok : PolicyDecision.
+  # Caller: sessiond, grokos-agent, grokos-shell.
+  # Callee: grok-policyd. Same-uid / linked only.
 
-  status @0 () -> StatusResults;
-  # Snapshot of open supervisor (version, dirs, ready).
+  status @0 () -> PolicydStatus;
+  # Snapshot of open supervisor.
 
-  check @1 CheckParams -> CheckResults;
-  # Full domain check (seat / model / path / shell / risk).
+  checkSeat @1 SeatCheck -> PolicyDecision;
+  checkModel @2 ModelCheck -> PolicyDecision;
+  checkPath @3 PathCheck -> PolicyDecision;
+  checkShell @4 ShellCheck -> PolicyDecision;
+  checkRisk @5 RiskCheck -> PolicyDecision;
 
-  admit @2 AdmitParams -> CheckResults;
-  # Coarse sugar over check. Mapping (fail-closed):
-  #   seat  → CheckBody.seat = publishRun
-  #   model → CheckBody.model (empty model text)
-  #   agent → same as model
+  admitSeat @6 AdmitSeat -> PolicyDecision;
+  # Sugar for checkSeat(publishRun).
+  admitModel @7 AdmitModel -> PolicyDecision;
+  # Sugar for checkModel(empty model). Legacy "agent" admit maps here.
 
-  agentStatus @3 AgentStatusParams -> AgentStatusResults;
-  # Process-slot snapshot for one agentId.
-}
-
-# ==============================================================================
-# Transport envelope (FFI bytes in/out for hosts without Cap'n RPC runtime)
-# ==============================================================================
-#
-# c-capnproto does not generate interface stubs. Callers pack CallEnvelope
-# request / response around the method params/results above. Cap'n-RPC hosts
-# may ignore this envelope and call interface Policyd directly.
-#
-# Method ordinals match interface Policyd.
-
-struct CallEnvelope {
-  protocolVersion @0 :UInt32 = 1;
-  # Must be 1.
-
-  traceId @1 :Util.TraceId;
-  # Log correlation only. Zero = unset.
-
-  body :union {
-    # --- requests (caller → TCB) ---
-    status @2 :Void;
-    check @3 :CheckParams;
-    admit @4 :AdmitParams;
-    agentStatus @5 :AgentStatusParams;
-
-    # --- responses (TCB → caller); same ordinals as method results ---
-    statusResults @6 :StatusResults;
-    checkResults @7 :CheckResults;
-    # admit shares CheckResults shape
-    admitResults @8 :CheckResults;
-    agentStatusResults @9 :AgentStatusResults;
-  }
+  agentStatus @8 AgentQuery -> AgentStatus;
 }
