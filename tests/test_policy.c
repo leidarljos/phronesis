@@ -46,7 +46,7 @@ static void test_deny_all_env(void **state)
 				  "/bin/true", &pr),
 		GROK_OK);
 	assert_int_equal(pr.decision, GROK_DECISION_DENY);
-	assert_non_null(strstr(pr.reason, "deny-all"));
+	assert_int_equal(pr.code, GROK_REASON_DENY_ALL);
 
 	assert_int_equal(
 		grok_policy_check(s, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "seat", "publish_run",
@@ -102,7 +102,7 @@ static void test_shell_exec_workspace_allow(void **state)
 	assert_int_equal(grok_policy_check(s, "agent-a", "shell", "exec", "/ws/proj", &pr),
 			 GROK_OK);
 	assert_int_equal(pr.decision, GROK_DECISION_ALLOW);
-	assert_non_null(strstr(pr.reason, "shell exec under workspace"));
+	assert_int_equal(pr.code, GROK_REASON_SHELL_EXEC_ALLOW);
 	assert_int_equal(grok_policy_check(s, "agent-a", "shell", "exec", "/ws/proj/sub", &pr),
 			 GROK_OK);
 	assert_int_equal(pr.decision, GROK_DECISION_ALLOW);

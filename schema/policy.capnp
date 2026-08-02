@@ -78,13 +78,49 @@ enum AgentState {
   missing @3;
 }
 
+# Stable machine codes for PolicyDecision. TCB and packs set code.
+# Human/i18n labels live in viewers (grokos-agent, grokos-shell, sessiond),
+# not in policyd. New outcomes extend this enum.
+enum PolicyReason {
+  unspecified @0;
+
+  # Path / seat / protocol plane
+  toolsDefaultDeny @1;
+  pathOutsideWorkspace @2;
+  pathUnderWorkspaceAllow @3;
+  invalidMessage @4;
+  fieldTooLong @5;
+  denyAll @6;
+  highRiskPrompt @7;
+  seatBoardAllow @8;
+  modelStartAllow @9;
+  missingToolAction @10;
+  unknownSeatAction @11;
+
+  # checkShell pack host (Cap'n ShellView → pack → Cap'n PolicyDecision)
+  packMissing @12;
+  packLoadFailed @13;
+  packRuntimeError @14;
+  packBadResult @15;
+  shellViewBuildFailed @16;
+
+  # Shell content pack product law (uv / python / PEP 723)
+  pythonRequiresUvRun @17;
+  pythonDashCDenied @18;
+  pythonMissingPep723 @19;
+  shellExecAllow @20;
+}
+
 struct PolicyDecision {
   # Sole result type for every check/admit method.
   decision @0 :Decision;
   reason @1 :Text;
-  # Short human reason. Protocol failures use deny + reason (fail closed).
+  # Pack-authored human text (user Janet packs set this). TCB host-only
+  # failures leave empty; viewers may map code for i18n of those codes.
   agentId @2 :Util.AgentId;
   # Echo of the checked agent (zero if unset / invalid).
+  code @3 :PolicyReason;
+  # Machine outcome. Packs set product codes; TCB sets host codes; wire passthrough.
 }
 
 struct PolicydStatus {
@@ -133,12 +169,44 @@ struct PathCheck {
 }
 
 struct ShellCheck {
+  # Request: raw proposed shell spawn (agent fills).
   agentId @0 :Util.AgentId;
   # Absolute cwd / target root for workspace allowlist.
   cwd @1 :Text;
   # spawn(2) argv. Empty = path-only (no content gate).
-  # Non-empty: Python scripts require uv+run and PEP 723 on the .py file.
   argv @2 :List(Text);
+}
+
+# Host-sealed path facts for path-like argv tokens (workspace-bound only).
+# Host resolves + optionally reads a short file prefix. Packs interpret
+# content (shebang, PEP 723, …) with regex/matchers — host does not.
+struct PathProbe {
+  # Original argv token (as proposed).
+  arg @0 :Text;
+  # Absolute path under workspace if host resolved it; empty if not.
+  resolved @1 :Text;
+  exists @2 :Bool;
+  # First N bytes of file as Text (empty if !exists or unreadable).
+  # Cap ~8KiB. Packs parse; host never labels language-specific markers.
+  head @3 :Text;
+}
+
+struct ShellView {
+  # Sealed host projection of ShellCheck for content policy packs (e.g. Janet).
+  # Cap'n only — no parallel C DTO. Policy logic (uv, python, PEP 723, …)
+  # lives entirely in the pack over argv + PathProbe.head.
+  #
+  # Host: workspace check, resolve path-like tokens under workspace, read head.
+  # Pack: regex/matchers only; no FS/spawn/net.
+  # Zero-copy mappable; Janet may project to a table.
+
+  underWorkspace @0 :Bool;
+  cwd @1 :Text;
+  # Validated absolute cwd (empty if not under workspace).
+  argv @2 :List(Text);
+  # spawn tokens. Packs apply regex/matchers here.
+  pathProbes @3 :List(PathProbe);
+  # Path-like tokens under workspace + optional file head for pack parsing.
 }
 
 struct RiskCheck {

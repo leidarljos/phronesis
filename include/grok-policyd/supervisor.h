@@ -165,6 +165,34 @@ typedef enum {
 } grok_decision_t;
 
 /**
+ * Machine codes for @ref grok_policy_result_t — mirrors Cap'n PolicyReason
+ * in policy.capnp (grokos-schema). Keep ordinals identical.
+ */
+typedef enum {
+	GROK_REASON_UNSPECIFIED = 0,
+	GROK_REASON_TOOLS_DEFAULT_DENY = 1,
+	GROK_REASON_PATH_OUTSIDE_WORKSPACE = 2,
+	GROK_REASON_PATH_UNDER_WORKSPACE_ALLOW = 3,
+	GROK_REASON_INVALID_MESSAGE = 4,
+	GROK_REASON_FIELD_TOO_LONG = 5,
+	GROK_REASON_DENY_ALL = 6,
+	GROK_REASON_HIGH_RISK_PROMPT = 7,
+	GROK_REASON_SEAT_BOARD_ALLOW = 8,
+	GROK_REASON_MODEL_START_ALLOW = 9,
+	GROK_REASON_MISSING_TOOL_ACTION = 10,
+	GROK_REASON_UNKNOWN_SEAT_ACTION = 11,
+	GROK_REASON_PACK_MISSING = 12,
+	GROK_REASON_PACK_LOAD_FAILED = 13,
+	GROK_REASON_PACK_RUNTIME_ERROR = 14,
+	GROK_REASON_PACK_BAD_RESULT = 15,
+	GROK_REASON_SHELL_VIEW_BUILD_FAILED = 16,
+	GROK_REASON_PYTHON_REQUIRES_UV_RUN = 17,
+	GROK_REASON_PYTHON_DASH_C_DENIED = 18,
+	GROK_REASON_PYTHON_MISSING_PEP723 = 19,
+	GROK_REASON_SHELL_EXEC_ALLOW = 20
+} grok_policy_reason_t;
+
+/**
  * Snapshot of one agent slot.
  *
  * All char fields are NUL-terminated. @a has_cgroup is 1 when stop used a
@@ -183,12 +211,20 @@ typedef struct {
 } grok_agent_status_t;
 
 /**
- * Result of @ref grok_policy_check.
+ * Internal/CLI bridge result. Product Cap'n path uses PolicyDecision on the wire
+ * (decision + code); viewers map @a code to human text.
  */
 typedef struct {
 	grok_decision_t decision;
+	grok_policy_reason_t code;
+	/** Unused on Cap'n product path; CLI may leave empty. */
 	char reason[GROK_REASON_MAX];
 } grok_policy_result_t;
+
+/** Set decision + PolicyReason code (reason left empty). */
+GROK_POLICYD_API void grok_policy_result_set(grok_policy_result_t *out,
+					     grok_decision_t decision,
+					     grok_policy_reason_t code);
 
 /**
  * Opaque supervisor handle.

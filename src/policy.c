@@ -81,165 +81,8 @@ static int path_under_workspace(const char *workspace, const char *path)
 	return path[wl] == '\0' || path[wl] == '/';
 }
 
-static const char *token_base(const char *tok)
-{
-	const char *s;
-
-	if (!tok || !tok[0])
-		return tok;
-	s = strrchr(tok, '/');
-	return (s && s[1]) ? s + 1 : tok;
-}
-
-static int is_python_interpreter(const char *tok)
-{
-	const char *b;
-
-	if (!tok || !tok[0])
-		return 0;
-	b = token_base(tok);
-	if (strcmp(b, "python") == 0 || strcmp(b, "pypy") == 0 ||
-	    strcmp(b, "pypy3") == 0)
-		return 1;
-	if (strncmp(b, "python", 6) != 0)
-		return 0;
-	return b[6] == '\0' || (b[6] >= '0' && b[6] <= '9');
-}
-
-static int ends_py(const char *tok)
-{
-	size_t n;
-
-	if (!tok || tok[0] == '-')
-		return 0;
-	n = strlen(tok);
-	return n >= 4 && strcmp(tok + n - 3, ".py") == 0;
-}
-
-static int tmp_from_text(capn_text t, char *tmp, size_t n)
-{
-	if (t.len < 0 || !t.str || (size_t)t.len >= n)
-		return -1;
-	memcpy(tmp, t.str, (size_t)t.len);
-	tmp[(size_t)t.len] = '\0';
-	return 0;
-}
-
-static int argv_has_uv_run(capn_ptr argv, int n)
-{
-	int i, j;
-	capn_text empty = { 0, "", NULL };
-	char tmp[GROK_PATH_MAX];
-
-	for (i = 0; i < n; i++) {
-		if (tmp_from_text(capn_get_text(argv, i, empty), tmp,
-				  sizeof(tmp)) != 0)
-			continue;
-		if (strcmp(token_base(tmp), "uv") != 0)
-			continue;
-		for (j = i + 1; j < n; j++) {
-			capn_text u = capn_get_text(argv, j, empty);
-
-			if (u.str && u.len == 3 && memcmp(u.str, "run", 3) == 0)
-				return 1;
-		}
-	}
-	return 0;
-}
-
-static int argv_touches_python(capn_ptr argv, int n)
-{
-	int i;
-	capn_text empty = { 0, "", NULL };
-	char tmp[GROK_PATH_MAX];
-
-	for (i = 0; i < n; i++) {
-		if (tmp_from_text(capn_get_text(argv, i, empty), tmp,
-				  sizeof(tmp)) != 0)
-			continue;
-		if (is_python_interpreter(tmp) || ends_py(tmp))
-			return 1;
-	}
-	return 0;
-}
-
-static int argv_python_dash_c(capn_ptr argv, int n)
-{
-	int i;
-	capn_text empty = { 0, "", NULL };
-	char tmp[GROK_PATH_MAX];
-
-	for (i = 0; i + 1 < n; i++) {
-		capn_text n1;
-
-		if (tmp_from_text(capn_get_text(argv, i, empty), tmp,
-				  sizeof(tmp)) != 0)
-			continue;
-		if (!is_python_interpreter(tmp))
-			continue;
-		n1 = capn_get_text(argv, i + 1, empty);
-		if (n1.str && n1.len == 2 && memcmp(n1.str, "-c", 2) == 0)
-			return 1;
-	}
-	return 0;
-}
-
-static int argv_find_py(capn_ptr argv, int n, char *out, size_t out_n)
-{
-	int i;
-	capn_text empty = { 0, "", NULL };
-	char tmp[GROK_PATH_MAX];
-
-	for (i = 0; i < n; i++) {
-		if (tmp_from_text(capn_get_text(argv, i, empty), tmp,
-				  sizeof(tmp)) != 0)
-			continue;
-		if (!ends_py(tmp))
-			continue;
-		if (strlen(tmp) + 1 > out_n)
-			return -1;
-		memcpy(out, tmp, strlen(tmp) + 1);
-		return 0;
-	}
-	return 1;
-}
-
-static int pep723(const char *path)
-{
-	FILE *f;
-	char line[512];
-	int open_blk = 0;
-
-	if (!path || !path[0])
-		return 0;
-	f = fopen(path, "r");
-	if (!f)
-		return 0;
-	while (fgets(line, sizeof(line), f)) {
-		char *p = line;
-		size_t len;
-
-		while (*p == ' ' || *p == '\t')
-			p++;
-		len = strlen(p);
-		while (len && (p[len - 1] == '\n' || p[len - 1] == '\r'))
-			p[--len] = '\0';
-		if (!open_blk) {
-			if (strcmp(p, "# /// script") == 0)
-				open_blk = 1;
-			continue;
-		}
-		if (strcmp(p, "# ///") == 0) {
-			fclose(f);
-			return 1;
-		}
-	}
-	fclose(f);
-	return 0;
-}
-
-static int resolve_script(const char *cwd, const char *script, char *out,
-			  size_t out_n)
+int grok_policy_resolve_script(const char *cwd, const char *script, char *out,
+			       size_t out_n)
 {
 	size_t cl, sl;
 
@@ -265,57 +108,14 @@ static int resolve_script(const char *cwd, const char *script, char *out,
 	return 0;
 }
 
-void grok_policy_shell_gate(const char *workspace, const char *cwd,
-			    capn_ptr argv, grok_policy_result_t *out)
-{
-	int n, fr;
-	char script[GROK_PATH_MAX], abs[GROK_PATH_MAX];
-
-	(void)workspace;
-	if (!out)
-		return;
-	if (argv.type == CAPN_NULL || argv.len <= 0)
-		return;
-	n = argv.len;
-	if (!argv_touches_python(argv, n))
-		return;
-	if (!argv_has_uv_run(argv, n)) {
-		out->decision = GROK_DECISION_DENY;
-		snprintf(out->reason, sizeof(out->reason),
-			 "python requires uv run + PEP 723");
-		return;
-	}
-	if (argv_python_dash_c(argv, n)) {
-		out->decision = GROK_DECISION_DENY;
-		snprintf(out->reason, sizeof(out->reason),
-			 "python -c denied; use uv run --script");
-		return;
-	}
-	fr = argv_find_py(argv, n, script, sizeof(script));
-	if (fr > 0)
-		return;
-	if (fr < 0 || resolve_script(cwd, script, abs, sizeof(abs)) != 0) {
-		out->decision = GROK_DECISION_DENY;
-		snprintf(out->reason, sizeof(out->reason),
-			 "python script path unresolvable");
-		return;
-	}
-	if (!pep723(abs)) {
-		out->decision = GROK_DECISION_DENY;
-		snprintf(out->reason, sizeof(out->reason),
-			 "python missing PEP 723 metadata");
-		return;
-	}
-}
-
 int grok_policy_eval(const char *workspace, const char *tool,
 		     const char *action, const char *path,
 		     grok_policy_result_t *out)
 {
 	if (!out)
 		return GROK_ERR_INVAL;
-	memset(out, 0, sizeof(*out));
-	out->decision = GROK_DECISION_DENY;
+	grok_policy_result_set(out, GROK_DECISION_DENY,
+			       GROK_REASON_TOOLS_DEFAULT_DENY);
 
 	{
 		const char *da = getenv("GROKOS_POLICYD_DENY_ALL");
@@ -324,14 +124,15 @@ int grok_policy_eval(const char *workspace, const char *tool,
 		    (strcmp(da, "1") == 0 || strcmp(da, "true") == 0 ||
 		     strcmp(da, "yes") == 0 || strcmp(da, "TRUE") == 0 ||
 		     strcmp(da, "YES") == 0)) {
-			snprintf(out->reason, sizeof(out->reason),
-				 "deny-all (GROKOS_POLICYD_DENY_ALL)");
+			grok_policy_result_set(out, GROK_DECISION_DENY,
+					       GROK_REASON_DENY_ALL);
 			return GROK_OK;
 		}
 	}
 
 	if (!tool || !tool[0] || !action || !action[0]) {
-		snprintf(out->reason, sizeof(out->reason), "missing tool/action");
+		grok_policy_result_set(out, GROK_DECISION_DENY,
+				       GROK_REASON_MISSING_TOOL_ACTION);
 		return GROK_OK;
 	}
 
@@ -340,47 +141,43 @@ int grok_policy_eval(const char *workspace, const char *tool,
 		    strcmp(action, "read_run") == 0 ||
 		    strcmp(action, "list_runs") == 0 ||
 		    strcmp(action, "list_events") == 0) {
-			out->decision = GROK_DECISION_ALLOW;
-			snprintf(out->reason, sizeof(out->reason),
-				 "seat board op allow (session plane ACL)");
+			grok_policy_result_set(out, GROK_DECISION_ALLOW,
+					       GROK_REASON_SEAT_BOARD_ALLOW);
 			return GROK_OK;
 		}
-		snprintf(out->reason, sizeof(out->reason), "unknown seat action");
+		grok_policy_result_set(out, GROK_DECISION_DENY,
+				       GROK_REASON_UNKNOWN_SEAT_ACTION);
 		return GROK_OK;
 	}
 	if (strcmp(tool, "model") == 0 && strcmp(action, "start") == 0) {
-		out->decision = GROK_DECISION_ALLOW;
-		snprintf(out->reason, sizeof(out->reason),
-			 "model start admit plane");
+		grok_policy_result_set(out, GROK_DECISION_ALLOW,
+				       GROK_REASON_MODEL_START_ALLOW);
 		return GROK_OK;
 	}
 	if (strcmp(action, "delete") == 0 || strcmp(action, "network") == 0 ||
 	    strcmp(action, "sudo") == 0 ||
 	    strcmp(action, "secret_export") == 0) {
-		out->decision = GROK_DECISION_PROMPT;
-		snprintf(out->reason, sizeof(out->reason),
-			 "high-risk action requires confirm");
+		grok_policy_result_set(out, GROK_DECISION_PROMPT,
+				       GROK_REASON_HIGH_RISK_PROMPT);
 		return GROK_OK;
 	}
 	if ((strcmp(action, "read") == 0 || strcmp(action, "write") == 0) &&
 	    path && path[0] && path_under_workspace(workspace, path)) {
-		out->decision = GROK_DECISION_ALLOW;
-		snprintf(out->reason, sizeof(out->reason),
-			 "path under workspace allowlist");
+		grok_policy_result_set(out, GROK_DECISION_ALLOW,
+				       GROK_REASON_PATH_UNDER_WORKSPACE_ALLOW);
 		return GROK_OK;
 	}
 	if (strcmp(tool, "shell") == 0 && strcmp(action, "exec") == 0 &&
 	    path && path[0] && path_under_workspace(workspace, path)) {
-		out->decision = GROK_DECISION_ALLOW;
-		snprintf(out->reason, sizeof(out->reason),
-			 "shell exec under workspace allowlist");
+		grok_policy_result_set(out, GROK_DECISION_ALLOW,
+				       GROK_REASON_SHELL_EXEC_ALLOW);
 		return GROK_OK;
 	}
 	if (path && path[0] && !path_under_workspace(workspace, path))
-		snprintf(out->reason, sizeof(out->reason),
-			 "path outside workspace (deny)");
+		grok_policy_result_set(out, GROK_DECISION_DENY,
+				       GROK_REASON_PATH_OUTSIDE_WORKSPACE);
 	else
-		snprintf(out->reason, sizeof(out->reason),
-			 "tools default deny");
+		grok_policy_result_set(out, GROK_DECISION_DENY,
+				       GROK_REASON_TOOLS_DEFAULT_DENY);
 	return GROK_OK;
 }
