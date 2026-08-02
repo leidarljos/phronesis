@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # Product link-line contract for libgrok_policyd.so (not an inventory dump).
 #
-# Embedders open this shared object and call grok_policyd_handle_capnp. The
-# .so must:
-#   - export that entry
+# Embedders open this shared object and call Cap'n Policyd methods
+# (grok_policyd_check_shell, …). The .so must:
+#   - export product Cap'n entries
 #   - NEEDED the Cap'n pure-C runtime (libcapnp_c)
 #   - not NEEDED a peer/socket host stack (nng, libuv, systemd, libcap)
 #
@@ -61,15 +61,19 @@ if [[ -z "$have_capnp" ]]; then
 	exit 1
 fi
 
-# Dynamic export of the product Cap'n entry (default-visibility).
+# Dynamic export of product Cap'n methods (default-visibility).
 syms=$(nm -D --defined-only "$SO" 2>/dev/null || nm -D "$SO" 2>/dev/null || true)
-case "$syms" in
-*" T grok_policyd_handle_capnp"* | *" D grok_policyd_handle_capnp"* | *" T _grok_policyd_handle_capnp"*)
-	;;
-*)
-	echo "error: grok_policyd_handle_capnp not exported from $SO" >&2
-	exit 1
-	;;
-esac
+need_export() {
+	case "$syms" in
+	*" T $1"* | *" D $1"* | *" T _$1"*) return 0 ;;
+	*)
+		echo "error: $1 not exported from $SO" >&2
+		exit 1
+		;;
+	esac
+}
+need_export grok_policyd_status
+need_export grok_policyd_check_shell
+need_export grok_policyd_check_seat
 
-echo "ok: $SO — handle_capnp exported, libcapnp_c NEEDED, no peer host stack"
+echo "ok: $SO — Policyd Cap'n methods exported, libcapnp_c NEEDED, no peer host stack"

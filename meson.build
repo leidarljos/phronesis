@@ -95,25 +95,66 @@ if get_option('mutation')
   ))
 endif
 
+# policy.capnp imports util.capnp — gen script emits both C pairs into build/.
 schema_gen = custom_target(
   'policy_capnp',
-  input: files('schema/policy.capnp'),
-  output: ['policy.capnp.c', 'policy.capnp.h'],
-  command: [gen_capnp, '@INPUT@', '@OUTPUT0@', '@OUTPUT1@', capnpc_c],
+  input: files('schema/policy.capnp', 'schema/util.capnp'),
+  output: ['policy.capnp.c', 'policy.capnp.h', 'util.capnp.c', 'util.capnp.h'],
+  command: [
+    gen_capnp,
+    '@INPUT0@',
+    '@OUTPUT0@',
+    '@OUTPUT1@',
+    capnpc_c,
+  ],
   build_by_default: true,
 )
 
 schema_inc = include_directories('.')
+janet_inc = include_directories('third_party/janet')
+
+# External HaoZeke/capnp-janet: pkg-config (rg-forge) with wrap fallback.
+# Do not vendor that tree here. Subproject supplies janet_mod_src for the host
+# to compile against third_party/janet amalgamation.
+capnp_janet_dep = dependency(
+  'capnp-janet',
+  fallback: ['capnp-janet', 'capnp_janet_dep'],
+)
+capnp_janet_proj = subproject('capnp-janet')
+capnp_janet_mod_src = capnp_janet_proj.get_variable('capnp_janet_mod_src')
 
 lib_srcs = files(
   'src/paths.c',
   'src/action_log.c',
   'src/cgroup.c',
   'src/policy.c',
+  'src/policy_reason.c',
+  'src/policy_janet.c',
   'src/supervisor.c',
   'src/version.c',
   'src/capnp_api.c',
-) + [schema_gen]
+) + [schema_gen] + capnp_janet_mod_src
+
+# Host-owned Janet amalgamation (pack VM). capnp-janet stays external.
+janet_amalg = static_library(
+  'janet_amalg',
+  files('third_party/janet/janet.c'),
+  include_directories: janet_inc,
+  c_args: [
+    '-Wno-error',
+    '-Wno-implicit-function-declaration',
+    '-Wno-unused-parameter',
+    '-Wno-sign-compare',
+    '-DJANET_API=',
+    '-DJANET_NO_PROCESSES',
+    '-DJANET_SPAWN_NO_CHDIR',
+  ],
+  pic: true,
+)
+
+m_dep = cc.find_library('m', required: true)
+dl_dep = cc.find_library('dl', required: true)
+thread_dep = dependency('threads')
 
 # Default-hidden visibility: only GROK_POLICYD_API symbols leave the .so.
 # Tests link the static archive so they can exercise internal helpers without
@@ -121,13 +162,16 @@ lib_srcs = files(
 policyd_lib = library(
   'grok_policyd',
   lib_srcs,
-  include_directories: [inc, schema_inc],
-  dependencies: [capn_c_dep],
+  include_directories: [inc, schema_inc, janet_inc],
+  dependencies: [capn_c_dep, capnp_janet_dep, m_dep, dl_dep, thread_dep],
+  link_with: janet_amalg,
   version: ver,
   soversion: soversion,
   install: true,
   gnu_symbol_visibility: 'hidden',
-  c_args: mull_c_args,
+  c_args: mull_c_args + [
+    '-DJANET_API=',
+  ],
 )
 
 install_headers(
@@ -146,7 +190,7 @@ pkg.generate(
   url: 'https://nova.teachx.ai/trace-analysis/grokos-packages/grok-policyd',
   filebase: 'grok-policyd',
   subdirs: '.',
-  requires: 'c-capnproto',
+  requires: 'c-capnproto, capnp-janet',
 )
 
 cli = executable(
@@ -177,15 +221,16 @@ supervisor_test = executable(
     'tests/test_action_log.c',
     'tests/test_persist.c',
     'tests/test_policy.c',
+    'tests/test_shell_pack.c',
     'tests/test_version.c',
     'tests/test_capnp_ffi.c',
     'tests/test_main.c',
   ),
-  include_directories: [inc, schema_inc],
+  include_directories: [inc, schema_inc, janet_inc],
   # Static so tests can use a few internal helpers without exporting them on the .so.
-  link_with: policyd_lib.get_static_lib(),
-  dependencies: [cmocka_dep, capn_c_dep],
-  c_args: ['-Wno-format-truncation'] + mull_c_args,
+  link_with: [policyd_lib.get_static_lib(), janet_amalg],
+  dependencies: [cmocka_dep, capn_c_dep, capnp_janet_dep, m_dep, dl_dep, thread_dep],
+  c_args: ['-Wno-format-truncation', '-DJANET_API='] + mull_c_args,
   install: false,
 )
 
@@ -197,6 +242,7 @@ test(
   workdir: meson.project_source_root(),
   env: {
     'POLICYD_BUILD_DIR': meson.project_build_root(),
+    'POLICYD_SOURCE_ROOT': meson.project_source_root(),
   },
 )
 
@@ -231,6 +277,8 @@ if get_option('mutation')
     env: {
       'MULL_CONFIG': meson.project_source_root() / 'mull.yml',
       'POLICYD_BUILD_DIR': meson.project_build_root(),
+      # Shell pack tests resolve policy/shell.janet via POLICYD_SOURCE_ROOT.
+      'POLICYD_SOURCE_ROOT': meson.project_source_root(),
     },
   )
 endif
