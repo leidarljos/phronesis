@@ -277,6 +277,8 @@ if get_option('mutation')
     env: {
       'MULL_CONFIG': meson.project_source_root() / 'mull.yml',
       'POLICYD_BUILD_DIR': meson.project_build_root(),
+      # Shell pack tests resolve policy/shell.janet via POLICYD_SOURCE_ROOT.
+      'POLICYD_SOURCE_ROOT': meson.project_source_root(),
     },
   )
 endif
