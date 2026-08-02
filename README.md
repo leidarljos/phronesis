@@ -10,59 +10,51 @@ Policy and multi-agent supervisor (security-critical core) for [GrokOS](https://
 | **Product API** | `grok_policyd_handle_capnp()` (in-process FFI) |
 | **C helpers** | `include/grok-policyd/supervisor.h` |
 
-## Cap'n FFI
+## Cap'n product API (`interface Policyd`)
 
-Callers (sessiond, agent, shell) compose `PolicyEnvelope` bodies and call
-**`grok_policyd_handle_capnp`** on a **linked** `libgrok_policyd` (shared or
-static). Cap'n pure-C runtime is the **c-capnproto** package (`libcapnp_c`).
+Schema SoT: `schema/policy.capnp`. Cap'n is **always** linked. One method per
+domain (no ok|err unions, no CheckBody union). Params message in / result
+message out — zero-copy mappable segments across agent, sessiond, shell.
 
-Do **not** copy this tree into consumer `vendor/policyd/` and recompile with
-`cc` — that drifts from the TCB and breaks the packaging story. Consumers use
-`pkg-config grok-policyd` or monorepo `GROK_POLICYD_DIR=$PWD/build` after
-`pixi run lib`.
+| Method | Params root | Result root |
+|--------|-------------|-------------|
+| `status` | — | `PolicydStatus` |
+| `checkSeat` | `SeatCheck` | `PolicyDecision` |
+| `checkModel` | `ModelCheck` | `PolicyDecision` |
+| `checkPath` | `PathCheck` | `PolicyDecision` |
+| `checkShell` | `ShellCheck` | `PolicyDecision` |
+| `checkRisk` | `RiskCheck` | `PolicyDecision` |
+| `admitSeat` / `admitModel` | `AdmitSeat` / `AdmitModel` | `PolicyDecision` |
+| `agentStatus` | `AgentQuery` | `AgentStatus` |
+
+- **Identity**: `Util.AgentId` bits only.
+- **Shell**: `ShellCheck.argv : List(Text)` (spawn argv).
+- **Protocol failure**: `PolicyDecision.decision = deny` (fail closed).
+- C entry points are `void` and always write a Cap'n result message (or NULL on OOM).
 
 ```c
 #include <grok-policyd/supervisor.h>
 
-grok_supervisor_t *sup = NULL;
-uint8_t *req = /* Cap'n PolicyEnvelope request */;
-size_t req_len = /* ... */;
-uint8_t *resp = NULL;
-size_t resp_len = 0;
-
-grok_supervisor_open(&sup, state_dir, runtime_dir);
-if (grok_policyd_handle_capnp(sup, req, req_len, &resp, &resp_len) == 0) {
-    /* resp is Cap'n PolicyEnvelope response; free(resp) */
-}
-grok_supervisor_close(sup);
+/* in: Cap'n ShellCheck root; out: Cap'n PolicyDecision root */
+uint8_t *out = NULL;
+size_t out_len = 0;
+grok_policyd_check_shell(sup, shell_msg, shell_len, &out, &out_len);
+/* decode PolicyDecision from out; free(out) */
 ```
 
-Ops: `status`, `check`, `admit`, `agentStatus` (see `schema/policy.capnp`).
+`grok_policy_check` is CLI string bridge only.
 
-String `grok_policy_check` remains for CLI/tests.
+### Decision table (by method)
 
-## Policy check table (`grok_policy_eval`)
+| Method | allow when | deny / prompt |
+|--------|------------|---------------|
+| checkSeat | publishRun / readRun / listRuns / listEvents | unknown action → deny |
+| checkModel | always (admit plane) | — |
+| checkPath | read/write under workspace | outside → deny; delete → prompt |
+| checkShell | cwd under workspace; Python only via uv run + PEP 723 | bare python / missing PEP 723 → deny |
+| checkRisk | — | always prompt |
 
-Tools **default deny**. High-risk **actions** (`delete`, `network`, `sudo`,
-`secret_export`, …) evaluate to **prompt** before any allow. Agent workspace
-comes from `grok_supervisor_start` (empty workspace → path allows fail closed).
-
-| tool | action | path | decision |
-|------|--------|------|----------|
-| `seat` | `publish_run` / `read_run` / `list_runs` / `list_events` | (unused) | allow |
-| `model` | `start` | (unused / optional bind later) | allow |
-| `fs` | `read` / `write` | clean absolute under workspace | allow |
-| `shell` | `exec` | clean absolute **cwd or target root** under workspace | allow |
-| `shell` | `exec` | empty, outside workspace, unclean (`..`, `//`, relative) | deny |
-| \* | high-risk action name | any | prompt |
-| \* | other | any | deny |
-
-`shell`/`exec` path is **not** argv. Callers map a model bash tool to
-`tool=shell`, `action=exec`, and an absolute workspace path (meta #88 Track 1).
-Per-tool gates inside the agent model loop are Track 2 (agent package).
-
-Lexical workspace rules match `fs` path checks: absolute paths only; reject
-empty components, `.`, and `..`. No `realpath` (symlink escape remains open).
+Lexical paths: absolute only; reject `//`, `.`, `..`. No `realpath`.
 
 ## Build / test / coverage (pixi only)
 

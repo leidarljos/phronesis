@@ -1,0 +1,9 @@
+Janet (https://janet-lang.org/) — amalgamation vendored for embedding.
+
+Version: v1.39.1 (amalgamation build/c/janet.c + patched janet.h)
+License: MIT (see copyright header in janet.h / janet.c)
+Upstream: https://github.com/janet-lang/janet
+
+Do not edit amalgamated sources by hand. Refresh from a tagged release:
+  git clone --branch vX.Y.Z https://github.com/janet-lang/janet.git
+  make -C janet && cp janet/build/c/janet.c janet/build/janet.h third_party/janet/

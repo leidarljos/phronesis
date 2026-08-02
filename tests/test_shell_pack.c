@@ -1,0 +1,293 @@
+/* SPDX-License-Identifier: Apache-2.0 */
+#include "harness.h"
+#include "policy.capnp.h"
+#include "util.capnp.h"
+
+#include <capnp_c.h>
+#include <setjmp.h>
+#include <stdarg.h>
+#include <stddef.h>
+#include <cmocka.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/stat.h>
+#include <unistd.h>
+
+static capn_text ctext(const char *s)
+{
+	capn_text t;
+
+	t.len = s ? (int)strlen(s) : 0;
+	t.str = s ? s : "";
+	t.seg = NULL;
+	return t;
+}
+
+static int write_msg(struct capn *c, uint8_t **out, size_t *out_len)
+{
+	uint8_t *buf = NULL;
+	size_t cap = 8192U;
+	int64_t n;
+
+	*out = NULL;
+	*out_len = 0;
+	for (;;) {
+		buf = malloc(cap);
+		assert_non_null(buf);
+		n = capn_write_mem(c, buf, cap, 0);
+		if (n >= 0)
+			break;
+		free(buf);
+		cap *= 2U;
+		assert_true(cap < 1024U * 1024U);
+	}
+	*out = buf;
+	*out_len = (size_t)n;
+	return 0;
+}
+
+static void build_shell_check(const char *cwd, char **argv, int argc,
+			      uint8_t **out, size_t *out_len)
+{
+	struct capn c;
+	struct ShellCheck sc;
+	ShellCheck_ptr root;
+	capn_ptr list;
+	int i;
+
+	memset(&c, 0, sizeof(c));
+	capn_init_malloc(&c);
+	memset(&sc, 0, sizeof(sc));
+	sc.agentId.p = new_AgentId(capn_root(&c).seg).p;
+	{
+		struct AgentId id = { .hi = 1, .lo = 2 };
+
+		write_AgentId(&id, (AgentId_ptr){ .p = sc.agentId.p });
+	}
+	sc.cwd = ctext(cwd);
+	/* List(Text): pointer list. capn_new_list(sz,0,1) is composite; set_text fails. */
+	list = capn_new_ptr_list(capn_root(&c).seg, argc);
+	for (i = 0; i < argc; i++)
+		capn_set_text(list, i, ctext(argv[i]));
+	sc.argv = list;
+	root = new_ShellCheck(capn_root(&c).seg);
+	write_ShellCheck(&sc, root);
+	assert_int_equal(capn_setp(capn_root(&c), 0, root.p), 0);
+	assert_int_equal(write_msg(&c, out, out_len), 0);
+	capn_free(&c);
+}
+
+static void read_decision(const uint8_t *buf, size_t len, enum Decision *dec,
+			  enum PolicyReason *code, char *reason, size_t reason_n)
+{
+	struct capn c;
+	struct PolicyDecision d;
+	PolicyDecision_ptr root;
+
+	assert_int_equal(capn_init_mem(&c, buf, len, 0), 0);
+	root.p = capn_getp(capn_root(&c), 0, 1);
+	read_PolicyDecision(&d, root);
+	*dec = d.decision;
+	*code = d.code;
+	if (reason && reason_n) {
+		if (d.reason.str && d.reason.len > 0) {
+			size_t n = (size_t)d.reason.len < reason_n - 1
+					   ? (size_t)d.reason.len
+					   : reason_n - 1;
+			memcpy(reason, d.reason.str, n);
+			reason[n] = '\0';
+		} else {
+			reason[0] = '\0';
+		}
+	}
+	capn_free(&c);
+}
+
+static void write_file(const char *path, const char *body)
+{
+	FILE *f = fopen(path, "w");
+
+	assert_non_null(f);
+	fputs(body, f);
+	fclose(f);
+}
+
+struct shell_fix {
+	grok_supervisor_t *sup;
+	char st[GROK_PATH_MAX];
+	char rt[GROK_PATH_MAX];
+	char ws[GROK_PATH_MAX];
+};
+
+static int shell_setup(void **state)
+{
+	struct shell_fix *f = calloc(1, sizeof(*f));
+	char *argv0[] = { "true", NULL };
+	char pack[GROK_PATH_MAX];
+	const char *src;
+
+	assert_non_null(f);
+	assert_int_equal(t_open_pair(&f->sup, f->st, sizeof(f->st), f->rt,
+				     sizeof(f->rt), "shpack"),
+			 GROK_OK);
+	snprintf(f->ws, sizeof(f->ws), "%s/ws", f->rt);
+	assert_int_equal(mkdir(f->ws, 0700), 0);
+	assert_int_equal(
+		grok_supervisor_start(f->sup, "00000000000000010000000000000002",
+				      NULL, f->ws, argv0),
+		GROK_OK);
+
+	src = getenv("POLICYD_SOURCE_ROOT");
+	if (!src || !src[0])
+		src = ".";
+	snprintf(pack, sizeof(pack), "%s/policy/shell.janet", src);
+	setenv("GROKOS_POLICYD_JANET_PACK", pack, 1);
+
+	*state = f;
+	return 0;
+}
+
+static int shell_teardown(void **state)
+{
+	struct shell_fix *f = *state;
+
+	unsetenv("GROKOS_POLICYD_JANET_PACK");
+	if (f) {
+		if (f->sup)
+			grok_supervisor_close(f->sup);
+		t_rm_rf(f->st);
+		t_rm_rf(f->rt);
+		free(f);
+	}
+	return 0;
+}
+
+static void test_true_allow(void **state)
+{
+	struct shell_fix *f = *state;
+	char *argv[] = { "true", NULL };
+	uint8_t *in = NULL, *out = NULL;
+	size_t in_len = 0, out_len = 0;
+	enum Decision dec;
+	enum PolicyReason code;
+	char reason[128];
+
+	build_shell_check(f->ws, argv, 1, &in, &in_len);
+	grok_policyd_check_shell(f->sup, in, in_len, &out, &out_len);
+	free(in);
+	read_decision(out, out_len, &dec, &code, reason, sizeof(reason));
+	assert_int_equal(dec, Decision_allow);
+	assert_true(reason[0] != '\0'); /* pack-authored reason */
+	free(out);
+}
+
+static void test_bare_python_deny(void **state)
+{
+	struct shell_fix *f = *state;
+	char *argv[] = { "python3", "script.py", NULL };
+	uint8_t *in = NULL, *out = NULL;
+	size_t in_len = 0, out_len = 0;
+	enum Decision dec;
+	enum PolicyReason code;
+	char reason[128];
+
+	build_shell_check(f->ws, argv, 2, &in, &in_len);
+	grok_policyd_check_shell(f->sup, in, in_len, &out, &out_len);
+	free(in);
+	read_decision(out, out_len, &dec, &code, reason, sizeof(reason));
+	assert_int_equal(dec, Decision_deny);
+	assert_int_equal(code, PolicyReason_pythonRequiresUvRun);
+	assert_non_null(strstr(reason, "uv run"));
+	free(out);
+}
+
+static void test_uv_run_pep723_allow(void **state)
+{
+	struct shell_fix *f = *state;
+	char script[GROK_PATH_MAX];
+	char *argv[8];
+	uint8_t *in = NULL, *out = NULL;
+	size_t in_len = 0, out_len = 0;
+	enum Decision dec;
+	enum PolicyReason code;
+	char reason[128];
+
+	snprintf(script, sizeof(script), "%s/ok.py", f->ws);
+	write_file(script,
+		   "# /// script\n"
+		   "# requires-python = \">=3.11\"\n"
+		   "# ///\n"
+		   "print(1)\n");
+	argv[0] = "uv";
+	argv[1] = "run";
+	argv[2] = script;
+	argv[3] = NULL;
+	build_shell_check(f->ws, argv, 3, &in, &in_len);
+	grok_policyd_check_shell(f->sup, in, in_len, &out, &out_len);
+	free(in);
+	read_decision(out, out_len, &dec, &code, reason, sizeof(reason));
+	assert_int_equal(dec, Decision_allow);
+	assert_int_equal(code, PolicyReason_shellExecAllow);
+	free(out);
+}
+
+static void test_uv_run_missing_pep723_deny(void **state)
+{
+	struct shell_fix *f = *state;
+	char script[GROK_PATH_MAX];
+	char *argv[8];
+	uint8_t *in = NULL, *out = NULL;
+	size_t in_len = 0, out_len = 0;
+	enum Decision dec;
+	enum PolicyReason code;
+
+	snprintf(script, sizeof(script), "%s/bare.py", f->ws);
+	write_file(script, "print(1)\n");
+	argv[0] = "uv";
+	argv[1] = "run";
+	argv[2] = script;
+	argv[3] = NULL;
+	build_shell_check(f->ws, argv, 3, &in, &in_len);
+	grok_policyd_check_shell(f->sup, in, in_len, &out, &out_len);
+	free(in);
+	read_decision(out, out_len, &dec, &code, NULL, 0);
+	assert_int_equal(dec, Decision_deny);
+	assert_int_equal(code, PolicyReason_pythonMissingPep723);
+	free(out);
+}
+
+static void test_python_dash_c_deny(void **state)
+{
+	struct shell_fix *f = *state;
+	char *argv[] = { "uv", "run", "python", "-c", "print(1)", NULL };
+	uint8_t *in = NULL, *out = NULL;
+	size_t in_len = 0, out_len = 0;
+	enum Decision dec;
+	enum PolicyReason code;
+
+	build_shell_check(f->ws, argv, 5, &in, &in_len);
+	grok_policyd_check_shell(f->sup, in, in_len, &out, &out_len);
+	free(in);
+	read_decision(out, out_len, &dec, &code, NULL, 0);
+	assert_int_equal(dec, Decision_deny);
+	assert_int_equal(code, PolicyReason_pythonDashCDenied);
+	free(out);
+}
+
+int run_shell_pack_tests(void)
+{
+	const struct CMUnitTest tests[] = {
+		cmocka_unit_test_setup_teardown(test_true_allow, shell_setup,
+						shell_teardown),
+		cmocka_unit_test_setup_teardown(test_bare_python_deny,
+						shell_setup, shell_teardown),
+		cmocka_unit_test_setup_teardown(test_uv_run_pep723_allow,
+						shell_setup, shell_teardown),
+		cmocka_unit_test_setup_teardown(test_uv_run_missing_pep723_deny,
+						shell_setup, shell_teardown),
+		cmocka_unit_test_setup_teardown(test_python_dash_c_deny,
+						shell_setup, shell_teardown),
+	};
+	return cmocka_run_group_tests_name("shell_pack", tests, NULL, NULL);
+}

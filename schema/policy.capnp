@@ -1,198 +1,260 @@
-# GrokOS policyd Cap'n API (TCB FFI language).
+# GrokOS policyd Cap'n API (TCB language).
 # Source of truth: trace-analysis/grokos-packages/grokos-schema
 #
 # Role
 # ----
-# Product API is grok_policyd_handle_capnp(sup, request_body, …) with
-# PolicyEnvelope messages. In-process only (static link / FFI). There is no
-# policyd.sock product peer for seat/model admit.
+# Product API is interface Policyd: one method per domain, Cap'n always linked.
+# Each method is zero-copy mappable Cap'n messages (params root in, result root
+# out). No CallEnvelope. No ok|err unions. No tool×action free Text.
 #
-# Speakers: grok-policyd tests/CLI; sessiond / grokos-agent / grokos-shell
-# embed the same schema for Cap'n check/admit.
+# Speakers: grok-policyd (TCB); sessiond / grokos-agent / grokos-shell.
+# Seat Cap'n (session.capnp) is a separate server — do not fold Goal here.
 #
 # Trust
 # -----
-# agentId on this FFI is Text holding the 32-char lowercase hex of
-# Util.AgentId (xxh3-128). It is NOT free-form open content / labels.
-# The TCB does not authenticate agentId; seat plane joins it to GROKOS_RUN_ID
-# by convention. Path checks are lexical only (no symlink resolution).
-# Fail closed on overlong Cap'n text relative to internal C buffers.
+# - Identity: Util.AgentId only (fixed-width). Never Text hex on the wire.
+# - Path checks: lexical only (no realpath). Overlong text → fail-closed deny.
+# - Policy outcome is always PolicyDecision (deny | allow | prompt). Protocol /
+#   parse failures are Decision.deny with a reason (fail closed) — not a second
+#   error channel.
+# - TCB does not authenticate agentId; seat joins it to GROKOS_RUN_ID by convention.
+#
+# Design
+# ------
+# Separate methods beat unions: invalid cross-domain combos are unrepresentable
+# because they are different entry points. Shared result type is PolicyDecision.
+# Shell content is argv : List(Text) on checkShell — never a shell string.
 #
 # Evolution
 # ---------
-# protocolVersion must be 1. Prefer new union arms over reusing ordinals.
-# deprecated fields stay until all embedders migrate (Sandstorm style).
+# Prefer new methods over reshaping existing ones. deprecated* until migrate.
 
 @0xe2859f3833215a0b;
 
 using Util = import "util.capnp";
 
-# ------------------------------------------------------------------------------
-# Envelope
-# ------------------------------------------------------------------------------
+# ==============================================================================
+# Shared values
+# ==============================================================================
 
-struct PolicyEnvelope {
-  # Top-level FFI message. Set body to request (caller→TCB) or response (TCB→caller).
-
-  protocolVersion @0 :UInt32 = 1;
-  # Handler requires 1.
-
-  traceId @1 :Text;
-  # Optional correlation for logs. Not authorization. May be empty.
-
-  body :union {
-    request @2 :PolicyRequest;
-    response @3 :PolicyResponse;
-  }
+enum Decision {
+  # Policy outcome. Always the method result's decision field.
+  deny @0;
+  allow @1;
+  # Confirm class. Product hard seats may fail-closed on prompt.
+  prompt @2;
 }
 
-# ------------------------------------------------------------------------------
-# Request
-# ------------------------------------------------------------------------------
-
-struct PolicyRequest {
-  # Exactly one op.
-
-  op :union {
-    status @0 :Void;
-    # Supervisor open snapshot → PolicydStatus.
-
-    check @1 :PolicyCheck;
-    # Path/tool policy evaluation → PolicyDecision on response.check.
-
-    admit @2 :PolicyAdmit;
-    # Coarse admit by kind → PolicyDecision on response.admit.
-    # Mapping (fail-closed on unknown kind):
-    #   seat  → tool=seat,  action=publish_run (or SeatAction via check)
-    #   model → tool=model, action=start
-    #   agent → tool=model, action=start (alias)
-    #   ""    → tool=model, action=start (legacy empty)
-
-    agentStatus @3 :AgentQuery;
-    # Look up one agent slot → response.agentStatus (or error if missing).
-  }
+enum SeatAction {
+  publishRun @0;
+  readRun @1;
+  listRuns @2;
+  listEvents @3;
 }
 
-struct PolicyCheck {
-  # Full tool/action/path check (seat, model, or filesystem tools).
-
-  agentId @0 :Text;
-  # 32-hex of Util.AgentId (or empty). Not a free label.
-
-  tool @1 :Text;
-  # Tool namespace. Canonical closed values used by product:
-  #   "seat"  — seat board ops (see seatAction)
-  #   "model" — model process admit
-  #   "fs"|"shell"|… — path policy (open set for tools)
-  # Prefer exact tokens above; unknown tools fail closed or deny per TCB.
-
-  action @2 :Text;
-  # Action under tool. Canonical seat actions: publish_run, list_runs, read_run,
-  # list_events. Canonical model action: start. Filesystem: read, write, exec, …
-
-  path @3 :Text;
-  # Optional path or run id; empty when unused. Path checks are lexical only.
+enum PathAction {
+  read @0;
+  write @1;
+  # High-risk → Decision.prompt.
+  delete @2;
 }
 
-struct PolicyAdmit {
-  # Coarse admit. Prefer check() when tool/action are known.
-
-  agentId @0 :Text;
-  # 32-hex of Util.AgentId (or empty). Not a free label.
-  kind @1 :Text;
-  # Admit kind string (see PolicyRequest.op.admit mapping). Unknown → error.
-  detail @2 :Text;
-  # Free-form log detail; not used as a filesystem path.
+enum RiskAction {
+  network @0;
+  secretExport @1;
+  sudo @2;
+  pay @3;
+  auth @4;
+  osChange @5;
+  privilege @6;
 }
 
-struct AgentQuery {
-  agentId @0 :Text;
-  # 32-hex of Util.AgentId to query via grok_supervisor_status.
+enum AgentState {
+  # Process slot only (not Util.RunState).
+  stopped @0;
+  running @1;
+  failed @2;
+  # Slot missing / query invalid (fail-closed status).
+  missing @3;
 }
 
-# ------------------------------------------------------------------------------
-# Response
-# ------------------------------------------------------------------------------
+# Stable machine codes for PolicyDecision. TCB and packs set code.
+# Human/i18n labels live in viewers (grokos-agent, grokos-shell, sessiond),
+# not in policyd. New outcomes extend this enum.
+enum PolicyReason {
+  unspecified @0;
 
-struct PolicyResponse {
-  # Exactly one ok arm.
+  # Path / seat / protocol plane
+  toolsDefaultDeny @1;
+  pathOutsideWorkspace @2;
+  pathUnderWorkspaceAllow @3;
+  invalidMessage @4;
+  fieldTooLong @5;
+  denyAll @6;
+  highRiskPrompt @7;
+  seatBoardAllow @8;
+  modelStartAllow @9;
+  missingToolAction @10;
+  unknownSeatAction @11;
 
-  ok :union {
-    status @0 :PolicydStatus;
-    check @1 :PolicyDecision;
-    admit @2 :PolicyDecision;
-    # Same shape as check.
-    agentStatus @3 :AgentStatusWire;
-    error @4 :PolicyError;
-    # Protocol/TCB failure (not Decision.deny). Unknown op, bad fields, etc.
-  }
+  # checkShell pack host (Cap'n ShellView → pack → Cap'n PolicyDecision)
+  packMissing @12;
+  packLoadFailed @13;
+  packRuntimeError @14;
+  packBadResult @15;
+  shellViewBuildFailed @16;
+
+  # Shell content pack product law (uv / python / PEP 723)
+  pythonRequiresUvRun @17;
+  pythonDashCDenied @18;
+  pythonMissingPep723 @19;
+  shellExecAllow @20;
+}
+
+struct PolicyDecision {
+  # Sole result type for every check/admit method.
+  decision @0 :Decision;
+  reason @1 :Text;
+  # Pack-authored human text (user Janet packs set this). TCB host-only
+  # failures leave empty; viewers may map code for i18n of those codes.
+  agentId @2 :Util.AgentId;
+  # Echo of the checked agent (zero if unset / invalid).
+  code @3 :PolicyReason;
+  # Machine outcome. Packs set product codes; TCB sets host codes; wire passthrough.
 }
 
 struct PolicydStatus {
   version @0 :Text;
-  # Package version string (GROK_POLICYD_VERSION).
   apiVersion @1 :Int32;
-  # ABI generation (GROK_POLICYD_API_VERSION).
   stateDir @2 :Text;
   runtimeDir @3 :Text;
-  socket @4 :Text;
-  # Legacy field name. Handler sets the literal "ffi" (in-process Cap'n).
-  # Not a filesystem path to a daemon. Prefer ignoring for product control.
-  ready @5 :Bool;
-  # True when the supervisor handle is open and ready for further ops.
+  ready @4 :Bool;
+  # False only if supervisor handle is unusable.
 }
 
-enum Decision {
-  # Outcome of PolicyDecision.decision.
-  deny @0;
-  # Hard deny.
-  allow @1;
-  # Allowed.
-  prompt @2;
-  # Needs confirm. Some seat callers treat prompt as allow; check the caller.
-}
-
-struct PolicyDecision {
-  decision @0 :Decision;
-  reason @1 :Text;
-  # Human-readable reason. Overlong Cap'n text vs TCB buffers fails closed.
-  agentId @2 :Text;
-  # Echo of agent id (32-hex AgentId) used for the decision.
-  tool @3 :Text;
-  # Echo of tool (after admit.kind mapping when from admit).
-  action @4 :Text;
-  # Echo of action (after admit.kind mapping when from admit).
-}
-
-enum AgentStateWire {
-  # Process state for AgentStatusWire.state.
-  stopped @0;
-  running @1;
-  failed @2;
-}
-
-struct AgentStatusWire {
-  id @0 :Text;
-  # 32-hex of Util.AgentId (C buffer boundary; not free-form identity).
-  state @1 :AgentStateWire;
+struct AgentStatus {
+  id @0 :Util.AgentId;
+  state @1 :AgentState;
+  # missing → other fields zero/empty.
   pid @2 :Int32;
-  # Process id when running; 0 otherwise.
   pgid @3 :Int32;
-  # Process group id when running; 0 otherwise.
   exitStatus @4 :Int32;
-  # Wait-style exit status when stopped/failed; 0 if still running.
-  mode @5 :Text;
-  # Supervisor mode string (e.g. develop). Prefer Util.SeatMode names when set.
+  mode @5 :Util.SeatMode;
   workspace @6 :Text;
   hasCgroup @7 :Bool;
-  # True when a cgroup path is attached for the agent.
+  detail @8 :Text;
+  # Human note when state=missing or failed; empty otherwise.
 }
 
-struct PolicyError {
-  # Protocol / TCB errors, not policy deny (see Decision.deny).
+# ==============================================================================
+# Method params (flat structs — one method, one params type)
+# ==============================================================================
 
-  code @0 :Int32;
-  # grok errno-style code (GROK_ERR_*).
-  message @1 :Text;
-  # Short message for logs.
+struct SeatCheck {
+  agentId @0 :Util.AgentId;
+  action @1 :SeatAction;
+}
+
+struct ModelCheck {
+  agentId @0 :Util.AgentId;
+  # Open catalog / invoke id. Empty allowed.
+  model @1 :Text;
+}
+
+struct PathCheck {
+  agentId @0 :Util.AgentId;
+  action @1 :PathAction;
+  # Clean absolute path under workspace for allow. Empty → deny.
+  path @2 :Text;
+}
+
+struct ShellCheck {
+  # Request: raw proposed shell spawn (agent fills).
+  agentId @0 :Util.AgentId;
+  # Absolute cwd / target root for workspace allowlist.
+  cwd @1 :Text;
+  # spawn(2) argv. Empty = path-only (no content gate).
+  argv @2 :List(Text);
+}
+
+# Host-sealed path facts for path-like argv tokens (workspace-bound only).
+# Host resolves + optionally reads a short file prefix. Packs interpret
+# content (shebang, PEP 723, …) with regex/matchers — host does not.
+struct PathProbe {
+  # Original argv token (as proposed).
+  arg @0 :Text;
+  # Absolute path under workspace if host resolved it; empty if not.
+  resolved @1 :Text;
+  exists @2 :Bool;
+  # First N bytes of file as Text (empty if !exists or unreadable).
+  # Cap ~8KiB. Packs parse; host never labels language-specific markers.
+  head @3 :Text;
+}
+
+struct ShellView {
+  # Sealed host projection of ShellCheck for content policy packs (e.g. Janet).
+  # Cap'n only — no parallel C DTO. Policy logic (uv, python, PEP 723, …)
+  # lives entirely in the pack over argv + PathProbe.head.
+  #
+  # Host: workspace check, resolve path-like tokens under workspace, read head.
+  # Pack: regex/matchers only; no FS/spawn/net.
+  # Zero-copy mappable; Janet may project to a table.
+
+  underWorkspace @0 :Bool;
+  cwd @1 :Text;
+  # Validated absolute cwd (empty if not under workspace).
+  argv @2 :List(Text);
+  # spawn tokens. Packs apply regex/matchers here.
+  pathProbes @3 :List(PathProbe);
+  # Path-like tokens under workspace + optional file head for pack parsing.
+}
+
+struct RiskCheck {
+  agentId @0 :Util.AgentId;
+  action @1 :RiskAction;
+  # Optional path context; may be empty.
+  path @2 :Text;
+}
+
+struct AdmitSeat {
+  agentId @0 :Util.AgentId;
+  detail @1 :Text;
+  # Log-only. Not a path. Not identity.
+}
+
+struct AdmitModel {
+  agentId @0 :Util.AgentId;
+  detail @1 :Text;
+}
+
+struct AgentQuery {
+  agentId @0 :Util.AgentId;
+}
+
+# ==============================================================================
+# interface Policyd — methods only (no unions)
+# ==============================================================================
+
+interface Policyd {
+  # Cap'n always linked. C entry points mirror methods: Cap'n params message
+  # root in, Cap'n result message root out (zero-copy mappable segments).
+  #
+  # Caller: sessiond, grokos-agent, grokos-shell.
+  # Callee: grok-policyd. Same-uid / linked only.
+
+  status @0 () -> PolicydStatus;
+  # Snapshot of open supervisor.
+
+  checkSeat @1 SeatCheck -> PolicyDecision;
+  checkModel @2 ModelCheck -> PolicyDecision;
+  checkPath @3 PathCheck -> PolicyDecision;
+  checkShell @4 ShellCheck -> PolicyDecision;
+  checkRisk @5 RiskCheck -> PolicyDecision;
+
+  admitSeat @6 AdmitSeat -> PolicyDecision;
+  # Sugar for checkSeat(publishRun).
+  admitModel @7 AdmitModel -> PolicyDecision;
+  # Sugar for checkModel(empty model). Legacy "agent" admit maps here.
+
+  agentStatus @8 AgentQuery -> AgentStatus;
 }

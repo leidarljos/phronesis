@@ -13,6 +13,7 @@ int main(void)
 	fails += run_action_log_tests();
 	fails += run_persist_tests();
 	fails += run_policy_tests();
+	fails += run_shell_pack_tests();
 	fails += run_version_tests();
 	fails += run_capnp_ffi_tests();
 
