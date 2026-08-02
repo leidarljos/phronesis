@@ -11,13 +11,17 @@
 
 #include "janet.h"
 
+#include "grok-policyd/supervisor.h"
+
 #include <capnp_c.h>
 #include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 
 #define SHELL_HEAD_MAX 8192
+#define PACK_PATH_MAX 4096
 
 void capnp_janet_register(JanetTable *env);
 
@@ -25,13 +29,20 @@ static int janet_inited;
 static int pack_loaded;
 static int pack_failed;
 static JanetTable *pack_env;
+/* Absolute path of the pack currently loaded (or last reload attempt). */
+static char pack_path_buf[PACK_PATH_MAX];
+static int pack_path_set;
 
 static const char *default_pack(void)
 {
-	const char *e = getenv("GROKOS_POLICYD_JANET_PACK");
+	if (pack_path_set && pack_path_buf[0])
+		return pack_path_buf;
+	{
+		const char *e = getenv("GROKOS_POLICYD_JANET_PACK");
 
-	if (e && e[0])
-		return e;
+		if (e && e[0])
+			return e;
+	}
 	return "policy/shell.janet";
 }
 
@@ -42,19 +53,51 @@ static void seal_pack_env(JanetTable *env)
 	janet_table_remove(env, janet_csymbolv("spork"));
 }
 
-static int load_pack_once(void)
+/**
+ * Drop loaded pack state so the next load re-reads disk.
+ * Prior Janet env is abandoned for GC (reload is rare; no janet_deinit).
+ */
+static void unload_pack(void)
 {
-	const char *path;
+	pack_loaded = 0;
+	pack_failed = 0;
+	pack_env = NULL;
+}
+
+static int path_is_absolute_file(const char *path)
+{
+	struct stat st;
+
+	if (!path || !path[0] || path[0] != '/')
+		return 0;
+	if (strlen(path) >= PACK_PATH_MAX)
+		return 0;
+	/* Reject ".." segments (lexical only; no realpath). */
+	{
+		const char *p = path;
+
+		while (*p) {
+			if (p[0] == '/' && p[1] == '.' && p[2] == '.' &&
+			    (p[3] == '/' || p[3] == '\0'))
+				return 0;
+			p++;
+		}
+	}
+	if (stat(path, &st) != 0)
+		return 0;
+	return S_ISREG(st.st_mode) ? 1 : 0;
+}
+
+static int load_pack_from_path(const char *path)
+{
 	FILE *f;
 	char *buf;
 	long sz;
 	Janet out;
 	int rc;
 
-	if (pack_failed)
+	if (!path || !path[0])
 		return -1;
-	if (pack_loaded)
-		return 0;
 	if (!janet_inited) {
 		janet_init();
 		janet_inited = 1;
@@ -67,7 +110,6 @@ static int load_pack_once(void)
 	capnp_janet_register(pack_env);
 	seal_pack_env(pack_env);
 
-	path = default_pack();
 	f = fopen(path, "rb");
 	if (!f) {
 		pack_failed = 1;
@@ -92,10 +134,57 @@ static int load_pack_once(void)
 	free(buf);
 	if (rc != 0) {
 		pack_failed = 1;
+		pack_env = NULL;
 		return -1;
 	}
 	pack_loaded = 1;
+	pack_failed = 0;
 	return 0;
+}
+
+static int load_pack_once(void)
+{
+	const char *path;
+
+	if (pack_failed)
+		return -1;
+	if (pack_loaded)
+		return 0;
+	path = default_pack();
+	return load_pack_from_path(path);
+}
+
+int grok_policy_shell_pack_reload_internal(const char *path)
+{
+	if (!path_is_absolute_file(path))
+		return -1;
+	unload_pack();
+	if (snprintf(pack_path_buf, sizeof(pack_path_buf), "%s", path) >=
+	    (int)sizeof(pack_path_buf)) {
+		pack_path_buf[0] = '\0';
+		pack_path_set = 0;
+		return -1;
+	}
+	pack_path_set = 1;
+	/* Keep env in sync for subprocesses / diagnostics. */
+	if (setenv("GROKOS_POLICYD_JANET_PACK", pack_path_buf, 1) != 0) {
+		/* Non-fatal: pack_path_buf is source of truth for this process. */
+	}
+	if (load_pack_from_path(pack_path_buf) != 0)
+		return -2;
+	return 0;
+}
+
+/* Public ABI (declared in supervisor.h). */
+int grok_policy_shell_pack_reload(const char *path)
+{
+	int rc = grok_policy_shell_pack_reload_internal(path);
+
+	if (rc == 0)
+		return GROK_OK;
+	if (rc == -1)
+		return GROK_ERR_INVAL;
+	return GROK_ERR_IO;
 }
 
 static int path_under_workspace(const char *workspace, const char *path)
