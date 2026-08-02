@@ -95,11 +95,18 @@ if get_option('mutation')
   ))
 endif
 
+# policy.capnp imports util.capnp — gen script emits both C pairs into build/.
 schema_gen = custom_target(
   'policy_capnp',
-  input: files('schema/policy.capnp'),
-  output: ['policy.capnp.c', 'policy.capnp.h'],
-  command: [gen_capnp, '@INPUT@', '@OUTPUT0@', '@OUTPUT1@', capnpc_c],
+  input: files('schema/policy.capnp', 'schema/util.capnp'),
+  output: ['policy.capnp.c', 'policy.capnp.h', 'util.capnp.c', 'util.capnp.h'],
+  command: [
+    gen_capnp,
+    '@INPUT0@',
+    '@OUTPUT0@',
+    '@OUTPUT1@',
+    capnpc_c,
+  ],
   build_by_default: true,
 )
 

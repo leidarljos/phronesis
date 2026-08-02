@@ -10,59 +10,67 @@ Policy and multi-agent supervisor (security-critical core) for [GrokOS](https://
 | **Product API** | `grok_policyd_handle_capnp()` (in-process FFI) |
 | **C helpers** | `include/grok-policyd/supervisor.h` |
 
-## Cap'n FFI
+## Cap'n product API (`interface Policyd`)
 
-Callers (sessiond, agent, shell) compose `PolicyEnvelope` bodies and call
-**`grok_policyd_handle_capnp`** on a **linked** `libgrok_policyd` (shared or
-static). Cap'n pure-C runtime is the **c-capnproto** package (`libcapnp_c`).
+Schema SoT: `schema/policy.capnp` (from grokos-schema). Product surface is
+**methods with typed results**, not free tool/action Text and not C errno for
+policy outcomes.
 
-Do **not** copy this tree into consumer `vendor/policyd/` and recompile with
-`cc` — that drifts from the TCB and breaks the packaging story. Consumers use
-`pkg-config grok-policyd` or monorepo `GROK_POLICYD_DIR=$PWD/build` after
-`pixi run lib`.
+| Method | Params | Results |
+|--------|--------|---------|
+| `status` | — | `StatusResults` = `PolicydStatus` \| `Err` |
+| `check` | `CheckParams` | `CheckResults` = `PolicyDecision` \| `Err` |
+| `admit` | `AdmitParams` | `CheckResults` (same) |
+| `agentStatus` | `AgentStatusParams` | `AgentStatusResults` = `AgentStatus` \| `Err` |
+
+- **`Decision`** (deny/allow/prompt) lives inside `CheckResults.ok`.
+- **`Err`** is protocol/TCB failure — distinct from deny.
+- **`CheckParams.body`** is a domain **union**: `seat` \| `model` \| `path` \|
+  `shell` \| `risk` (invalid tool×action pairs are unrepresentable).
+- **Identity** is `Util.AgentId` / `Util.TraceId` bits only (never Text hex).
+- **Shell content** is `ShellOp { cwd, argv : List(Text) }` (spawn argv).
+
+Hosts without Cap'n RPC pack **`CallEnvelope`** and call
+`grok_policyd_handle_capnp` (in-process). c-capnproto does not emit interface
+stubs; Params/Results structs are the wire shapes.
 
 ```c
 #include <grok-policyd/supervisor.h>
 
 grok_supervisor_t *sup = NULL;
-uint8_t *req = /* Cap'n PolicyEnvelope request */;
+uint8_t *req = /* Cap'n CallEnvelope: body.check = CheckParams */;
 size_t req_len = /* ... */;
 uint8_t *resp = NULL;
 size_t resp_len = 0;
 
 grok_supervisor_open(&sup, state_dir, runtime_dir);
 if (grok_policyd_handle_capnp(sup, req, req_len, &resp, &resp_len) == 0) {
-    /* resp is Cap'n PolicyEnvelope response; free(resp) */
+    /* resp: CallEnvelope body.checkResults = CheckResults { ok | err } */
+    free(resp);
 }
 grok_supervisor_close(sup);
 ```
 
-Ops: `status`, `check`, `admit`, `agentStatus` (see `schema/policy.capnp`).
+`grok_policy_check` remains a **CLI string bridge** only (legacy tool/action
+text). Product agents speak Cap'n methods.
 
-String `grok_policy_check` remains for CLI/tests.
+### CheckBody decision table
 
-## Policy check table (`grok_policy_eval`)
+| body arm | condition | Decision |
+|----------|-----------|----------|
+| `seat` | publishRun / readRun / listRuns / listEvents | allow |
+| `model` | ModelOp (empty model ok) | allow |
+| `path` | read/write, clean abs under workspace | allow |
+| `path` | delete | prompt |
+| `shell` | cwd under workspace, empty argv | allow |
+| `shell` | cwd under workspace, argv Python without `uv`+`run` | **deny** |
+| `shell` | argv `uv run` + `.py` without PEP 723 | **deny** |
+| `shell` | argv `uv run` + `.py` with PEP 723 `# /// script` | allow |
+| `risk` | any set RiskAction | prompt |
+| other | — | deny |
 
-Tools **default deny**. High-risk **actions** (`delete`, `network`, `sudo`,
-`secret_export`, …) evaluate to **prompt** before any allow. Agent workspace
-comes from `grok_supervisor_start` (empty workspace → path allows fail closed).
-
-| tool | action | path | decision |
-|------|--------|------|----------|
-| `seat` | `publish_run` / `read_run` / `list_runs` / `list_events` | (unused) | allow |
-| `model` | `start` | (unused / optional bind later) | allow |
-| `fs` | `read` / `write` | clean absolute under workspace | allow |
-| `shell` | `exec` | clean absolute **cwd or target root** under workspace | allow |
-| `shell` | `exec` | empty, outside workspace, unclean (`..`, `//`, relative) | deny |
-| \* | high-risk action name | any | prompt |
-| \* | other | any | deny |
-
-`shell`/`exec` path is **not** argv. Callers map a model bash tool to
-`tool=shell`, `action=exec`, and an absolute workspace path (meta #88 Track 1).
-Per-tool gates inside the agent model loop are Track 2 (agent package).
-
-Lexical workspace rules match `fs` path checks: absolute paths only; reject
-empty components, `.`, and `..`. No `realpath` (symlink escape remains open).
+Lexical workspace rules: absolute paths only; reject `//`, `.`, `..`. No
+`realpath`.
 
 ## Build / test / coverage (pixi only)
 

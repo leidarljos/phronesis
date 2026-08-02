@@ -22,10 +22,16 @@
  *   (``scripts/sync-version.sh`` / ``scripts/check-version.sh``).
  *
  * @par Cap'n Proto (product language)
- * Callers speak ``schema/policy.capnp`` and call @ref grok_policyd_handle_capnp
- * **in-process** (static link / FFI). There is no policyd socket peer; seat Cap'n
- * (session.capnp / nng) stays on sessiond. String helpers like @ref grok_policy_check
- * remain for tests/CLI; product path is Cap'n bodies through handle_capnp.
+ * Product API is ``interface Policyd`` in ``schema/policy.capnp``: methods
+ * ``status`` / ``check`` / ``admit`` / ``agentStatus`` return typed
+ * ``*Results`` unions (``ok`` domain value | ``err`` protocol failure).
+ * Policy ``Decision`` is **never** a C errno.
+ *
+ * Hosts without Cap'n RPC pack ``CallEnvelope`` and call
+ * @ref grok_policyd_handle_capnp **in-process**. There is no policyd socket
+ * peer; seat Cap'n (session.capnp / nng) stays on sessiond.
+ *
+ * @ref grok_policy_check is a CLI/string bridge only (legacy tool/action text).
  */
 
 #ifndef GROK_POLICYD_SUPERVISOR_H
@@ -340,18 +346,19 @@ GROK_POLICYD_API int grok_policy_check(grok_supervisor_t *s,
 #define GROK_POLICY_CAPNP_MAX_BODY (64 * 1024)
 
 /**
- * Dispatch one Cap'n PolicyEnvelope request body against the supervisor.
+ * Dispatch one Cap'n CallEnvelope (interface Policyd method call).
  *
- * Callers speak schema/policy.capnp and call this in-process. There is no
- * policyd socket peer.
+ * Request body is a method params arm (status / check / admit / agentStatus).
+ * Response body is the matching *Results union (ok | err). Policy deny/allow
+ * lives inside CheckResults.ok : PolicyDecision — not in the C return code.
  *
  * @param sup     Open supervisor.
- * @param in      Cap'n multi-segment message bytes (request envelope).
+ * @param in      Cap'n multi-segment CallEnvelope bytes.
  * @param in_len  Length of @a in; must be in (0, GROK_POLICY_CAPNP_MAX_BODY].
- * @param out     On success, heap buffer with Cap'n response (caller free()).
+ * @param out     On success, heap Cap'n CallEnvelope response (caller free()).
  * @param out_len Length of *@a out.
- * @return 0 on success (response in *@a out), -1 on encode failure.
- *         Invalid requests usually still return 0 with a Cap'n error body.
+ * @return 0 when a Cap'n response was produced (including Results.err),
+ *         -1 only if the response itself could not be encoded.
  */
 GROK_POLICYD_API int grok_policyd_handle_capnp(grok_supervisor_t *sup,
 					       const uint8_t *in,
