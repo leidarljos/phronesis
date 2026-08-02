@@ -536,3 +536,52 @@ missing:
 		(void)write_msg(&co, out, out_len);
 	capn_free(&co);
 }
+
+void grok_policyd_reload_shell_pack(grok_supervisor_t *sup, const uint8_t *in,
+				    size_t in_len, uint8_t **out,
+				    size_t *out_len)
+{
+	struct capn c;
+	struct ReloadShellPack rp;
+	struct AgentId agent;
+	grok_policy_result_t pr;
+	char path[4096];
+	size_t pl;
+	int rc;
+
+	(void)sup;
+	memset(&agent, 0, sizeof(agent));
+	if (open_in(in, in_len, &c) != 0) {
+		deny_msg(agent, GROK_REASON_INVALID_MESSAGE, out, out_len);
+		return;
+	}
+	{
+		ReloadShellPack_ptr root;
+
+		root.p = capn_getp(capn_root(&c), 0, 1);
+		read_ReloadShellPack(&rp, root);
+	}
+	pl = rp.path.len > 0 ? (size_t)rp.path.len : 0;
+	if (pl == 0 || pl >= sizeof(path) || !rp.path.str) {
+		capn_free(&c);
+		deny_msg(agent, GROK_REASON_PACK_PATH_INVALID, out, out_len);
+		return;
+	}
+	memcpy(path, rp.path.str, pl);
+	path[pl] = '\0';
+	capn_free(&c);
+
+	rc = grok_policy_shell_pack_reload_internal(path);
+	memset(&pr, 0, sizeof(pr));
+	if (rc == 0) {
+		grok_policy_result_set(&pr, GROK_DECISION_ALLOW,
+				       GROK_REASON_PACK_RELOADED);
+	} else if (rc == -1) {
+		grok_policy_result_set(&pr, GROK_DECISION_DENY,
+				       GROK_REASON_PACK_PATH_INVALID);
+	} else {
+		grok_policy_result_set(&pr, GROK_DECISION_DENY,
+				       GROK_REASON_PACK_LOAD_FAILED);
+	}
+	emit_decision(&pr, agent, out, out_len);
+}

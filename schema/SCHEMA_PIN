@@ -1,4 +1,4 @@
-schema_version=0.3.1
-schema_git_sha=02e9e70bf008873d9457fced11b213e81cfbc7f9
+schema_version=0.3.2
+schema_git_sha=de0c18cf9ef657c2b5b0919837117b795ca1b96e
 source=grokos-schema
 files=util.capnp,session.capnp,policy.capnp
