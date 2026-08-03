@@ -14,6 +14,7 @@
 #include "grok-policyd/supervisor.h"
 
 #include <capnp_c.h>
+#include <dirent.h>
 #include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -22,7 +23,8 @@
 
 #define SHELL_HEAD_MAX 8192
 #define PACK_PATH_MAX 4096
-
+#define PACK_FILE_MAX (512 * 1024)
+#define PACK_LIB_MAX_FILES 32
 void capnp_janet_register(JanetTable *env);
 
 static int janet_inited;
@@ -88,12 +90,121 @@ static int path_is_absolute_file(const char *path)
 	return S_ISREG(st.st_mode) ? 1 : 0;
 }
 
-static int load_pack_from_path(const char *path)
+/**
+ * Read @a path into the pack env via janet_dobytes.
+ * Returns 0 on success, -1 on I/O/size error, -2 on Janet load error.
+ */
+static int dobytes_file(JanetTable *env, const char *path)
 {
 	FILE *f;
 	char *buf;
 	long sz;
 	Janet out;
+	int rc;
+
+	f = fopen(path, "rb");
+	if (!f)
+		return -1;
+	if (fseek(f, 0, SEEK_END) != 0 || (sz = ftell(f)) <= 0 ||
+	    sz > PACK_FILE_MAX || fseek(f, 0, SEEK_SET) != 0) {
+		fclose(f);
+		return -1;
+	}
+	buf = malloc((size_t)sz);
+	if (!buf || fread(buf, 1, (size_t)sz, f) != (size_t)sz) {
+		free(buf);
+		fclose(f);
+		return -1;
+	}
+	fclose(f);
+	rc = janet_dobytes(env, (const uint8_t *)buf, (int32_t)sz, path, &out);
+	free(buf);
+	return rc == 0 ? 0 : -2;
+}
+
+static int cmp_strptr(const void *a, const void *b)
+{
+	return strcmp(*(const char *const *)a, *(const char *const *)b);
+}
+
+/**
+ * Load sorted .janet helpers from a sibling lib/ directory, if present.
+ * Missing lib/ is OK (single-file packs / allow-all test packs).
+ * Returns 0 on success (or no lib), -1 on failure.
+ */
+static int load_pack_libs(JanetTable *env, const char *pack_path)
+{
+	char dir[PACK_PATH_MAX];
+	char libdir[PACK_PATH_MAX];
+	char path[PACK_PATH_MAX];
+	char *names[PACK_LIB_MAX_FILES];
+	int nnames = 0;
+	DIR *d;
+	struct dirent *ent;
+	const char *slash;
+	size_t dlen;
+	int i, rc;
+
+	slash = strrchr(pack_path, '/');
+	if (!slash || slash == pack_path)
+		return 0;
+	dlen = (size_t)(slash - pack_path);
+	if (dlen + 1 >= sizeof(dir))
+		return -1;
+	memcpy(dir, pack_path, dlen);
+	dir[dlen] = '\0';
+	if (snprintf(libdir, sizeof(libdir), "%s/lib", dir) >=
+	    (int)sizeof(libdir))
+		return -1;
+
+	d = opendir(libdir);
+	if (!d)
+		return 0; /* optional */
+
+	while ((ent = readdir(d)) != NULL && nnames < PACK_LIB_MAX_FILES) {
+		size_t len = strlen(ent->d_name);
+
+		if (len < 7)
+			continue;
+		if (strcmp(ent->d_name + len - 6, ".janet") != 0)
+			continue;
+		if (ent->d_name[0] == '.')
+			continue;
+		names[nnames] = strdup(ent->d_name);
+		if (!names[nnames]) {
+			closedir(d);
+			goto fail_names;
+		}
+		nnames++;
+	}
+	closedir(d);
+
+	if (nnames > 1)
+		qsort(names, (size_t)nnames, sizeof(names[0]), cmp_strptr);
+
+	for (i = 0; i < nnames; i++) {
+		if (snprintf(path, sizeof(path), "%s/%s", libdir, names[i]) >=
+		    (int)sizeof(path)) {
+			rc = -1;
+			goto done;
+		}
+		rc = dobytes_file(env, path);
+		if (rc != 0)
+			goto done;
+	}
+	rc = 0;
+done:
+	for (i = 0; i < nnames; i++)
+		free(names[i]);
+	return rc;
+fail_names:
+	for (i = 0; i < nnames; i++)
+		free(names[i]);
+	return -1;
+}
+
+static int load_pack_from_path(const char *path)
+{
 	int rc;
 
 	if (!path || !path[0])
@@ -110,28 +221,13 @@ static int load_pack_from_path(const char *path)
 	capnp_janet_register(pack_env);
 	seal_pack_env(pack_env);
 
-	f = fopen(path, "rb");
-	if (!f) {
+	/* Shared pure helpers first (sibling lib/), then the pack entry. */
+	if (load_pack_libs(pack_env, path) != 0) {
 		pack_failed = 1;
+		pack_env = NULL;
 		return -1;
 	}
-	if (fseek(f, 0, SEEK_END) != 0 || (sz = ftell(f)) <= 0 ||
-	    sz > 512 * 1024 || fseek(f, 0, SEEK_SET) != 0) {
-		fclose(f);
-		pack_failed = 1;
-		return -1;
-	}
-	buf = malloc((size_t)sz);
-	if (!buf || fread(buf, 1, (size_t)sz, f) != (size_t)sz) {
-		free(buf);
-		fclose(f);
-		pack_failed = 1;
-		return -1;
-	}
-	fclose(f);
-	rc = janet_dobytes(pack_env, (const uint8_t *)buf, (int32_t)sz, path,
-			   &out);
-	free(buf);
+	rc = dobytes_file(pack_env, path);
 	if (rc != 0) {
 		pack_failed = 1;
 		pack_env = NULL;

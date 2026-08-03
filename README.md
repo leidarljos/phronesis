@@ -109,9 +109,23 @@ schema/util.capnp            Shared vocab (RunState, …); imported by policy
 include/grok-policyd/        Public C ABI (includes handle_capnp)
 src/capnp_api.c              Cap'n dispatch → TCB
 src/policy.c supervisor.c …  TCB
-tests/                       cmocka (Cap'n FFI + lifecycle)
+src/policy_janet.c           Janet pack host (lib/ then entry)
+policy/shell.janet           Product entry (shell-check)
+policy/lib/*.janet           Pure helpers loaded before the entry (sorted)
+third_party/janet/           Amalgamation pin (pack VM)
+tests/                       cmocka (pack_lib pure + shell_pack Cap'n + …)
 scripts/coverage.sh          gcovr report (hard-requires gcovr from pixi)
 ```
+
+### Janet shell packs
+
+- **VM:** amalgamated Janet under `third_party/janet/` (pin in NOTICE).
+- **Cap'n in Janet:** `capnp-janet` (pkg-config or meson wrap); not vendored sources.
+- **Load order:** sealed env → `dirname(pack)/lib/*.janet` (optional, sorted) → pack file.
+  Entry must define `shell-check`. Pure helpers in `policy/lib/` stay Cap'n-free
+  so `tests/test_pack_lib.c` can unit-test them without a supervisor.
+- **Path:** `GROKOS_POLICYD_JANET_PACK` or Cap'n `reloadShellPack` (absolute).
+- **Tests:** pure law in `pack_lib` suite; product Cap'n path in `shell_pack` suite.
 
 ## License
 
