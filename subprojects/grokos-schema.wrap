@@ -1,12 +1,11 @@
-# Cap'n SoT for policyd. Prefer monorepo dogfood over this wrap:
+# Cap'n SoT. Monorepo dogfood (preferred):
 #   ln -sfn ../../grokos-schema subprojects/grokos-schema
-# After grokos-schema Meson lands on main (schema !15), set revision = main
-# (or a schema-vX.Y.Z tag). Private HTTPS may fail without credentials;
-# meson.build falls back to local schema/ pin (required: false).
+# CI pre-clones this path with CI_JOB_TOKEN before meson (see .gitlab-ci.yml).
+# After schema !15 lands on main: revision = main or schema-vX.Y.Z tag.
 [wrap-git]
 directory = grokos-schema
 url = https://nova.teachx.ai/trace-analysis/grokos-packages/grokos-schema.git
-revision = feat/meson-schema-project
+revision = 5cb60cc045ca4077925e4cf040fdd9d71e837eb6
 depth = 1
 
 [provide]

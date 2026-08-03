@@ -133,6 +133,14 @@ if grokos_schemadir == ''
   endif
 endif
 if grokos_schemadir == ''
+  # Local pin only for offline dogfood. CI sets -Dschema_require_sot=true.
+  if get_option('schema_require_sot')
+    error(
+      'grokos-schema SoT missing: CI must clone into subprojects/grokos-schema '
+      + '(job-token) or install pkg-config grokos-schema. Local pin disabled '
+      + '(-Dschema_require_sot=true).',
+    )
+  endif
   grokos_schemadir = meson.current_source_dir() / 'schema'
   schema_via = 'local-pin'
   warning('grokos-schema subproject/pkg-config missing; using local schema/ pin')
