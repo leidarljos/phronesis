@@ -7,6 +7,7 @@ Requires CI_API_V4_URL, CI_PROJECT_ID, CI_COMMIT_SHA, CI_JOB_TOKEN.
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 import sys
 import urllib.error
@@ -18,6 +19,8 @@ LIB = Path(os.environ.get("POLICYD_STATIC_LIB", ROOT / "build" / "libgrok_policy
 NEED_SYM = "grok_policyd_handle_capnp"
 PACKAGE = "libgrok_policyd"
 FILE = "libgrok_policyd.a"
+# nm symbol lines: " T name" / "00000000 T name" etc. — whole token only.
+_SYM_LINE = re.compile(rf"\b{re.escape(NEED_SYM)}\b")
 
 
 def die(msg: str) -> None:
@@ -29,11 +32,16 @@ def main() -> None:
     if not LIB.is_file() or LIB.stat().st_size == 0:
         die(f"missing or empty archive: {LIB}")
 
-    nm = subprocess.run(["nm", str(LIB)], check=False, capture_output=True, text=True)
+    nm = subprocess.run(
+        ["nm", "-g", str(LIB)],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
     if nm.returncode != 0:
         die(f"nm failed on {LIB}: {nm.stderr or nm.stdout}")
-    if NEED_SYM not in nm.stdout:
-        die(f"{LIB} missing symbol {NEED_SYM}")
+    if not _SYM_LINE.search(nm.stdout):
+        die(f"{LIB} missing global symbol {NEED_SYM}")
 
     for key in ("CI_API_V4_URL", "CI_PROJECT_ID", "CI_COMMIT_SHA", "CI_JOB_TOKEN"):
         if not os.environ.get(key):
@@ -57,9 +65,9 @@ def main() -> None:
     )
     try:
         with urllib.request.urlopen(req) as resp:
-            print(resp.read().decode())
-            if resp.status not in (200, 201):
-                die(f"package upload failed (http={resp.status})")
+            body = resp.read().decode()
+            if body:
+                print(body)
     except urllib.error.HTTPError as e:
         err = e.read().decode()
         if err:
