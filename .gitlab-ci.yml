@@ -87,7 +87,8 @@ build:pixi:
     - export POLICYD_BIN="${CI_PROJECT_DIR}/build/grok-policyd"
     - just build
   after_script:
-    - rm -rf build build-cov docs/build .pixi/envs || true
+    - df -h || true
+    - rm -rf build build-cov build-product docs/build .pixi/envs || true
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
@@ -103,7 +104,8 @@ publish:lib:
     - export PATH="${CI_PROJECT_DIR}/.pixi/envs/ci/bin:${PIXI_HOME}/bin:${PATH}"
     - just publish-lib
   after_script:
-    - rm -rf build .pixi/envs || true
+    - df -h || true
+    - rm -rf build build-cov build-product .pixi/envs || true
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
       variables:
@@ -131,6 +133,7 @@ coverage:pixi:
     expire_in: 14 days
   coverage: '/^TOTAL\s+\d+\s+\d+\s+(\d+%)/'
   after_script:
+    - df -h || true
     # Keep coverage-out/ for artifact upload (runs after this).
     - rm -rf build build-cov .pixi/envs || true
   rules:
@@ -198,6 +201,7 @@ mutation:mull:
       - build-mull/mull-report/
     expire_in: 14 days
   after_script:
+    - df -h || true
     - rm -rf .pixi/envs || true
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
