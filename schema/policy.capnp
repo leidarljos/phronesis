@@ -132,6 +132,23 @@ enum PolicyReason {
   pathSensitiveDeny @28;
   # RiskAction.secretExport fail-closed (never allow export of secrets off-seat)
   secretExportDenied @29;
+
+  # checkAudio (voice plane gates; meta #97 Track E / epic #92)
+  # TCB only — no waveforms / PCM. sessiond checks before voiceArm / inject.
+  audioMicOpenDeny @30;
+  # Default deny for opening a capture device.
+  audioListenArmPrompt @31;
+  # Confirm class for listen arm; hard seats fail closed on prompt.
+  audioAlwaysListenDeny @32;
+  # Default deny for always-listen / no-wake persistent listen.
+  audioNetworkSttDeny @33;
+  # Default deny for network / cloud STT backends.
+  audioInjectDeny @34;
+  # Default deny for voicePushUtterance harness inject (production).
+  audioFixtureAllow @35;
+  # Test/dogfood allow via GROKOS_POLICYD_AUDIO_ALLOW (all AudioAction).
+  audioUnknownAction @36;
+  # Unknown / unmapped AudioAction → deny.
 }
 
 struct PolicyDecision {
@@ -239,6 +256,31 @@ struct RiskCheck {
   path @2 :Text;
 }
 
+enum AudioAction {
+  # Voice / audio plane gates (meta #97 Track E). Closed set — not free Text.
+  # sessiond calls checkAudio before capture arm or harness inject.
+  # No PCM / waveforms on this method (or any Policyd method).
+
+  micOpen @0;
+  # Open mic / capture device. Default Decision.deny.
+  listenArm @1;
+  # Seat voiceArm (listen mode). Default Decision.prompt (confirm class).
+  alwaysListen @2;
+  # Persistent / no-wake listen. Default Decision.deny.
+  networkStt @3;
+  # Network or cloud STT backend. Default Decision.deny.
+  inject @4;
+  # voicePushUtterance harness inject (no mic). Default Decision.deny in product.
+}
+
+struct AudioCheck {
+  # Params for Policyd.checkAudio.
+  # Who sets: sessiond (seat listen / inject); tests.
+  # Who must not set: agents forging mic authority without seat peercred.
+  agentId @0 :Util.AgentId;
+  action @1 :AudioAction;
+}
+
 struct AdmitSeat {
   agentId @0 :Util.AgentId;
   detail @1 :Text;
@@ -291,4 +333,8 @@ interface Policyd {
   reloadShellPack @9 ReloadShellPack -> PolicyDecision;
   # Unload any loaded Janet shell pack and load path. Next checkShell with
   # non-empty argv uses the new pack. Fail-closed on load error.
+
+  checkAudio @10 AudioCheck -> PolicyDecision;
+  # Voice/audio gates (meta #97). Default deny / prompt per AudioAction.
+  # No waveforms. Fixture allow: GROKOS_POLICYD_AUDIO_ALLOW (TCB env).
 }

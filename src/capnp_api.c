@@ -390,6 +390,29 @@ void grok_policyd_check_risk(grok_supervisor_t *sup, const uint8_t *in,
 	emit_decision(&pr, agent, out, out_len);
 }
 
+void grok_policyd_check_audio(grok_supervisor_t *sup, const uint8_t *in,
+			      size_t in_len, uint8_t **out, size_t *out_len)
+{
+	struct capn c;
+	struct AudioCheck ac;
+	struct AgentId agent;
+	grok_policy_result_t pr;
+	AudioCheck_ptr root;
+
+	(void)sup;
+	memset(&agent, 0, sizeof(agent));
+	if (open_in(in, in_len, &c) != 0) {
+		deny_msg(agent, GROK_REASON_INVALID_MESSAGE, out, out_len);
+		return;
+	}
+	root.p = capn_getp(capn_root(&c), 0, 1);
+	read_AudioCheck(&ac, root);
+	read_agent(ac.agentId, &agent);
+	(void)grok_policy_eval_audio((int)ac.action, &pr);
+	capn_free(&c);
+	emit_decision(&pr, agent, out, out_len);
+}
+
 void grok_policyd_admit_seat(grok_supervisor_t *sup, const uint8_t *in,
 			     size_t in_len, uint8_t **out, size_t *out_len)
 {
