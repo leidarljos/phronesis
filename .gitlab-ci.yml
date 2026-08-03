@@ -92,7 +92,7 @@ build:pixi:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
 
-# Full static lib for consumers (ci-kit). main only.
+# Full static lib for package registry. MR: symbol dry-run. main: upload.
 publish:lib:
   stage: build
   image: debian:bookworm-slim
@@ -105,6 +105,9 @@ publish:lib:
   after_script:
     - rm -rf build .pixi/envs || true
   rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      variables:
+        POLICYD_PUBLISH_DRY_RUN: "1"
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
 
 # Meson -Db_coverage + gcovr. No percentage gate.
