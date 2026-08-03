@@ -221,6 +221,7 @@ supervisor_test = executable(
     'tests/test_action_log.c',
     'tests/test_persist.c',
     'tests/test_policy.c',
+    'tests/test_pack_lib.c',
     'tests/test_shell_pack.c',
     'tests/test_version.c',
     'tests/test_capnp_ffi.c',
