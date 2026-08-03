@@ -156,6 +156,22 @@ m_dep = cc.find_library('m', required: true)
 dl_dep = cc.find_library('dl', required: true)
 thread_dep = dependency('threads')
 
+# Product Janet packs (shell-check + audio-check + pure lib/). Installed so
+# seats load law with no GROKOS_POLICYD_JANET_PACK env. Default path is baked
+# into the library as GROKOS_POLICYD_DEFAULT_JANET_PACK.
+policy_pack_install = get_option('datadir') / 'grok-policyd' / 'policy'
+install_data(
+  'policy/shell.janet',
+  install_dir: policy_pack_install,
+)
+install_subdir(
+  'policy/lib',
+  install_dir: policy_pack_install,
+  strip_directory: false,
+)
+default_janet_pack = get_option('prefix') / policy_pack_install / 'shell.janet'
+message('Default Janet pack: @0@'.format(default_janet_pack))
+
 # Default-hidden visibility: only GROK_POLICYD_API symbols leave the .so.
 # Tests link the static archive so they can exercise internal helpers without
 # exporting those helpers to embedders.
@@ -171,6 +187,7 @@ policyd_lib = library(
   gnu_symbol_visibility: 'hidden',
   c_args: mull_c_args + [
     '-DJANET_API=',
+    '-DGROKOS_POLICYD_DEFAULT_JANET_PACK="@0@"'.format(default_janet_pack),
   ],
 )
 
