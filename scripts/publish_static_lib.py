@@ -63,6 +63,7 @@ def upload() -> None:
     data = LIB.read_bytes()
     print(f"publish {len(data)} bytes -> {url}")
 
+    # Cloudflare on nova.teachx.ai returns 403/1010 for Python-urllib's default UA.
     req = urllib.request.Request(
         url,
         data=data,
@@ -70,6 +71,7 @@ def upload() -> None:
         headers={
             "JOB-TOKEN": os.environ["CI_JOB_TOKEN"],
             "Content-Type": "application/octet-stream",
+            "User-Agent": "curl/8.5.0",
         },
     )
     try:
