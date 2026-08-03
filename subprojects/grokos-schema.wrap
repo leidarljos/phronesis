@@ -1,3 +1,8 @@
+# Cap'n SoT for policyd. Prefer monorepo dogfood over this wrap:
+#   ln -sfn ../../grokos-schema subprojects/grokos-schema
+# After grokos-schema Meson lands on main (schema !15), set revision = main
+# (or a schema-vX.Y.Z tag). Private HTTPS may fail without credentials;
+# meson.build falls back to local schema/ pin (required: false).
 [wrap-git]
 directory = grokos-schema
 url = https://nova.teachx.ai/trace-analysis/grokos-packages/grokos-schema.git
