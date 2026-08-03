@@ -3,17 +3,16 @@
 
 Host entry: ``just publish-lib`` (builds the archive first).
 
-Upload requires CI_API_V4_URL, CI_PROJECT_ID, CI_COMMIT_SHA, CI_JOB_TOKEN.
+Upload uses curl (same pattern as tools generic package publish), with JOB-TOKEN.
 Set POLICYD_PUBLISH_DRY_RUN=1 to verify symbols only (merge-request continuous integration).
 """
 from __future__ import annotations
 
 import os
 import re
+import shutil
 import subprocess
 import sys
-import urllib.error
-import urllib.request
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -56,34 +55,44 @@ def upload() -> None:
         if not os.environ.get(key):
             die(f"{key} is required for upload")
 
+    curl = shutil.which("curl")
+    if not curl:
+        die("curl not found on PATH")
+
     url = (
         f"{os.environ['CI_API_V4_URL']}/projects/{os.environ['CI_PROJECT_ID']}"
         f"/packages/generic/{PACKAGE}/{os.environ['CI_COMMIT_SHA']}/{FILE}"
     )
-    data = LIB.read_bytes()
-    print(f"publish {len(data)} bytes -> {url}")
+    print(f"publish {LIB.stat().st_size} bytes -> {url}")
 
-    # Cloudflare on nova.teachx.ai returns 403/1010 for Python-urllib's default UA.
-    req = urllib.request.Request(
-        url,
-        data=data,
-        method="PUT",
-        headers={
-            "JOB-TOKEN": os.environ["CI_JOB_TOKEN"],
-            "Content-Type": "application/octet-stream",
-            "User-Agent": "curl/8.5.0",
-        },
+    out = Path("/tmp/publish-static-lib.out")
+    proc = subprocess.run(
+        [
+            curl,
+            "-sS",
+            "-o",
+            str(out),
+            "-w",
+            "%{http_code}",
+            "--header",
+            f"JOB-TOKEN: {os.environ['CI_JOB_TOKEN']}",
+            "--upload-file",
+            str(LIB),
+            url,
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
     )
-    try:
-        with urllib.request.urlopen(req) as resp:
-            body = resp.read().decode()
-            if body:
-                print(body)
-    except urllib.error.HTTPError as e:
-        err = e.read().decode()
-        if err:
-            print(err, file=sys.stderr)
-        die(f"package upload failed (http={e.code})")
+    code = (proc.stdout or "").strip()
+    body = out.read_text() if out.is_file() else ""
+    if body:
+        print(body)
+    if proc.returncode != 0:
+        die(f"curl failed (exit {proc.returncode}): {proc.stderr or proc.stdout}")
+    if code not in ("200", "201"):
+        die(f"package upload failed (http={code})")
+    print(f"http={code}")
 
 
 def main() -> None:
