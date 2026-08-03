@@ -26,11 +26,17 @@ if command -v x86_64-conda-linux-gnu-gcov >/dev/null 2>&1; then
 fi
 
 # Invoke gcovr directly (Meson's coverage-text target is brittle with gcovr 8 + conda gcov).
+# third_party/janet is linked into the coverage build (libjanet_amalg) and can
+# emit .gcda gcov cannot resolve (corrupted / no_working_dir). Exclude those
+# object dirs and ignore that gcov error class so report still covers src/.
 gcovr \
   --gcov-executable "$GCOV" \
   --root "$ROOT" \
   --filter 'src/' \
   --exclude 'third_party/' \
+  --exclude-directories '.*libjanet_amalg.*' \
+  --exclude-directories '.*subprojects.*' \
+  --gcov-ignore-errors=no_working_dir_found \
   --txt "$OUT/coverage.txt" \
   --xml "$OUT/coverage.xml" \
   --print-summary \
