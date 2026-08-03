@@ -483,11 +483,15 @@ GROK_POLICYD_API void grok_policyd_reload_shell_pack(grok_supervisor_t *sup,
 						     size_t *out_len);
 
 /**
- * Unload any loaded Janet shell pack and load @a path (absolute).
+ * Unload any loaded Janet packs and load @a path.
  *
- * @param path  Absolute path to a .janet pack file; must not be NULL/empty.
+ * @param path  Colon-separated list of absolute .janet pack files and/or
+ *              absolute directories of top-level *.janet packs. Empty is
+ *              invalid. Each pack loads into its own sealed env; checkShell /
+ *              checkAudio compose fail-closed across packs that define the
+ *              entry (deny > prompt > allow).
  * @return @ref GROK_OK on successful load; @ref GROK_ERR_INVAL for bad path;
- *         @ref GROK_ERR_IO when the file cannot be loaded as a pack.
+ *         @ref GROK_ERR_IO when a file cannot be loaded as a pack.
  *
  * Threading: not concurrent with checkShell. Product path is single-threaded
  * TCB per process (same as other policy methods).
