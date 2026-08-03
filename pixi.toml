@@ -21,6 +21,7 @@ coreutils = ">=9.5"
 sed = "*"
 which = "*"
 git = ">=2.40"
+python = ">=3.12,<3.14"
 
 [tasks]
 env-info = "bash scripts/pixi_env_info.sh"

@@ -15,6 +15,10 @@ build:
 lib:
     pixi run lib
 
+# Full static archive → GitLab generic package (CI_JOB_TOKEN + API env).
+publish-lib: lib
+    pixi run python scripts/publish_static_lib.py
+
 coverage:
     pixi run coverage
 
