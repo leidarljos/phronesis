@@ -118,13 +118,20 @@ enum PolicyReason {
 
   # Shell content pack: dangerous runners / privilege / remote exec / git
   shellDangerousRunner @23;
-  # poetry, conda, mamba, pipx, nix-shell, bare pip install, …
+  # poetry, conda, mamba, pipx, nix-shell, bare pip install, ...
   shellRemoteExec @24;
   # curl|sh, wget|bash, fetch|sh class patterns in argv
   shellPrivilegeDenied @25;
   # sudo, su, doas, pkexec
   shellGitDangerous @26;
   # force-push, reset --hard to remote-tracking, clean -fdx against VCS
+
+  # Secret material must not appear in argv (glpat-/ghp_/PEM/basic-auth URL/...)
+  shellSecretInArgv @27;
+  # Path class that must not leave the seat via Read/view (credentials dirs)
+  pathSensitiveDeny @28;
+  # RiskAction.secretExport fail-closed (never allow export of secrets off-seat)
+  secretExportDenied @29;
 }
 
 struct PolicyDecision {
