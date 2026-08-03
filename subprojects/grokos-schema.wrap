@@ -1,11 +1,11 @@
 # Cap'n SoT. Monorepo dogfood (preferred):
 #   ln -sfn ../../grokos-schema subprojects/grokos-schema
 # CI pre-clones this path with CI_JOB_TOKEN before meson (see .gitlab-ci.yml).
-# After schema !15 lands on main: revision = main or schema-vX.Y.Z tag.
+# revision pins grokos-schema main tip (Meson IDL package).
 [wrap-git]
 directory = grokos-schema
 url = https://nova.teachx.ai/trace-analysis/grokos-packages/grokos-schema.git
-revision = 5cb60cc045ca4077925e4cf040fdd9d71e837eb6
+revision = c472d0869f15ad66c3b5fb5034e73826171b57ae
 depth = 1
 
 [provide]
