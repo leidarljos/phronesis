@@ -73,6 +73,7 @@ static int pack_lib_setup(void **state)
 	/* No capnp_register / seal: pure law only. */
 	assert_int_equal(load_lib_file("layout.janet"), 0);
 	assert_int_equal(load_lib_file("python-law.janet"), 0);
+	assert_int_equal(load_lib_file("shell-danger.janet"), 0);
 
 	/* Sanity: entry helpers are bound. */
 	assert_int_not_equal(
@@ -196,6 +197,32 @@ static void test_argv_base(void **state)
 	assert_string_equal((const char *)janet_unwrap_string(v), "python3.12");
 }
 
+static void test_shell_danger_laws(void **state)
+{
+	const char *sudo[] = { "sudo", "apt", "install", "x" };
+	const char *curlsh[] = { "curl", "https://x", "sh" };
+	const char *poetry[] = { "poetry", "install" };
+	const char *pipi[] = { "pip", "install", "requests" };
+	const char *force[] = { "git", "push", "--force", "origin", "main" };
+	const char *okgit[] = { "git", "status" };
+	Janet v;
+	(void)state;
+
+	v = call1("shell-danger-deny", make_string_array(sudo, 4));
+	assert_true(janet_checktype(v, JANET_TUPLE) ||
+		    janet_checktype(v, JANET_ARRAY));
+	v = call1("shell-danger-deny", make_string_array(curlsh, 3));
+	assert_false(janet_checktype(v, JANET_NIL));
+	v = call1("shell-danger-deny", make_string_array(poetry, 2));
+	assert_false(janet_checktype(v, JANET_NIL));
+	v = call1("shell-danger-deny", make_string_array(pipi, 3));
+	assert_false(janet_checktype(v, JANET_NIL));
+	v = call1("shell-danger-deny", make_string_array(force, 5));
+	assert_false(janet_checktype(v, JANET_NIL));
+	v = call1("shell-danger-deny", make_string_array(okgit, 2));
+	assert_true(janet_checktype(v, JANET_NIL));
+}
+
 int run_pack_lib_tests(void)
 {
 	const struct CMUnitTest tests[] = {
@@ -209,6 +236,9 @@ int run_pack_lib_tests(void)
 						pack_lib_setup,
 						pack_lib_teardown),
 		cmocka_unit_test_setup_teardown(test_argv_base, pack_lib_setup,
+						pack_lib_teardown),
+		cmocka_unit_test_setup_teardown(test_shell_danger_laws,
+						pack_lib_setup,
 						pack_lib_teardown),
 	};
 	return cmocka_run_group_tests_name("pack_lib", tests, NULL, NULL);

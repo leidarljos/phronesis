@@ -115,6 +115,16 @@ enum PolicyReason {
   # Successful hot-load of a Janet shell pack.
   packPathInvalid @22;
   # Reload rejected: empty/relative/overlong path, or path not a regular file.
+
+  # Shell content pack: dangerous runners / privilege / remote exec / git
+  shellDangerousRunner @23;
+  # poetry, conda, mamba, pipx, nix-shell, bare pip install, …
+  shellRemoteExec @24;
+  # curl|sh, wget|bash, fetch|sh class patterns in argv
+  shellPrivilegeDenied @25;
+  # sudo, su, doas, pkexec
+  shellGitDangerous @26;
+  # force-push, reset --hard to remote-tracking, clean -fdx against VCS
 }
 
 struct PolicyDecision {

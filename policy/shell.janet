@@ -42,6 +42,11 @@
     (break (decide Decision-deny PolicyReason-pathOutsideWorkspace
                    "path outside workspace")))
   (def argv (read-argv root))
+  # Privilege / remote-exec / banned runners / dangerous git (policy/lib/shell-danger).
+  (def danger (shell-danger-deny argv))
+  (unless (nil? danger)
+    (break (decide Decision-deny (in danger 0) (in danger 1))))
+  # Python product law (policy/lib/python-law): uv run + PEP 723.
   (unless (touches-python? argv)
     (break (decide Decision-allow PolicyReason-shellExecAllow
                    "shell exec under workspace")))
