@@ -94,6 +94,28 @@ build:pixi:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
 
+# Full static lib for consumers (ci-kit). main only. Entry: just publish-lib.
+.publish_just: &publish_just |
+  set -euo pipefail
+  export PATH="${PIXI_HOME}/bin:${HOME}/.pixi/bin:${CI_PROJECT_DIR}/.pixi/envs/ci/bin:${PATH}"
+  if ! command -v just >/dev/null 2>&1; then
+    curl -fsSL https://just.systems/install.sh | bash -s -- --to "${PIXI_HOME}/bin"
+  fi
+
+publish:lib:
+  stage: build
+  image: debian:bookworm-slim
+  interruptible: true
+  cache: *pixi_cache
+  before_script: *pixi_prepare
+  script:
+    - *publish_just
+    - just publish-lib
+  after_script:
+    - rm -rf build .pixi/envs || true
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
 # Meson -Db_coverage + gcovr. No percentage gate.
 coverage:pixi:
   stage: build
