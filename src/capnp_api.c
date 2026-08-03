@@ -377,7 +377,15 @@ void grok_policyd_check_risk(grok_supervisor_t *sup, const uint8_t *in,
 	read_RiskCheck(&rc, root);
 	read_agent(rc.agentId, &agent);
 	memset(&pr, 0, sizeof(pr));
-	grok_policy_result_set(&pr, GROK_DECISION_PROMPT, GROK_REASON_HIGH_RISK_PROMPT);
+	/* secretExport: never allow (no secrets leave seat / traces). */
+	if (rc.action == RiskAction_secretExport) {
+		grok_policy_result_set(&pr, GROK_DECISION_DENY,
+				       GROK_REASON_SECRET_EXPORT_DENIED);
+	} else {
+		/* network/sudo/pay/auth/…: prompt; agent fail-closes until UX. */
+		grok_policy_result_set(&pr, GROK_DECISION_PROMPT,
+				       GROK_REASON_HIGH_RISK_PROMPT);
+	}
 	capn_free(&c);
 	emit_decision(&pr, agent, out, out_len);
 }

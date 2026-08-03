@@ -294,6 +294,31 @@ static void test_python_dash_c_deny(void **state)
 	free(out);
 }
 
+static void test_glpat_in_argv_deny(void **state)
+{
+	struct shell_fix *f = *state;
+	char url[96];
+	snprintf(url, sizeof url, "https://oauth2:%s%s@gitlab.example/x.git",
+		 "glpat-", "SecretTokenValue99");
+	char *argv[] = {
+		"git", "push",
+		url,
+		NULL
+	};
+uint8_t *in = NULL, *out = NULL;
+	size_t in_len = 0, out_len = 0;
+	enum Decision dec;
+	enum PolicyReason code;
+
+	build_shell_check(f->ws, argv, 3, &in, &in_len);
+	grok_policyd_check_shell(f->sup, in, in_len, &out, &out_len);
+	free(in);
+	read_decision(out, out_len, &dec, &code, NULL, 0);
+	assert_int_equal(dec, Decision_deny);
+	assert_int_equal(code, PolicyReason_shellSecretInArgv);
+	free(out);
+}
+
 static void test_reload_shell_pack_hot_load(void **state)
 {
 	struct shell_fix *f = *state;
@@ -385,6 +410,8 @@ int run_shell_pack_tests(void)
 		cmocka_unit_test_setup_teardown(test_uv_run_missing_pep723_deny,
 						shell_setup, shell_teardown),
 		cmocka_unit_test_setup_teardown(test_python_dash_c_deny,
+						shell_setup, shell_teardown),
+		cmocka_unit_test_setup_teardown(test_glpat_in_argv_deny,
 						shell_setup, shell_teardown),
 		cmocka_unit_test_setup_teardown(test_reload_shell_pack_hot_load,
 						shell_setup, shell_teardown),

@@ -46,6 +46,10 @@
   (def danger (shell-danger-deny argv))
   (unless (nil? danger)
     (break (decide Decision-deny (in danger 0) (in danger 1))))
+  # Secrets must never appear in spawn argv (policy/lib/shell-secret).
+  (def secret (shell-secret-deny argv))
+  (unless (nil? secret)
+    (break (decide Decision-deny (in secret 0) (in secret 1))))
   # Python product law (policy/lib/python-law): uv run + PEP 723.
   (unless (touches-python? argv)
     (break (decide Decision-allow PolicyReason-shellExecAllow

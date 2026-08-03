@@ -20,3 +20,6 @@
 (def PolicyReason-shellRemoteExec 24)
 (def PolicyReason-shellPrivilegeDenied 25)
 (def PolicyReason-shellGitDangerous 26)
+(def PolicyReason-shellSecretInArgv 27)
+(def PolicyReason-pathSensitiveDeny 28)
+(def PolicyReason-secretExportDenied 29)

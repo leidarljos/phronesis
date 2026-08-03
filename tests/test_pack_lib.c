@@ -74,6 +74,7 @@ static int pack_lib_setup(void **state)
 	assert_int_equal(load_lib_file("layout.janet"), 0);
 	assert_int_equal(load_lib_file("python-law.janet"), 0);
 	assert_int_equal(load_lib_file("shell-danger.janet"), 0);
+	assert_int_equal(load_lib_file("shell-secret.janet"), 0);
 
 	/* Sanity: entry helpers are bound. */
 	assert_int_not_equal(
@@ -223,6 +224,35 @@ static void test_shell_danger_laws(void **state)
 	assert_true(janet_checktype(v, JANET_NIL));
 }
 
+static void test_shell_secret_laws(void **state)
+{
+	/* Build fixtures without contiguous secret shapes in source (CI secrets:scan). */
+	char glpat_url[96];
+	char ghp_hdr[64];
+	char pem_hdr[48];
+	snprintf(glpat_url, sizeof glpat_url, "https://oauth2:%s%s@gitlab.com/x.git",
+		 "glpat-", "abc123XYZ");
+	snprintf(ghp_hdr, sizeof ghp_hdr, "Authorization: %s%s", "ghp_",
+		 "abcdefghijklmnopqrstuv");
+	snprintf(pem_hdr, sizeof pem_hdr, "-----%s%s%s", "BEGIN ", "RSA ",
+		 "PRIVATE KEY-----");
+	const char *glpat[] = { "git", "push", glpat_url };
+	const char *ghp[] = { "curl", "-H", ghp_hdr };
+	const char *ok[] = { "git", "status" };
+	const char *pem[] = { "cat", pem_hdr };
+	Janet v;
+	(void)state;
+
+	v = call1("shell-secret-deny", make_string_array(glpat, 3));
+	assert_false(janet_checktype(v, JANET_NIL));
+	v = call1("shell-secret-deny", make_string_array(ghp, 3));
+	assert_false(janet_checktype(v, JANET_NIL));
+	v = call1("shell-secret-deny", make_string_array(pem, 2));
+	assert_false(janet_checktype(v, JANET_NIL));
+	v = call1("shell-secret-deny", make_string_array(ok, 2));
+	assert_true(janet_checktype(v, JANET_NIL));
+}
+
 int run_pack_lib_tests(void)
 {
 	const struct CMUnitTest tests[] = {
@@ -238,6 +268,9 @@ int run_pack_lib_tests(void)
 		cmocka_unit_test_setup_teardown(test_argv_base, pack_lib_setup,
 						pack_lib_teardown),
 		cmocka_unit_test_setup_teardown(test_shell_danger_laws,
+						pack_lib_setup,
+						pack_lib_teardown),
+		cmocka_unit_test_setup_teardown(test_shell_secret_laws,
 						pack_lib_setup,
 						pack_lib_teardown),
 	};
