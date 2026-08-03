@@ -13,6 +13,7 @@
 #include <stdarg.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <cmocka.h>
@@ -26,11 +27,20 @@ struct capn_fix {
 static int capn_setup(void **state)
 {
 	struct capn_fix *f = calloc(1, sizeof(*f));
+	char pack[GROK_PATH_MAX];
+	const char *src;
 
 	assert_non_null(f);
 	assert_int_equal(t_open_pair(&f->sup, f->st, sizeof(f->st), f->rt,
 				     sizeof(f->rt), "capn"),
 			 GROK_OK);
+	/* Product pack: shell-check + audio-check (absolute; reload after shell suite). */
+	src = getenv("POLICYD_SOURCE_ROOT");
+	if (!src || !src[0])
+		src = ".";
+	snprintf(pack, sizeof(pack), "%s/policy/shell.janet", src);
+	setenv("GROKOS_POLICYD_JANET_PACK", pack, 1);
+	assert_int_equal(grok_policy_shell_pack_reload(pack), GROK_OK);
 	*state = f;
 	return 0;
 }
@@ -39,6 +49,7 @@ static int capn_teardown(void **state)
 {
 	struct capn_fix *f = *state;
 
+	unsetenv("GROKOS_POLICYD_JANET_PACK");
 	if (f) {
 		if (f->sup)
 			grok_supervisor_close(f->sup);
@@ -172,11 +183,13 @@ static void test_admit_model_allow(void **state)
 }
 
 static void expect_decision_code(const uint8_t *msg, size_t len,
-				 enum Decision want_dec, enum PolicyReason want_code)
+				 enum Decision want_dec, enum PolicyReason want_code,
+				 uint64_t want_hi, uint64_t want_lo)
 {
 	struct capn c;
 	PolicyDecision_ptr root;
 	struct PolicyDecision d;
+	struct AgentId agent;
 
 	assert_non_null(msg);
 	memset(&c, 0, sizeof(c));
@@ -185,6 +198,11 @@ static void expect_decision_code(const uint8_t *msg, size_t len,
 	read_PolicyDecision(&d, root);
 	assert_int_equal(d.decision, want_dec);
 	assert_int_equal(d.code, want_code);
+	memset(&agent, 0, sizeof(agent));
+	if (d.agentId.p.type != CAPN_NULL)
+		read_AgentId(&agent, d.agentId);
+	assert_int_equal((int)agent.hi, (int)want_hi);
+	assert_int_equal((int)agent.lo, (int)want_lo);
 	capn_free(&c);
 }
 
@@ -210,7 +228,7 @@ static void check_audio_action(grok_supervisor_t *sup, enum AudioAction action,
 
 	grok_policyd_check_audio(sup, in, in_len, &out, &out_len);
 	free(in);
-	expect_decision_code(out, out_len, want_dec, want_code);
+	expect_decision_code(out, out_len, want_dec, want_code, 9, 10);
 	free(out);
 }
 
@@ -245,6 +263,10 @@ static void test_check_audio_fixture_allow(void **state)
 			   PolicyReason_audioFixtureAllow);
 	check_audio_action(f->sup, AudioAction_listenArm, Decision_allow,
 			   PolicyReason_audioFixtureAllow);
+	check_audio_action(f->sup, AudioAction_alwaysListen, Decision_allow,
+			   PolicyReason_audioFixtureAllow);
+	check_audio_action(f->sup, AudioAction_networkStt, Decision_allow,
+			   PolicyReason_audioFixtureAllow);
 	check_audio_action(f->sup, AudioAction_inject, Decision_allow,
 			   PolicyReason_audioFixtureAllow);
 
@@ -265,6 +287,18 @@ static void test_check_audio_deny_all_wins(void **state)
 	unsetenv("GROKOS_POLICYD_AUDIO_ALLOW");
 }
 
+static void test_check_audio_unknown_action(void **state)
+{
+	struct capn_fix *f = *state;
+
+	unsetenv("GROKOS_POLICYD_AUDIO_ALLOW");
+	unsetenv("GROKOS_POLICYD_DENY_ALL");
+
+	/* Out-of-range ordinal → deny audioUnknownAction (fail closed). */
+	check_audio_action(f->sup, (enum AudioAction)99, Decision_deny,
+			   PolicyReason_audioUnknownAction);
+}
+
 static void test_check_audio_bad_message(void **state)
 {
 	struct capn_fix *f = *state;
@@ -275,8 +309,9 @@ static void test_check_audio_bad_message(void **state)
 	unsetenv("GROKOS_POLICYD_DENY_ALL");
 
 	grok_policyd_check_audio(f->sup, NULL, 0, &out, &out_len);
+	/* Bad input: zero agent echo + invalidMessage. */
 	expect_decision_code(out, out_len, Decision_deny,
-			     PolicyReason_invalidMessage);
+			     PolicyReason_invalidMessage, 0, 0);
 	free(out);
 }
 
@@ -294,6 +329,8 @@ int run_capnp_ffi_tests(void)
 		cmocka_unit_test_setup_teardown(test_check_audio_fixture_allow,
 						capn_setup, capn_teardown),
 		cmocka_unit_test_setup_teardown(test_check_audio_deny_all_wins,
+						capn_setup, capn_teardown),
+		cmocka_unit_test_setup_teardown(test_check_audio_unknown_action,
 						capn_setup, capn_teardown),
 		cmocka_unit_test_setup_teardown(test_check_audio_bad_message,
 						capn_setup, capn_teardown),

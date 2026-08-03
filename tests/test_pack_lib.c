@@ -72,6 +72,7 @@ static int pack_lib_setup(void **state)
 	assert_non_null(test_env);
 	/* No capnp_register / seal: pure law only. */
 	assert_int_equal(load_lib_file("layout.janet"), 0);
+	assert_int_equal(load_lib_file("voice-law.janet"), 0);
 	assert_int_equal(load_lib_file("python-law.janet"), 0);
 	assert_int_equal(load_lib_file("shell-danger.janet"), 0);
 	assert_int_equal(load_lib_file("shell-secret.janet"), 0);
@@ -79,6 +80,10 @@ static int pack_lib_setup(void **state)
 	/* Sanity: entry helpers are bound. */
 	assert_int_not_equal(
 		janet_resolve(test_env, janet_csymbol("python-interp?"),
+			      &resolved),
+		JANET_BINDING_NONE);
+	assert_int_not_equal(
+		janet_resolve(test_env, janet_csymbol("audio-decide"),
 			      &resolved),
 		JANET_BINDING_NONE);
 	return 0;
@@ -253,6 +258,40 @@ static void test_shell_secret_laws(void **state)
 	assert_true(janet_checktype(v, JANET_NIL));
 }
 
+static void expect_audio_pair(Janet v, int want_dec, int want_code)
+{
+	const Janet *xs;
+	int32_t n;
+
+	assert_true(janet_indexed_view(v, &xs, &n));
+	assert_int_equal(n, 2);
+	assert_true(janet_checktype(xs[0], JANET_NUMBER));
+	assert_true(janet_checktype(xs[1], JANET_NUMBER));
+	assert_int_equal((int)janet_unwrap_number(xs[0]), want_dec);
+	assert_int_equal((int)janet_unwrap_number(xs[1]), want_code);
+}
+
+/* meta #97: pure audio-decide table (host env fixture not here). */
+static void test_audio_decide_defaults(void **state)
+{
+	Janet v;
+	(void)state;
+
+	/* Ordinals match Cap'n AudioAction / PolicyReason. */
+	v = call1("audio-decide", janet_wrap_number(0)); /* micOpen */
+	expect_audio_pair(v, 0, 30);
+	v = call1("audio-decide", janet_wrap_number(1)); /* listenArm */
+	expect_audio_pair(v, 2, 31); /* prompt */
+	v = call1("audio-decide", janet_wrap_number(2)); /* alwaysListen */
+	expect_audio_pair(v, 0, 32);
+	v = call1("audio-decide", janet_wrap_number(3)); /* networkStt */
+	expect_audio_pair(v, 0, 33);
+	v = call1("audio-decide", janet_wrap_number(4)); /* inject */
+	expect_audio_pair(v, 0, 34);
+	v = call1("audio-decide", janet_wrap_number(99)); /* unknown */
+	expect_audio_pair(v, 0, 36);
+}
+
 int run_pack_lib_tests(void)
 {
 	const struct CMUnitTest tests[] = {
@@ -271,6 +310,9 @@ int run_pack_lib_tests(void)
 						pack_lib_setup,
 						pack_lib_teardown),
 		cmocka_unit_test_setup_teardown(test_shell_secret_laws,
+						pack_lib_setup,
+						pack_lib_teardown),
+		cmocka_unit_test_setup_teardown(test_audio_decide_defaults,
 						pack_lib_setup,
 						pack_lib_teardown),
 	};

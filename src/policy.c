@@ -154,6 +154,18 @@ int grok_policy_resolve_script(const char *cwd, const char *script, char *out,
 	return 0;
 }
 
+/** Truthy env for TCB gates: 1 / true / yes (any case of true/yes). */
+static int env_truthy(const char *name)
+{
+	const char *v = getenv(name);
+
+	if (!v || !v[0])
+		return 0;
+	return strcmp(v, "1") == 0 || strcmp(v, "true") == 0 ||
+	       strcmp(v, "yes") == 0 || strcmp(v, "TRUE") == 0 ||
+	       strcmp(v, "YES") == 0;
+}
+
 int grok_policy_eval(const char *workspace, const char *tool,
 		     const char *action, const char *path,
 		     grok_policy_result_t *out)
@@ -163,17 +175,10 @@ int grok_policy_eval(const char *workspace, const char *tool,
 	grok_policy_result_set(out, GROK_DECISION_DENY,
 			       GROK_REASON_TOOLS_DEFAULT_DENY);
 
-	{
-		const char *da = getenv("GROKOS_POLICYD_DENY_ALL");
-
-		if (da && da[0] &&
-		    (strcmp(da, "1") == 0 || strcmp(da, "true") == 0 ||
-		     strcmp(da, "yes") == 0 || strcmp(da, "TRUE") == 0 ||
-		     strcmp(da, "YES") == 0)) {
-			grok_policy_result_set(out, GROK_DECISION_DENY,
-					       GROK_REASON_DENY_ALL);
-			return GROK_OK;
-		}
+	if (env_truthy("GROKOS_POLICYD_DENY_ALL")) {
+		grok_policy_result_set(out, GROK_DECISION_DENY,
+				       GROK_REASON_DENY_ALL);
+		return GROK_OK;
 	}
 
 	if (!tool || !tool[0] || !action || !action[0]) {
@@ -237,63 +242,4 @@ int grok_policy_eval(const char *workspace, const char *tool,
 		grok_policy_result_set(out, GROK_DECISION_DENY,
 				       GROK_REASON_TOOLS_DEFAULT_DENY);
 	return GROK_OK;
-}
-
-static int env_truthy_audio(const char *name)
-{
-	const char *v = getenv(name);
-
-	if (!v || !v[0])
-		return 0;
-	return strcmp(v, "1") == 0 || strcmp(v, "true") == 0 ||
-	       strcmp(v, "yes") == 0 || strcmp(v, "TRUE") == 0 ||
-	       strcmp(v, "YES") == 0;
-}
-
-int grok_policy_eval_audio(int audio_action, grok_policy_result_t *out)
-{
-	if (!out)
-		return GROK_ERR_INVAL;
-	grok_policy_result_set(out, GROK_DECISION_DENY,
-			       GROK_REASON_TOOLS_DEFAULT_DENY);
-
-	if (env_truthy_audio("GROKOS_POLICYD_DENY_ALL")) {
-		grok_policy_result_set(out, GROK_DECISION_DENY,
-				       GROK_REASON_DENY_ALL);
-		return GROK_OK;
-	}
-	/* Fixture/CI/dogfood allow — all AudioAction (acceptance meta #97). */
-	if (env_truthy_audio("GROKOS_POLICYD_AUDIO_ALLOW")) {
-		grok_policy_result_set(out, GROK_DECISION_ALLOW,
-				       GROK_REASON_AUDIO_FIXTURE_ALLOW);
-		return GROK_OK;
-	}
-
-	switch (audio_action) {
-	case GROK_AUDIO_MIC_OPEN:
-		grok_policy_result_set(out, GROK_DECISION_DENY,
-				       GROK_REASON_AUDIO_MIC_OPEN_DENY);
-		return GROK_OK;
-	case GROK_AUDIO_LISTEN_ARM:
-		/* Confirm class; hard seats fail closed on prompt. */
-		grok_policy_result_set(out, GROK_DECISION_PROMPT,
-				       GROK_REASON_AUDIO_LISTEN_ARM_PROMPT);
-		return GROK_OK;
-	case GROK_AUDIO_ALWAYS_LISTEN:
-		grok_policy_result_set(out, GROK_DECISION_DENY,
-				       GROK_REASON_AUDIO_ALWAYS_LISTEN_DENY);
-		return GROK_OK;
-	case GROK_AUDIO_NETWORK_STT:
-		grok_policy_result_set(out, GROK_DECISION_DENY,
-				       GROK_REASON_AUDIO_NETWORK_STT_DENY);
-		return GROK_OK;
-	case GROK_AUDIO_INJECT:
-		grok_policy_result_set(out, GROK_DECISION_DENY,
-				       GROK_REASON_AUDIO_INJECT_DENY);
-		return GROK_OK;
-	default:
-		grok_policy_result_set(out, GROK_DECISION_DENY,
-				       GROK_REASON_AUDIO_UNKNOWN_ACTION);
-		return GROK_OK;
-	}
 }

@@ -442,9 +442,11 @@ GROK_POLICYD_API void grok_policyd_check_risk(grok_supervisor_t *sup,
 /**
  * checkAudio → in AudioCheck, out PolicyDecision (meta #97 Track E).
  *
- * Default: micOpen/alwaysListen/networkStt/inject deny; listenArm prompt.
- * Truthy @c GROKOS_POLICYD_AUDIO_ALLOW allows all actions (fixture/CI).
- * @c GROKOS_POLICYD_DENY_ALL still wins. No waveforms / PCM in TCB.
+ * Product defaults (Janet pack @c audio-check / voice-law): micOpen /
+ * alwaysListen / networkStt / inject deny; listenArm prompt; unknown deny.
+ * Host TCB: truthy @c GROKOS_POLICYD_AUDIO_ALLOW allows all actions
+ * (fixture/CI only; leave unset in production); @c GROKOS_POLICYD_DENY_ALL
+ * still wins. No waveforms / PCM on the wire.
  */
 GROK_POLICYD_API void grok_policyd_check_audio(grok_supervisor_t *sup,
 					       const uint8_t *in,
