@@ -42,6 +42,21 @@ int grok_policy_eval(const char *workspace,
 		     const char *path,
 		     grok_policy_result_t *out);
 
+/**
+ * Cap'n AudioAction ordinals (policy.capnp AudioAction). Used by checkAudio.
+ * Values match generated enum; do not renumber without schema bump.
+ */
+enum {
+	GROK_AUDIO_MIC_OPEN = 0,
+	GROK_AUDIO_LISTEN_ARM = 1,
+	GROK_AUDIO_ALWAYS_LISTEN = 2,
+	GROK_AUDIO_NETWORK_STT = 3,
+	GROK_AUDIO_INJECT = 4
+};
+
+/** Eval AudioAction → PolicyDecision codes (meta #97). */
+int grok_policy_eval_audio(int audio_action, grok_policy_result_t *out);
+
 #include <capnp_c.h>
 
 /** Resolve script path against cwd (workspace-bound callers only). */

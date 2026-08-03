@@ -24,8 +24,10 @@ message out — zero-copy mappable segments across agent, sessiond, shell.
 | `checkPath` | `PathCheck` | `PolicyDecision` |
 | `checkShell` | `ShellCheck` | `PolicyDecision` |
 | `checkRisk` | `RiskCheck` | `PolicyDecision` |
+| `checkAudio` | `AudioCheck` | `PolicyDecision` |
 | `admitSeat` / `admitModel` | `AdmitSeat` / `AdmitModel` | `PolicyDecision` |
 | `agentStatus` | `AgentQuery` | `AgentStatus` |
+| `reloadShellPack` | `ReloadShellPack` | `PolicyDecision` |
 
 - **Identity**: `Util.AgentId` bits only.
 - **Shell**: `ShellCheck.argv : List(Text)` (spawn argv).
@@ -52,9 +54,12 @@ grok_policyd_check_shell(sup, shell_msg, shell_len, &out, &out_len);
 | checkModel | always (admit plane) | — |
 | checkPath | read/write under workspace | outside → deny; delete → prompt |
 | checkShell | cwd under workspace; content pack: python via uv+PEP723; deny sudo/curl\|sh/banned PMs/dangerous git | bare python / missing PEP 723 / danger runners → deny |
-| checkRisk | — | always prompt (matrix pack later) |
+| checkRisk | — | secretExport → deny; other risk → prompt |
+| checkAudio | `GROKOS_POLICYD_AUDIO_ALLOW` fixture (all `AudioAction`) | default: micOpen/alwaysListen/networkStt/inject **deny**; listenArm **prompt** (hard seats fail closed). No PCM. meta #97 |
 
 Lexical paths: absolute only; reject `//`, `.`, `..`. No `realpath`.
+
+`GROKOS_POLICYD_DENY_ALL` still forces deny on every check (including checkAudio).
 
 ## Build / test / coverage (pixi only)
 
