@@ -81,6 +81,52 @@ static int path_under_workspace(const char *workspace, const char *path)
 	return path[wl] == '\0' || path[wl] == '/';
 }
 
+/*
+ * Paths that must not be Read/viewed into model traces (credential material).
+ * Lexical only — basename and path component match.
+ */
+static int path_is_sensitive(const char *path)
+{
+	const char *base;
+	const char *p;
+
+	if (!path || !path[0])
+		return 0;
+	base = strrchr(path, '/');
+	base = base ? base + 1 : path;
+	if (strcmp(base, ".env") == 0 ||
+	    strncmp(base, ".env.", 5) == 0 ||
+	    strcmp(base, ".netrc") == 0 ||
+	    strcmp(base, ".npmrc") == 0 ||
+	    strcmp(base, ".pypirc") == 0 ||
+	    strcmp(base, "id_rsa") == 0 ||
+	    strcmp(base, "id_ed25519") == 0 ||
+	    strcmp(base, "id_ecdsa") == 0 ||
+	    strcmp(base, "id_dsa") == 0 ||
+	    strcmp(base, "credentials") == 0 ||
+	    strcmp(base, "credentials.json") == 0 ||
+	    strcmp(base, "service-account.json") == 0 ||
+	    strcmp(base, "token") == 0 ||
+	    strcmp(base, "secrets.yaml") == 0 ||
+	    strcmp(base, "secrets.yml") == 0 ||
+	    strcmp(base, "secrets.json") == 0)
+		return 1;
+	/* Path components */
+	if (strstr(path, "/.ssh/") || strstr(path, "/.gnupg/") ||
+	    strstr(path, "/.aws/") || strstr(path, "/.kube/") ||
+	    strstr(path, "/.docker/") || strstr(path, "/.password-store/") ||
+	    strstr(path, "/.config/gcloud/") ||
+	    strstr(path, "/private_dot_") || strstr(path, "/.vault/"))
+		return 1;
+	/* ends with .pem / .key */
+	p = strrchr(path, '.');
+	if (p && (strcmp(p, ".pem") == 0 || strcmp(p, ".key") == 0 ||
+		  strcmp(p, ".p12") == 0 || strcmp(p, ".pfx") == 0))
+		return 1;
+	(void)base;
+	return 0;
+}
+
 int grok_policy_resolve_script(const char *cwd, const char *script, char *out,
 			       size_t out_n)
 {
@@ -154,11 +200,22 @@ int grok_policy_eval(const char *workspace, const char *tool,
 				       GROK_REASON_MODEL_START_ALLOW);
 		return GROK_OK;
 	}
+	/* Secrets must never leave the seat — deny, not prompt. */
+	if (strcmp(action, "secret_export") == 0) {
+		grok_policy_result_set(out, GROK_DECISION_DENY,
+				       GROK_REASON_SECRET_EXPORT_DENIED);
+		return GROK_OK;
+	}
 	if (strcmp(action, "delete") == 0 || strcmp(action, "network") == 0 ||
-	    strcmp(action, "sudo") == 0 ||
-	    strcmp(action, "secret_export") == 0) {
+	    strcmp(action, "sudo") == 0) {
 		grok_policy_result_set(out, GROK_DECISION_PROMPT,
 				       GROK_REASON_HIGH_RISK_PROMPT);
+		return GROK_OK;
+	}
+	if ((strcmp(action, "read") == 0 || strcmp(action, "write") == 0) &&
+	    path && path[0] && path_is_sensitive(path)) {
+		grok_policy_result_set(out, GROK_DECISION_DENY,
+				       GROK_REASON_PATH_SENSITIVE_DENY);
 		return GROK_OK;
 	}
 	if ((strcmp(action, "read") == 0 || strcmp(action, "write") == 0) &&
