@@ -67,10 +67,6 @@ variables:
   - rm -rf .pixi/envs
   - pixi install --locked -e ci
 
-    if ! command -v just >/dev/null 2>&1; then
-      curl -fsSL https://just.systems/install.sh | bash -s -- --to "${PIXI_HOME}/bin"
-    fi
-
 # Policy / Cap'n surface — when these change, run mutation.
 .mutation_paths: &mutation_paths
   - src/policy.c
