@@ -75,5 +75,6 @@ need_export() {
 need_export grok_policyd_status
 need_export grok_policyd_check_shell
 need_export grok_policyd_check_seat
+need_export grok_policyd_check_audio
 
 echo "ok: $SO — Policyd Cap'n methods exported, libcapnp_c NEEDED, no peer host stack"
