@@ -1,91 +1,28 @@
-# Product shell content pack.
-# In: Cap'n ShellView. Out: Cap'n PolicyDecision.
+# Product shell content pack entry.
+# Host loads policy/lib/*.janet (sorted) into the sealed env, then this file.
+# In: Cap'n ShellView buffer. Out: Cap'n PolicyDecision buffer.
 
-(def Decision-deny 0)
-(def Decision-allow 1)
-
-(def PolicyReason-pathOutsideWorkspace 2)
-(def PolicyReason-pythonRequiresUvRun 17)
-(def PolicyReason-pythonDashCDenied 18)
-(def PolicyReason-pythonMissingPep723 19)
-(def PolicyReason-shellExecAllow 20)
-
-(defn decide [decision code reason]
+(defn- decide [decision code reason]
   (capnp/build-message 1 2
                        @[[:u16 0 decision]
                          [:u16 2 code]
                          [:text 0 reason]]))
 
-(defn argv-base [tok]
-  (def parts (string/split "/" tok))
-  (def n (length parts))
-  (if (= n 0) tok (in parts (- n 1))))
-
-(defn digits-only? [s]
-  (var ok true)
-  (each c (string/bytes s)
-    (when (or (< c 48) (> c 57))
-      (set ok false)))
-  ok)
-
-(defn is-python-interp? [b]
-  (or (= b "python") (= b "pypy") (= b "pypy3")
-      (and (> (length b) 6)
-           (= (string/slice b 0 6) "python")
-           (digits-only? (string/slice b 6)))))
-
-(defn touches-python? [argv]
-  (var hit false)
-  (each t argv
-    (def b (argv-base t))
-    (when (or (is-python-interp? b) (string/has-suffix? ".py" t))
-      (set hit true)))
-  hit)
-
-(defn uv-run? [argv]
-  (var saw-uv false)
-  (var hit false)
-  (each t argv
-    (when (= (argv-base t) "uv") (set saw-uv true))
-    (when (and saw-uv (= t "run")) (set hit true)))
-  hit)
-
-(defn python-dash-c? [argv]
-  (var prev-py false)
-  (var hit false)
-  (each t argv
-    (def b (argv-base t))
-    (when (and prev-py (= t "-c")) (set hit true))
-    (set prev-py (is-python-interp? b)))
-  hit)
-
-(defn has-py-path? [argv]
-  (var hit false)
-  (each t argv
-    (when (string/has-suffix? ".py" t) (set hit true)))
-  hit)
-
-(defn pep723? [head]
-  (def a (string/find "# /// script" head))
-  (if (nil? a)
-    false
-    (not (nil? (string/find "# ///" (string/slice head (+ a 12)))))))
-
-(defn any-pep723? [root]
-  (def probes-ptr (capnp/getp root 2))
+(defn- any-pep723? [root]
+  (def probes-ptr (capnp/getp root shell-view-path-probes-ptr))
   (def n (capnp/list-len probes-ptr))
   (var hit false)
   (var i 0)
   (while (< i n)
     (def el (capnp/list-getp probes-ptr i))
-    (when (and (capnp/get-bool el 0)
-               (pep723? (capnp/get-text el 2)))
+    (when (and (capnp/get-bool el path-probe-exists-bit)
+               (pep723? (capnp/get-text el path-probe-head-ptr)))
       (set hit true))
     (set i (+ i 1)))
   hit)
 
-(defn read-argv [root]
-  (def lp (capnp/getp root 1))
+(defn- read-argv [root]
+  (def lp (capnp/getp root shell-view-argv-ptr))
   (def n (capnp/list-len lp))
   (def out @[])
   (var i 0)
@@ -94,13 +31,22 @@
     (set i (+ i 1)))
   out)
 
-(defn shell-check [buf]
+(defn shell-check
+  ``Shell content pack entry: Cap'n ShellView bytes in, PolicyDecision out.
+  Python paths require uv run (+ PEP 723 when a .py path is present).
+  Pure helpers live in policy/lib/ (loaded by the host before this file).``
+  [buf]
   (def msg (capnp/message-from-buffer buf))
   (def root (capnp/root msg))
-  (unless (capnp/get-bool root 0)
+  (unless (capnp/get-bool root shell-view-under-workspace-bit)
     (break (decide Decision-deny PolicyReason-pathOutsideWorkspace
                    "path outside workspace")))
   (def argv (read-argv root))
+  # Privilege / remote-exec / banned runners / dangerous git (policy/lib/shell-danger).
+  (def danger (shell-danger-deny argv))
+  (unless (nil? danger)
+    (break (decide Decision-deny (in danger 0) (in danger 1))))
+  # Python product law (policy/lib/python-law): uv run + PEP 723.
   (unless (touches-python? argv)
     (break (decide Decision-allow PolicyReason-shellExecAllow
                    "shell exec under workspace")))
