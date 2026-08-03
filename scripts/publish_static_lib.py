@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
-"""Upload build/libgrok_policyd.a to this project's generic package registry.
+"""Verify and optionally upload build/libgrok_policyd.a to the package registry.
 
 Host entry: ``just publish-lib`` (builds the archive first).
-Requires CI_API_V4_URL, CI_PROJECT_ID, CI_COMMIT_SHA, CI_JOB_TOKEN.
+
+Upload requires CI_API_V4_URL, CI_PROJECT_ID, CI_COMMIT_SHA, CI_JOB_TOKEN.
+Set POLICYD_PUBLISH_DRY_RUN=1 to verify symbols only (merge-request continuous integration).
 """
 from __future__ import annotations
 
@@ -31,11 +33,10 @@ def die(msg: str) -> None:
     raise SystemExit(1)
 
 
-def main() -> None:
+def verify_archive() -> None:
     if not LIB.is_file() or LIB.stat().st_size == 0:
         die(f"missing or empty archive: {LIB}")
 
-    # Full archive listing (static .a); match whole symbol tokens only.
     nm = subprocess.run(
         ["nm", str(LIB)],
         check=False,
@@ -47,10 +48,13 @@ def main() -> None:
     for sym in NEED_SYMS:
         if not re.search(rf"\b{re.escape(sym)}\b", nm.stdout):
             die(f"{LIB} missing symbol {sym}")
+    print(f"ok: {LIB} ({LIB.stat().st_size} bytes) exports {', '.join(NEED_SYMS)}")
 
+
+def upload() -> None:
     for key in ("CI_API_V4_URL", "CI_PROJECT_ID", "CI_COMMIT_SHA", "CI_JOB_TOKEN"):
         if not os.environ.get(key):
-            die(f"{key} is required")
+            die(f"{key} is required for upload")
 
     url = (
         f"{os.environ['CI_API_V4_URL']}/projects/{os.environ['CI_PROJECT_ID']}"
@@ -78,6 +82,14 @@ def main() -> None:
         if err:
             print(err, file=sys.stderr)
         die(f"package upload failed (http={e.code})")
+
+
+def main() -> None:
+    verify_archive()
+    if os.environ.get("POLICYD_PUBLISH_DRY_RUN") == "1":
+        print("dry-run: skip package registry upload")
+        return
+    upload()
 
 
 if __name__ == "__main__":
