@@ -51,8 +51,8 @@ grok_policyd_check_shell(sup, shell_msg, shell_len, &out, &out_len);
 | checkSeat | publishRun / readRun / listRuns / listEvents | unknown action → deny |
 | checkModel | always (admit plane) | — |
 | checkPath | read/write under workspace | outside → deny; delete → prompt |
-| checkShell | cwd under workspace; Python only via uv run + PEP 723 | bare python / missing PEP 723 → deny |
-| checkRisk | — | always prompt |
+| checkShell | cwd under workspace; content pack: python via uv+PEP723; deny sudo/curl\|sh/banned PMs/dangerous git | bare python / missing PEP 723 / danger runners → deny |
+| checkRisk | — | always prompt (matrix pack later) |
 
 Lexical paths: absolute only; reject `//`, `.`, `..`. No `realpath`.
 

@@ -16,3 +16,7 @@
 (def PolicyReason-pythonDashCDenied 18)
 (def PolicyReason-pythonMissingPep723 19)
 (def PolicyReason-shellExecAllow 20)
+(def PolicyReason-shellDangerousRunner 23)
+(def PolicyReason-shellRemoteExec 24)
+(def PolicyReason-shellPrivilegeDenied 25)
+(def PolicyReason-shellGitDangerous 26)
