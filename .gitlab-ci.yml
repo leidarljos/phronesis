@@ -67,11 +67,14 @@ variables:
   - rm -rf .pixi/envs
   - pixi install --locked -e ci
 
+
+
 # Policy / Cap'n surface — when these change, run mutation.
 .mutation_paths: &mutation_paths
   - src/policy.c
   - src/capnp_api.c
   - schema/policy.capnp
+  - subprojects/grokos-schema.wrap
   - mull.yml
   - tests/test_policy.c
   - tests/test_capnp_ffi.c
@@ -85,6 +88,8 @@ build:pixi:
   script:
     - export PATH="${CI_PROJECT_DIR}/.pixi/envs/ci/bin:${PIXI_HOME}/bin:${PATH}"
     - export POLICYD_BIN="${CI_PROJECT_DIR}/build/grok-policyd"
+    - bash scripts/ci-seed-schema.sh
+    - export POLICYD_MESON_OPTS="-Dschema_require_sot=true"
     - just build
   after_script:
     - rm -rf build build-cov docs/build .pixi/envs || true
@@ -101,6 +106,8 @@ publish:lib:
   before_script: *pixi_prepare
   script:
     - export PATH="${CI_PROJECT_DIR}/.pixi/envs/ci/bin:${PIXI_HOME}/bin:${PATH}"
+    - bash scripts/ci-seed-schema.sh
+    - export POLICYD_MESON_OPTS="-Dschema_require_sot=true"
     - just publish-lib
   after_script:
     - rm -rf build .pixi/envs || true
@@ -119,6 +126,8 @@ coverage:pixi:
   before_script: *pixi_prepare
   script:
     - export PATH="${CI_PROJECT_DIR}/.pixi/envs/ci/bin:${PIXI_HOME}/bin:${PATH}"
+    - bash scripts/ci-seed-schema.sh
+    - export POLICYD_MESON_OPTS="-Dschema_require_sot=true"
     - just coverage
   artifacts:
     when: always

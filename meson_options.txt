@@ -17,3 +17,10 @@ option(
   value: '',
   description: 'Path to mull-ir-frontend pass plugin (.so)',
 )
+
+option(
+  'schema_require_sot',
+  type: 'boolean',
+  value: false,
+  description: 'Fail if grokos-schema subproject/pkg-config is missing (CI)',
+)
