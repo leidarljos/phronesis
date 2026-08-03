@@ -1,6 +1,7 @@
-# Product shell content pack entry.
+# Product shell + audio pack entry.
 # Host loads policy/lib/*.janet (sorted) into the sealed env, then this file.
-# In: Cap'n ShellView buffer. Out: Cap'n PolicyDecision buffer.
+# shell-check: Cap'n ShellView → PolicyDecision (uv / PEP 723 / danger / secrets).
+# audio-check: Cap'n AudioCheck → PolicyDecision (voice gates; meta #97 Track E).
 
 (defn- decide [decision code reason]
   (capnp/build-message 1 2
@@ -65,3 +66,14 @@
                    "python missing PEP 723 metadata")))
   (decide Decision-allow PolicyReason-shellExecAllow
           "shell exec under workspace"))
+
+(defn audio-check
+  ``Voice gate pack entry: Cap'n AudioCheck bytes in, PolicyDecision out.
+  Reads AudioAction (u16 @0); product table in policy/lib/voice-law.janet.
+  Host stamps agentId and may short-circuit DENY_ALL / AUDIO_ALLOW.``
+  [buf]
+  (def msg (capnp/message-from-buffer buf))
+  (def root (capnp/root msg))
+  (def action (capnp/get-u16 root audio-check-action-u16 0))
+  (def pair (audio-decide action))
+  (decide (in pair 0) (in pair 1) "audio gate"))

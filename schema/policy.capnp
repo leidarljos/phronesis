@@ -335,6 +335,7 @@ interface Policyd {
   # non-empty argv uses the new pack. Fail-closed on load error.
 
   checkAudio @10 AudioCheck -> PolicyDecision;
-  # Voice/audio gates (meta #97). Default deny / prompt per AudioAction.
-  # No waveforms. Fixture allow: GROKOS_POLICYD_AUDIO_ALLOW (TCB env).
+  # Voice/audio gates (meta #97). Product table: Janet audio-check pack
+  # (AudioCheck Cap'n in). Host TCB: DENY_ALL / AUDIO_ALLOW env; stamp agentId.
+  # No waveforms.
 }

@@ -390,6 +390,39 @@ void grok_policyd_check_risk(grok_supervisor_t *sup, const uint8_t *in,
 	emit_decision(&pr, agent, out, out_len);
 }
 
+/** Truthy env for TCB gates: 1 / true / yes (any case of true/yes). */
+static int env_truthy(const char *name)
+{
+	const char *v = getenv(name);
+
+	if (!v || !v[0])
+		return 0;
+	return strcmp(v, "1") == 0 || strcmp(v, "true") == 0 ||
+	       strcmp(v, "yes") == 0 || strcmp(v, "TRUE") == 0 ||
+	       strcmp(v, "YES") == 0;
+}
+
+/** Read Cap'n PolicyDecision decision+code into @a out (reason ignored). */
+static int policy_result_from_capnp(const uint8_t *msg, size_t len,
+				    grok_policy_result_t *out)
+{
+	struct capn c;
+	struct PolicyDecision d;
+	PolicyDecision_ptr root;
+
+	if (!msg || !len || !out)
+		return -1;
+	memset(&c, 0, sizeof(c));
+	if (capn_init_mem(&c, msg, len, 0) != 0)
+		return -1;
+	root.p = capn_getp(capn_root(&c), 0, 1);
+	read_PolicyDecision(&d, root);
+	grok_policy_result_set(out, (grok_decision_t)d.decision,
+			       (grok_policy_reason_t)d.code);
+	capn_free(&c);
+	return 0;
+}
+
 void grok_policyd_check_audio(grok_supervisor_t *sup, const uint8_t *in,
 			      size_t in_len, uint8_t **out, size_t *out_len)
 {
@@ -398,6 +431,8 @@ void grok_policyd_check_audio(grok_supervisor_t *sup, const uint8_t *in,
 	struct AgentId agent;
 	grok_policy_result_t pr;
 	AudioCheck_ptr root;
+	uint8_t *pack_out = NULL;
+	size_t pack_len = 0;
 
 	(void)sup;
 	memset(&agent, 0, sizeof(agent));
@@ -408,8 +443,32 @@ void grok_policyd_check_audio(grok_supervisor_t *sup, const uint8_t *in,
 	root.p = capn_getp(capn_root(&c), 0, 1);
 	read_AudioCheck(&ac, root);
 	read_agent(ac.agentId, &agent);
-	(void)grok_policy_eval_audio((int)ac.action, &pr);
 	capn_free(&c);
+
+	/* Hard TCB env gates (same story as shell workspace gate before pack). */
+	if (env_truthy("GROKOS_POLICYD_DENY_ALL")) {
+		emit_code(GROK_DECISION_DENY, GROK_REASON_DENY_ALL, agent, out,
+			  out_len);
+		return;
+	}
+	if (env_truthy("GROKOS_POLICYD_AUDIO_ALLOW")) {
+		emit_code(GROK_DECISION_ALLOW, GROK_REASON_AUDIO_FIXTURE_ALLOW,
+			  agent, out, out_len);
+		return;
+	}
+
+	/*
+	 * Product table: Cap'n AudioCheck → Janet audio-check → PolicyDecision.
+	 * Re-stamp agentId in TCB (pack does not need to echo it).
+	 */
+	grok_policy_audio_pack(in, in_len, &pack_out, &pack_len);
+	if (!pack_out || !pack_len ||
+	    policy_result_from_capnp(pack_out, pack_len, &pr) != 0) {
+		free(pack_out);
+		deny_msg(agent, GROK_REASON_PACK_BAD_RESULT, out, out_len);
+		return;
+	}
+	free(pack_out);
 	emit_decision(&pr, agent, out, out_len);
 }
 
