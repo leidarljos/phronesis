@@ -67,6 +67,18 @@ variables:
   - rm -rf .pixi/envs
   - pixi install --locked -e ci
 
+# pixi_prepare + just on PATH (list anchor, same shape as pixi_prepare).
+.pixi_prepare_just: &pixi_prepare_just
+  - *pixi_bootstrap
+  - export PATH="${PIXI_HOME}/bin:${HOME}/.pixi/bin:${PATH}"
+  - rm -rf .pixi/envs
+  - pixi install --locked -e ci
+  - export PATH="${PIXI_HOME}/bin:${HOME}/.pixi/bin:${CI_PROJECT_DIR}/.pixi/envs/ci/bin:${PATH}"
+  - |
+    if ! command -v just >/dev/null 2>&1; then
+      curl -fsSL https://just.systems/install.sh | bash -s -- --to "${PIXI_HOME}/bin"
+    fi
+
 # Policy / Cap'n surface — when these change, run mutation.
 .mutation_paths: &mutation_paths
   - src/policy.c
@@ -76,23 +88,13 @@ variables:
   - tests/test_policy.c
   - tests/test_capnp_ffi.c
 
-# Install just on PATH for host verbs (build / coverage / publish-lib).
-.install_just: &install_just |
-  set -euo pipefail
-  export PATH="${PIXI_HOME}/bin:${HOME}/.pixi/bin:${CI_PROJECT_DIR}/.pixi/envs/ci/bin:${PATH}"
-  if ! command -v just >/dev/null 2>&1; then
-    curl -fsSL https://just.systems/install.sh | bash -s -- --to "${PIXI_HOME}/bin"
-  fi
-
 build:pixi:
   stage: build
   image: debian:bookworm-slim
   interruptible: true
   cache: *pixi_cache
-  before_script: *pixi_prepare
+  before_script: *pixi_prepare_just
   script:
-    - *install_just
-    # just build → pixi run build (meson test + example).
     - export POLICYD_BIN="${CI_PROJECT_DIR}/build/grok-policyd"
     - just build
   after_script:
@@ -107,9 +109,8 @@ publish:lib:
   image: debian:bookworm-slim
   interruptible: true
   cache: *pixi_cache
-  before_script: *pixi_prepare
+  before_script: *pixi_prepare_just
   script:
-    - *install_just
     - just publish-lib
   after_script:
     - rm -rf build .pixi/envs || true
@@ -122,9 +123,8 @@ coverage:pixi:
   image: debian:bookworm-slim
   interruptible: true
   cache: *pixi_cache
-  before_script: *pixi_prepare
+  before_script: *pixi_prepare_just
   script:
-    - *install_just
     - just coverage
   artifacts:
     when: always
