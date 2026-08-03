@@ -16,11 +16,14 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 LIB = Path(os.environ.get("POLICYD_STATIC_LIB", ROOT / "build" / "libgrok_policyd.a"))
-NEED_SYM = "grok_policyd_handle_capnp"
 PACKAGE = "libgrok_policyd"
 FILE = "libgrok_policyd.a"
-# nm symbol lines: " T name" / "00000000 T name" etc. — whole token only.
-_SYM_LINE = re.compile(rf"\b{re.escape(NEED_SYM)}\b")
+# Flat Cap'n product surface (API_VERSION 2) + supervisor lifecycle.
+NEED_SYMS = (
+    "grok_supervisor_open",
+    "grok_policyd_status",
+    "grok_policyd_check_shell",
+)
 
 
 def die(msg: str) -> None:
@@ -32,16 +35,18 @@ def main() -> None:
     if not LIB.is_file() or LIB.stat().st_size == 0:
         die(f"missing or empty archive: {LIB}")
 
+    # Full archive listing (static .a); match whole symbol tokens only.
     nm = subprocess.run(
-        ["nm", "-g", str(LIB)],
+        ["nm", str(LIB)],
         check=False,
         capture_output=True,
         text=True,
     )
     if nm.returncode != 0:
         die(f"nm failed on {LIB}: {nm.stderr or nm.stdout}")
-    if not _SYM_LINE.search(nm.stdout):
-        die(f"{LIB} missing global symbol {NEED_SYM}")
+    for sym in NEED_SYMS:
+        if not re.search(rf"\b{re.escape(sym)}\b", nm.stdout):
+            die(f"{LIB} missing symbol {sym}")
 
     for key in ("CI_API_V4_URL", "CI_PROJECT_ID", "CI_COMMIT_SHA", "CI_JOB_TOKEN"):
         if not os.environ.get(key):
