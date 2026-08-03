@@ -76,6 +76,13 @@ variables:
   - tests/test_policy.c
   - tests/test_capnp_ffi.c
 
+# Install just on PATH for host verbs (build / coverage / publish-lib).
+.install_just: &install_just |
+  set -euo pipefail
+  export PATH="${PIXI_HOME}/bin:${HOME}/.pixi/bin:${CI_PROJECT_DIR}/.pixi/envs/ci/bin:${PATH}"
+  if ! command -v just >/dev/null 2>&1; then
+    curl -fsSL https://just.systems/install.sh | bash -s -- --to "${PIXI_HOME}/bin"
+  fi
 
 build:pixi:
   stage: build
@@ -94,14 +101,7 @@ build:pixi:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
 
-# Full static lib for consumers (ci-kit). main only. Entry: just publish-lib.
-.install_just: &install_just |
-  set -euo pipefail
-  export PATH="${PIXI_HOME}/bin:${HOME}/.pixi/bin:${CI_PROJECT_DIR}/.pixi/envs/ci/bin:${PATH}"
-  if ! command -v just >/dev/null 2>&1; then
-    curl -fsSL https://just.systems/install.sh | bash -s -- --to "${PIXI_HOME}/bin"
-  fi
-
+# Full static lib for consumers (ci-kit). main only.
 publish:lib:
   stage: build
   image: debian:bookworm-slim
