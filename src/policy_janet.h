@@ -26,7 +26,8 @@ void grok_policy_audio_pack(const uint8_t *in, size_t in_len, uint8_t **out,
 			    size_t *out_len);
 
 /**
- * Unload any loaded pack and load @a path (absolute .janet file).
+ * Unload any loaded packs and load @a path (colon-separated absolute
+ * .janet files and/or directories of top-level *.janet packs).
  * Returns 0 on success, -1 path invalid, -2 load failed.
  */
 int grok_policy_shell_pack_reload_internal(const char *path);

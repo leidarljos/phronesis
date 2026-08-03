@@ -635,7 +635,8 @@ void grok_policyd_reload_shell_pack(grok_supervisor_t *sup, const uint8_t *in,
 	struct ReloadShellPack rp;
 	struct AgentId agent;
 	grok_policy_result_t pr;
-	char path[4096];
+	/* Colon-joined multi-pack spec (files and/or dirs); same cap as host. */
+	char path[4096 * 16];
 	size_t pl;
 	int rc;
 

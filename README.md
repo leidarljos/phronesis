@@ -126,14 +126,22 @@ scripts/coverage.sh          gcovr report (hard-requires gcovr from pixi)
 
 - **VM:** amalgamated Janet under `third_party/janet/` (pin in NOTICE).
 - **Cap'n in Janet:** `capnp-janet` (pkg-config or meson wrap); not vendored sources.
-- **Load order:** sealed env → `dirname(pack)/lib/*.janet` (optional, sorted) → pack file.
-  Entry must define `shell-check` (and product packs also define `audio-check`).
-  Pure helpers in `policy/lib/` stay Cap'n-free so `tests/test_pack_lib.c` can
-  unit-test them without a supervisor (`voice-law` for voice gates; python/danger/secret for shell).
+- **Multi-pack:** `GROKOS_POLICYD_JANET_PACK` is a **colon-separated** list of pack
+  files and/or directories of top-level `*.janet` files (PATH-style). Each pack
+  loads into its own sealed env (`dirname(pack)/lib/*.janet` optional helpers,
+  then the entry). Cap'n `reloadShellPack` accepts the same absolute list.
+  Example: `/etc/grokos/shell.janet:/opt/extra/secrets.janet` or
+  `/etc/grokos/packs.d` (sorted top-level entries; non-entry `.janet` skipped).
+- **Composition:** every pack that defines `shell-check` / `audio-check` runs;
+  host keeps the most restrictive outcome (**deny > prompt > allow**). Deny
+  short-circuits. Fail closed if no pack defines the needed entry.
+- **Load order (per pack):** sealed env → sibling `lib/*.janet` (sorted) → pack file.
+  Entry must define `shell-check` and/or `audio-check`. Pure helpers in
+  `policy/lib/` stay Cap'n-free so `tests/test_pack_lib.c` can unit-test them
+  without a supervisor (`voice-law` for voice gates; python/danger/secret for shell).
 - **Shell:** Cap'n `ShellView` → `shell-check` (uv, PEP 723, danger, secrets).
 - **Audio:** Cap'n `AudioCheck` passed through to `audio-check` (action table in `voice-law`);
   host stamps `agentId` and applies `DENY_ALL` / `AUDIO_ALLOW` before the pack.
-- **Path:** `GROKOS_POLICYD_JANET_PACK` or Cap'n `reloadShellPack` (absolute).
 - **Tests:** pure law in `pack_lib` suite; product Cap'n path in `shell_pack` / `capnp_ffi`.
 
 ## License

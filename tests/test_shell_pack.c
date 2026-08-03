@@ -396,6 +396,94 @@ static void test_reload_shell_pack_hot_load(void **state)
 	assert_int_equal(rc, GROK_ERR_INVAL);
 }
 
+/* Multi-pack: allow-all + deny-true compose to deny (fail-closed). */
+static void test_multi_pack_compose_deny(void **state)
+{
+	struct shell_fix *f = *state;
+	char pack_allow[GROK_PATH_MAX], pack_deny[GROK_PATH_MAX],
+		spec[GROK_PATH_MAX * 2];
+	char *argv[] = { "true", NULL };
+	uint8_t *in = NULL, *out = NULL;
+	size_t in_len = 0, out_len = 0;
+	enum Decision dec;
+	enum PolicyReason code;
+	int rc;
+
+	snprintf(pack_allow, sizeof(pack_allow), "%s/allow_all.janet", f->ws);
+	snprintf(pack_deny, sizeof(pack_deny), "%s/deny_true.janet", f->ws);
+	write_file(pack_allow,
+		   "(defn shell-check [buf]\n"
+		   "  (capnp/build-message 1 2\n"
+		   "    @[[:u16 0 1] [:u16 2 20] [:text 0 \"allow all\"]]))\n");
+	/* Unconditional deny — composition must not keep the allow pack. */
+	write_file(pack_deny,
+		   "(defn shell-check [buf]\n"
+		   "  (capnp/build-message 1 2\n"
+		   "    @[[:u16 0 0] [:u16 2 25] [:text 0 \"deny pack\"]]))\n");
+
+	snprintf(spec, sizeof(spec), "%s:%s", pack_allow, pack_deny);
+	rc = grok_policy_shell_pack_reload(spec);
+	assert_int_equal(rc, GROK_OK);
+
+	build_shell_check(f->ws, argv, 1, &in, &in_len);
+	grok_policyd_check_shell(f->sup, in, in_len, &out, &out_len);
+	free(in);
+	read_decision(out, out_len, &dec, &code, NULL, 0);
+	free(out);
+	assert_int_equal(dec, Decision_deny);
+	assert_int_equal(code, 25);
+
+	/* Reverse order: deny still wins. */
+	snprintf(spec, sizeof(spec), "%s:%s", pack_deny, pack_allow);
+	rc = grok_policy_shell_pack_reload(spec);
+	assert_int_equal(rc, GROK_OK);
+	build_shell_check(f->ws, argv, 1, &in, &in_len);
+	grok_policyd_check_shell(f->sup, in, in_len, &out, &out_len);
+	free(in);
+	read_decision(out, out_len, &dec, &code, NULL, 0);
+	free(out);
+	assert_int_equal(dec, Decision_deny);
+}
+
+/* packs.d directory: two packs + a non-entry .janet (skipped). */
+static void test_multi_pack_dir(void **state)
+{
+	struct shell_fix *f = *state;
+	char dir[GROK_PATH_MAX];
+	char *argv[] = { "true", NULL };
+	uint8_t *in = NULL, *out = NULL;
+	size_t in_len = 0, out_len = 0;
+	enum Decision dec;
+	enum PolicyReason code;
+	int rc;
+	char p1[GROK_PATH_MAX], p2[GROK_PATH_MAX], pdoc[GROK_PATH_MAX];
+
+	snprintf(dir, sizeof(dir), "%s/packs.d", f->ws);
+	assert_int_equal(mkdir(dir, 0700), 0);
+	snprintf(p1, sizeof(p1), "%s/01-allow.janet", dir);
+	snprintf(p2, sizeof(p2), "%s/02-deny.janet", dir);
+	snprintf(pdoc, sizeof(pdoc), "%s/00-readme.janet", dir);
+	write_file(pdoc, "(def docs \"not a pack entry\")\n");
+	write_file(p1,
+		   "(defn shell-check [buf]\n"
+		   "  (capnp/build-message 1 2\n"
+		   "    @[[:u16 0 1] [:u16 2 20] [:text 0 \"allow\"]]))\n");
+	write_file(p2,
+		   "(defn shell-check [buf]\n"
+		   "  (capnp/build-message 1 2\n"
+		   "    @[[:u16 0 0] [:u16 2 25] [:text 0 \"deny all\"]]))\n");
+
+	rc = grok_policy_shell_pack_reload(dir);
+	assert_int_equal(rc, GROK_OK);
+	build_shell_check(f->ws, argv, 1, &in, &in_len);
+	grok_policyd_check_shell(f->sup, in, in_len, &out, &out_len);
+	free(in);
+	read_decision(out, out_len, &dec, &code, NULL, 0);
+	free(out);
+	assert_int_equal(dec, Decision_deny);
+	assert_int_equal(code, 25);
+}
+
 int run_shell_pack_tests(void)
 {
 	const struct CMUnitTest tests[] = {
@@ -415,6 +503,10 @@ int run_shell_pack_tests(void)
 						shell_setup, shell_teardown),
 		cmocka_unit_test_setup_teardown(test_reload_shell_pack_hot_load,
 						shell_setup, shell_teardown),
+		cmocka_unit_test_setup_teardown(test_multi_pack_compose_deny,
+						shell_setup, shell_teardown),
+		cmocka_unit_test_setup_teardown(test_multi_pack_dir, shell_setup,
+						shell_teardown),
 	};
 	return cmocka_run_group_tests_name("shell_pack", tests, NULL, NULL);
 }

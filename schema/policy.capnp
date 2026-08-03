@@ -297,9 +297,11 @@ struct AgentQuery {
 }
 
 struct ReloadShellPack {
-  # Hot-load (or re-load) the Janet shell content pack for checkShell.
-  # Absolute path to a .janet pack file. Empty Text is invalid (packPathInvalid);
-  # callers that want "re-read current path" pass the last absolute path again.
+  # Hot-load (or re-load) Janet content packs for checkShell / checkAudio.
+  # Colon-separated absolute .janet pack files and/or absolute directories of
+  # top-level *.janet packs. Empty Text is invalid (packPathInvalid).
+  # Multiple packs compose fail-closed (deny > prompt > allow). Callers that
+  # want "re-read current path" pass the last absolute path (or list) again.
   path @0 :Text;
 }
 
