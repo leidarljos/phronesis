@@ -84,10 +84,10 @@ build:pixi:
   cache: *pixi_cache
   before_script: *pixi_prepare
   script:
-    - export PATH="${PIXI_HOME}/bin:${HOME}/.pixi/bin:${PATH}"
-    # pixi `build` = meson test + example (suite is the gate; version checked at meson setup).
+    - *install_just
+    # just build → pixi run build (meson test + example).
     - export POLICYD_BIN="${CI_PROJECT_DIR}/build/grok-policyd"
-    - pixi run -e ci build
+    - just build
   after_script:
     - rm -rf build build-cov docs/build .pixi/envs || true
   rules:
@@ -95,7 +95,7 @@ build:pixi:
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
 
 # Full static lib for consumers (ci-kit). main only. Entry: just publish-lib.
-.publish_just: &publish_just |
+.install_just: &install_just |
   set -euo pipefail
   export PATH="${PIXI_HOME}/bin:${HOME}/.pixi/bin:${CI_PROJECT_DIR}/.pixi/envs/ci/bin:${PATH}"
   if ! command -v just >/dev/null 2>&1; then
@@ -109,7 +109,7 @@ publish:lib:
   cache: *pixi_cache
   before_script: *pixi_prepare
   script:
-    - *publish_just
+    - *install_just
     - just publish-lib
   after_script:
     - rm -rf build .pixi/envs || true
@@ -124,8 +124,8 @@ coverage:pixi:
   cache: *pixi_cache
   before_script: *pixi_prepare
   script:
-    - export PATH="${PIXI_HOME}/bin:${HOME}/.pixi/bin:${PATH}"
-    - pixi run -e ci coverage
+    - *install_just
+    - just coverage
   artifacts:
     when: always
     paths:
