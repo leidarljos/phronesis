@@ -202,6 +202,25 @@ static void test_bare_python_deny(void **state)
 	free(out);
 }
 
+/* Versioned basenames (python3.12) must hit python law, not fail-open. */
+static void test_bare_python312_deny(void **state)
+{
+	struct shell_fix *f = *state;
+	char *argv[] = { "/usr/bin/python3.12", "script.py", NULL };
+	uint8_t *in = NULL, *out = NULL;
+	size_t in_len = 0, out_len = 0;
+	enum Decision dec;
+	enum PolicyReason code;
+
+	build_shell_check(f->ws, argv, 2, &in, &in_len);
+	grok_policyd_check_shell(f->sup, in, in_len, &out, &out_len);
+	free(in);
+	read_decision(out, out_len, &dec, &code, NULL, 0);
+	assert_int_equal(dec, Decision_deny);
+	assert_int_equal(code, PolicyReason_pythonRequiresUvRun);
+	free(out);
+}
+
 static void test_uv_run_pep723_allow(void **state)
 {
 	struct shell_fix *f = *state;
@@ -358,6 +377,8 @@ int run_shell_pack_tests(void)
 		cmocka_unit_test_setup_teardown(test_true_allow, shell_setup,
 						shell_teardown),
 		cmocka_unit_test_setup_teardown(test_bare_python_deny,
+						shell_setup, shell_teardown),
+		cmocka_unit_test_setup_teardown(test_bare_python312_deny,
 						shell_setup, shell_teardown),
 		cmocka_unit_test_setup_teardown(test_uv_run_pep723_allow,
 						shell_setup, shell_teardown),
