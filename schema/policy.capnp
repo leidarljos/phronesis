@@ -254,6 +254,13 @@ struct AgentQuery {
   agentId @0 :Util.AgentId;
 }
 
+struct ReloadShellPack {
+  # Hot-load (or re-load) the Janet shell content pack for checkShell.
+  # Absolute path to a .janet pack file. Empty Text is invalid (packPathInvalid);
+  # callers that want "re-read current path" pass the last absolute path again.
+  path @0 :Text;
+}
+
 # ==============================================================================
 # interface Policyd — methods only (no unions)
 # ==============================================================================
@@ -280,4 +287,8 @@ interface Policyd {
   # Sugar for checkModel(empty model). Legacy "agent" admit maps here.
 
   agentStatus @8 AgentQuery -> AgentStatus;
+
+  reloadShellPack @9 ReloadShellPack -> PolicyDecision;
+  # Unload any loaded Janet shell pack and load path. Next checkShell with
+  # non-empty argv uses the new pack. Fail-closed on load error.
 }
