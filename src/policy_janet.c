@@ -1,9 +1,10 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /*
- * Shell content pack host.
+ * Janet policy pack host.
  *
- * Cap'n ShellView (c-capnproto) → Janet pack (capnp-janet) → Cap'n
- * PolicyDecision bytes (passthrough). Pack authors reason Text + code.
+ * Shell: Cap'n ShellView → pack shell-check → Cap'n PolicyDecision.
+ * Audio: Cap'n AudioCheck → pack audio-check → Cap'n PolicyDecision.
+ * Pack authors reason text + code. Host may re-stamp agentId on audio.
  */
 #include "policy_janet.h"
 #include "internal.h"
@@ -562,4 +563,89 @@ void grok_policy_shell_pack(const char *workspace, const char *cwd,
 	memcpy(copy, out_buf->data, (size_t)out_buf->count);
 	*out = copy;
 	*out_len = (size_t)out_buf->count;
+}
+
+/**
+ * Call a pack entry that takes Cap'n message bytes and returns Cap'n
+ * PolicyDecision bytes. Shared by shell (via view) and audio (direct).
+ */
+static void pack_call_capnp(const char *entry, const uint8_t *in, size_t in_len,
+			    uint8_t **out, size_t *out_len)
+{
+	JanetBuffer *in_buf;
+	Janet fnv, res, args[1];
+	JanetFunction *fn;
+	JanetFiber *fiber = NULL;
+	JanetSignal sig;
+	JanetBuffer *out_buf;
+	uint8_t *copy;
+
+	if (!out || !out_len)
+		return;
+	*out = NULL;
+	*out_len = 0;
+
+	if (!entry || !entry[0] || !in || in_len == 0) {
+		(void)build_policy_decision_code(0, GROK_REASON_PACK_BAD_RESULT,
+						 out, out_len);
+		return;
+	}
+
+	if (load_pack_once() != 0) {
+		(void)build_policy_decision_code(0, GROK_REASON_PACK_MISSING,
+						 out, out_len);
+		return;
+	}
+
+	in_buf = janet_buffer((int32_t)in_len);
+	janet_buffer_push_bytes(in_buf, in, (int32_t)in_len);
+
+	{
+		Janet resolved = janet_wrap_nil();
+		JanetBindingType bt =
+			janet_resolve(pack_env, janet_csymbol(entry), &resolved);
+
+		if (bt == JANET_BINDING_NONE ||
+		    !janet_checktype(resolved, JANET_FUNCTION)) {
+			(void)build_policy_decision_code(
+				0, GROK_REASON_PACK_MISSING, out, out_len);
+			return;
+		}
+		fnv = resolved;
+	}
+	fn = janet_unwrap_function(fnv);
+	args[0] = janet_wrap_buffer(in_buf);
+	sig = janet_pcall(fn, 1, args, &res, &fiber);
+	if (sig != JANET_SIGNAL_OK) {
+		(void)build_policy_decision_code(
+			0, GROK_REASON_PACK_RUNTIME_ERROR, out, out_len);
+		return;
+	}
+	if (!janet_checktype(res, JANET_BUFFER)) {
+		(void)build_policy_decision_code(0, GROK_REASON_PACK_BAD_RESULT,
+						 out, out_len);
+		return;
+	}
+	out_buf = janet_unwrap_buffer(res);
+	if (out_buf->count <= 0) {
+		(void)build_policy_decision_code(0, GROK_REASON_PACK_BAD_RESULT,
+						 out, out_len);
+		return;
+	}
+	copy = malloc((size_t)out_buf->count);
+	if (!copy) {
+		(void)build_policy_decision_code(0, GROK_REASON_PACK_BAD_RESULT,
+						 out, out_len);
+		return;
+	}
+	memcpy(copy, out_buf->data, (size_t)out_buf->count);
+	*out = copy;
+	*out_len = (size_t)out_buf->count;
+}
+
+void grok_policy_audio_pack(const uint8_t *in, size_t in_len, uint8_t **out,
+			    size_t *out_len)
+{
+	/* Cap'n AudioCheck message root in → pack audio-check → PolicyDecision. */
+	pack_call_capnp("audio-check", in, in_len, out, out_len);
 }

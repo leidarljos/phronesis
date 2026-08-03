@@ -200,7 +200,15 @@ typedef enum {
 	/* Secret material in argv / sensitive path / export */
 	GROK_REASON_SHELL_SECRET_IN_ARGV = 27,
 	GROK_REASON_PATH_SENSITIVE_DENY = 28,
-	GROK_REASON_SECRET_EXPORT_DENIED = 29
+	GROK_REASON_SECRET_EXPORT_DENIED = 29,
+	/* checkAudio (meta #97 Track E) — ordinals match Cap'n PolicyReason */
+	GROK_REASON_AUDIO_MIC_OPEN_DENY = 30,
+	GROK_REASON_AUDIO_LISTEN_ARM_PROMPT = 31,
+	GROK_REASON_AUDIO_ALWAYS_LISTEN_DENY = 32,
+	GROK_REASON_AUDIO_NETWORK_STT_DENY = 33,
+	GROK_REASON_AUDIO_INJECT_DENY = 34,
+	GROK_REASON_AUDIO_FIXTURE_ALLOW = 35,
+	GROK_REASON_AUDIO_UNKNOWN_ACTION = 36
 } grok_policy_reason_t;
 
 /**
@@ -430,6 +438,21 @@ GROK_POLICYD_API void grok_policyd_check_risk(grok_supervisor_t *sup,
 					      size_t in_len,
 					      uint8_t **out,
 					      size_t *out_len);
+
+/**
+ * checkAudio → in AudioCheck, out PolicyDecision (meta #97 Track E).
+ *
+ * Product defaults (Janet pack @c audio-check / voice-law): micOpen /
+ * alwaysListen / networkStt / inject deny; listenArm prompt; unknown deny.
+ * Host TCB: truthy @c GROKOS_POLICYD_AUDIO_ALLOW allows all actions
+ * (fixture/CI only; leave unset in production); @c GROKOS_POLICYD_DENY_ALL
+ * still wins. No waveforms / PCM on the wire.
+ */
+GROK_POLICYD_API void grok_policyd_check_audio(grok_supervisor_t *sup,
+					       const uint8_t *in,
+					       size_t in_len,
+					       uint8_t **out,
+					       size_t *out_len);
 
 /** admitSeat → in AdmitSeat, out PolicyDecision. */
 GROK_POLICYD_API void grok_policyd_admit_seat(grok_supervisor_t *sup,

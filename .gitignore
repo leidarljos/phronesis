@@ -30,3 +30,4 @@ credentials.json
 # meson wrap checkout / local symlink (not vendored sources)
 /subprojects/capnp-janet/
 /subprojects/packagecache/
+subprojects/.wraplock
