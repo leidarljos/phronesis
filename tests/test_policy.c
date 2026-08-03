@@ -183,8 +183,10 @@ static void test_high_risk_prompt(void **state)
 	assert_int_equal(pr.decision, GROK_DECISION_PROMPT);
 	assert_int_equal(grok_policy_check(s, "agent-a", "net", "network", NULL, &pr), GROK_OK);
 	assert_int_equal(pr.decision, GROK_DECISION_PROMPT);
+	/* secret_export: fail closed (never leave seat / enter traces). */
 	assert_int_equal(grok_policy_check(s, "agent-a", "vault", "secret_export", NULL, &pr), GROK_OK);
-	assert_int_equal(pr.decision, GROK_DECISION_PROMPT);
+	assert_int_equal(pr.decision, GROK_DECISION_DENY);
+	assert_int_equal(pr.code, GROK_REASON_SECRET_EXPORT_DENIED);
 	wait_stopped(s, "agent-a");
 	grok_supervisor_close(s);
 	t_rm_rf(st);
