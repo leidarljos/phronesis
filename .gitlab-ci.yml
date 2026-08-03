@@ -12,7 +12,7 @@ stages: [validate, build]
 # (keel still has disk; packages runners fail at docker prepare).
 default:
   retry:
-    max: 5
+    max: 2
     when:
       - runner_system_failure
 # Cancel redundant pipelines on the same ref when a newer commit is pushed.
