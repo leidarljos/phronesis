@@ -55,8 +55,31 @@ static int npacks;
 static char pack_spec_buf[PACK_SPEC_MAX];
 static int pack_spec_set;
 
+/*
+ * Product default pack path (absolute). Meson sets this to
+ * $prefix/share/grok-policyd/policy/shell.janet so installed seats load the
+ * product pack with no env. Overridable at compile time.
+ */
+#ifndef GROKOS_POLICYD_DEFAULT_JANET_PACK
+#define GROKOS_POLICYD_DEFAULT_JANET_PACK \
+	"/usr/local/share/grok-policyd/policy/shell.janet"
+#endif
+
+static int path_is_file(const char *path);
+
+/**
+ * First existing pack path among product defaults.
+ * Order: env GROKOS_POLICYD_JANET_PACK → compile-time install path →
+ * GROKOS_PREFIX/share/... → common FHS paths → CWD-relative dev path.
+ */
 static const char *default_pack_spec(void)
 {
+	static char prefix_buf[PACK_PATH_MAX];
+	const char *prefix;
+	const char *cands[8];
+	int n = 0;
+	int i;
+
 	if (pack_spec_set && pack_spec_buf[0])
 		return pack_spec_buf;
 	{
@@ -65,7 +88,24 @@ static const char *default_pack_spec(void)
 		if (e && e[0])
 			return e;
 	}
-	return "policy/shell.janet";
+
+	cands[n++] = GROKOS_POLICYD_DEFAULT_JANET_PACK;
+	prefix = getenv("GROKOS_PREFIX");
+	if (prefix && prefix[0] &&
+	    snprintf(prefix_buf, sizeof(prefix_buf),
+		     "%s/share/grok-policyd/policy/shell.janet",
+		     prefix) < (int)sizeof(prefix_buf))
+		cands[n++] = prefix_buf;
+	cands[n++] = "/usr/local/share/grok-policyd/policy/shell.janet";
+	cands[n++] = "/usr/share/grok-policyd/policy/shell.janet";
+	cands[n++] = "policy/shell.janet"; /* monorepo / meson test workdir */
+
+	for (i = 0; i < n; i++) {
+		if (cands[i] && cands[i][0] && path_is_file(cands[i]))
+			return cands[i];
+	}
+	/* Last resort: compile-time path (fail closed at load if missing). */
+	return GROKOS_POLICYD_DEFAULT_JANET_PACK;
 }
 
 static void seal_pack_env(JanetTable *env)
