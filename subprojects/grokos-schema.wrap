@@ -1,0 +1,8 @@
+[wrap-git]
+directory = grokos-schema
+url = https://nova.teachx.ai/trace-analysis/grokos-packages/grokos-schema.git
+revision = feat/meson-schema-project
+depth = 1
+
+[provide]
+dependency_names = grokos-schema-idl

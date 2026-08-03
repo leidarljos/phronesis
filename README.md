@@ -153,3 +153,9 @@ Apache-2.0. See `LICENSE` and `third_party/NOTICE`.
 Set `GROKOS_POLICYD_DENY_ALL=1` (or `true`/`yes`) to force deny on the CLI/string `policy_check` path and on Cap'n `checkAudio`. Used to prove agent/sessiond fail closed under a hard seat. Unset for normal allowlists.
 
 Set `GROKOS_POLICYD_AUDIO_ALLOW=1` only in CI/dogfood to allow all `AudioAction` on `checkAudio`. Leave unset in production images. `DENY_ALL` still wins when both are set.
+
+### Schema SoT (Meson)
+
+Prefer subproject `grokos-schema` (see `subprojects/grokos-schema.wrap`). Local
+pin under `schema/` remains fallback when the wrap is missing. Monorepo
+dogfood: `ln -sfn ../../grokos-schema subprojects/grokos-schema`.

@@ -95,17 +95,41 @@ if get_option('mutation')
   ))
 endif
 
+# Cap'n SoT: prefer grokos-schema Meson subproject (schemadir). Fallback: local schema/.
+# Dogfood monorepo: ln -sfn ../../grokos-schema subprojects/grokos-schema
+# CI: subprojects/grokos-schema.wrap
+schema_proj = subproject(
+  'grokos-schema',
+  required: false,
+  default_options: [
+    'with_c=false',
+    'with_rust=false',
+    'with_python_tests=false',
+    'install_idl=false',
+  ],
+)
+if schema_proj.found()
+  grokos_schemadir = schema_proj.get_variable('schemadir')
+  message('grokos-schema SoT schemadir=@0@'.format(grokos_schemadir))
+else
+  grokos_schemadir = meson.current_source_dir() / 'schema'
+  warning('grokos-schema subproject missing; using local schema/ pin')
+endif
+
 # policy.capnp imports util.capnp — gen script emits both C pairs into build/.
 schema_gen = custom_target(
   'policy_capnp',
-  input: files('schema/policy.capnp', 'schema/util.capnp'),
   output: ['policy.capnp.c', 'policy.capnp.h', 'util.capnp.c', 'util.capnp.h'],
   command: [
     gen_capnp,
-    '@INPUT0@',
+    grokos_schemadir / 'policy.capnp',
     '@OUTPUT0@',
     '@OUTPUT1@',
     capnpc_c,
+  ],
+  depend_files: [
+    grokos_schemadir / 'policy.capnp',
+    grokos_schemadir / 'util.capnp',
   ],
   build_by_default: true,
 )
@@ -179,9 +203,12 @@ install_headers(
   subdir: 'grok-policyd',
 )
 
-# Install schema SoT for embedders / code generation.
-install_data('schema/policy.capnp', install_dir: get_option('datadir') / 'grok-policyd')
-install_data('schema/util.capnp', install_dir: get_option('datadir') / 'grok-policyd')
+# Install Cap'n IDL next to policyd (from SoT schemadir, not a second edit tree).
+install_data(
+  grokos_schemadir / 'policy.capnp',
+  grokos_schemadir / 'util.capnp',
+  install_dir: get_option('datadir') / 'grok-policyd',
+)
 
 pkg.generate(
   policyd_lib,
