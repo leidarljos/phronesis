@@ -1,0 +1,40 @@
+---
+interface Props {
+  title?: string;
+  wide?: boolean;
+}
+const { title = "grok-policyd playground", wide = false } = Astro.props;
+const base = import.meta.env.BASE_URL;
+const join = (p: string) => {
+  const b = base.endsWith("/") ? base : base + "/";
+  return b + p.replace(/^\//, "");
+};
+---
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="Browser playground for grok-policyd Cap'n policy checks (WASM)." />
+    <meta name="color-scheme" content="dark" />
+    <title>{title}</title>
+  </head>
+  <body>
+    <header class="site-header">
+      <a class="brand" href={base}>grok-policyd</a>
+      <nav>
+        <a href={base}>Home</a>
+        <a href={join("play")}>Play</a>
+        <a href={join("fixtures")}>Fixtures</a>
+        <a href={join("encyclopedia")}>Encyclopedia</a>
+      </nav>
+    </header>
+    <main class:list={["site-main", { wide }]}>
+      <slot />
+    </main>
+  </body>
+</html>
+
+<style is:global>
+  @import "../styles/global.css";
+</style>

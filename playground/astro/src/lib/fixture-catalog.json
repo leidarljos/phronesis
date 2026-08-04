@@ -1,0 +1,152 @@
+[
+  {
+    "id": "bare_python_deny",
+    "domain": "shell",
+    "method": "checkShell",
+    "description": "Bare python3 + script requires uv run (PolicyReason.pythonRequiresUvRun=17).",
+    "file": "shell/bare_python_deny.json",
+    "expect": {
+      "decision": 0,
+      "code": 17
+    }
+  },
+  {
+    "id": "curl_sh_deny",
+    "domain": "shell",
+    "method": "checkShell",
+    "description": "curl + sh tokens in argv \u2192 shellRemoteExec (24).",
+    "file": "shell/curl_sh_deny.json",
+    "expect": {
+      "decision": 0,
+      "code": 24
+    }
+  },
+  {
+    "id": "cwd_outside_deny",
+    "domain": "shell",
+    "method": "checkShell",
+    "description": "Shell path-plane: cwd outside agent workspace \u2192 pathOutsideWorkspace (2).",
+    "file": "shell/cwd_outside_deny.json",
+    "expect": {
+      "decision": 0,
+      "code": 2
+    }
+  },
+  {
+    "id": "glpat_secret_deny",
+    "domain": "shell",
+    "method": "checkShell",
+    "description": "GitLab PAT material in argv \u2192 shellSecretInArgv (27).",
+    "file": "shell/glpat_secret_deny.json",
+    "expect": {
+      "decision": 0,
+      "code": 27
+    }
+  },
+  {
+    "id": "missing_pep723_deny",
+    "domain": "shell",
+    "method": "checkShell",
+    "description": "uv run of .py without PEP 723 block \u2192 pythonMissingPep723 (19).",
+    "file": "shell/missing_pep723_deny.json",
+    "expect": {
+      "decision": 0,
+      "code": 19
+    }
+  },
+  {
+    "id": "python_dash_c_deny",
+    "domain": "shell",
+    "method": "checkShell",
+    "description": "uv run python -c is denied (PolicyReason.pythonDashCDenied=18).",
+    "file": "shell/python_dash_c_deny.json",
+    "expect": {
+      "decision": 0,
+      "code": 18
+    }
+  },
+  {
+    "id": "uv_pep723_allow",
+    "domain": "shell",
+    "method": "checkShell",
+    "description": "uv run of PEP 723 script under workspace \u2192 shellExecAllow (20).",
+    "file": "shell/uv_pep723_allow.json",
+    "expect": {
+      "decision": 1,
+      "code": 20
+    }
+  },
+  {
+    "id": "outside_deny",
+    "domain": "path",
+    "method": "checkPath",
+    "description": "fs read outside workspace \u2192 pathOutsideWorkspace (2).",
+    "file": "path/outside_deny.json",
+    "expect": {
+      "decision": 0,
+      "code": 2
+    }
+  },
+  {
+    "id": "sensitive_deny",
+    "domain": "path",
+    "method": "checkPath",
+    "description": "Read of credential path under workspace \u2192 pathSensitiveDeny (28).",
+    "file": "path/sensitive_deny.json",
+    "expect": {
+      "decision": 0,
+      "code": 28
+    }
+  },
+  {
+    "id": "under_workspace_allow",
+    "domain": "path",
+    "method": "checkPath",
+    "description": "fs read under agent workspace \u2192 pathUnderWorkspaceAllow (3).",
+    "file": "path/under_workspace_allow.json",
+    "expect": {
+      "decision": 1,
+      "code": 3
+    }
+  },
+  {
+    "id": "publish_run_allow",
+    "domain": "seat",
+    "method": "checkSeat",
+    "description": "SeatAction.publishRun \u2192 seatBoardAllow (8).",
+    "file": "seat/publish_run_allow.json",
+    "expect": {
+      "decision": 1,
+      "code": 8
+    }
+  },
+  {
+    "id": "network_prompt",
+    "domain": "risk",
+    "method": "checkRisk",
+    "description": "RiskAction.network \u2192 highRiskPrompt (7).",
+    "file": "risk/network_prompt.json",
+    "expect": {
+      "decision": 2,
+      "code": 7
+    }
+  },
+  {
+    "id": "secret_export_deny",
+    "domain": "risk",
+    "method": "checkRisk",
+    "description": "RiskAction.secretExport \u2192 secretExportDenied (29).",
+    "file": "risk/secret_export_deny.json",
+    "expect": {
+      "decision": 0,
+      "code": 29
+    }
+  },
+  {
+    "id": "multipack_canary_deny",
+    "domain": "shell",
+    "title": "Multi-pack canary deny",
+    "file": "shell/multipack_canary_deny.json",
+    "description": "packs.d extra pack denies multipack-demo (compose over product)"
+  }
+]

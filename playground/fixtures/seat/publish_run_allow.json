@@ -1,0 +1,8 @@
+{
+  "id": "publish_run_allow",
+  "description": "SeatAction.publishRun → seatBoardAllow (8).",
+  "method": "checkSeat",
+  "agentId": { "hi": 1, "lo": 2 },
+  "action": "publishRun",
+  "expect": { "decision": 1, "code": 8 }
+}

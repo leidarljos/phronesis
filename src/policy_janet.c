@@ -13,6 +13,7 @@
  */
 #include "policy_janet.h"
 #include "internal.h"
+#include "policy_trace.h"
 #include "policy.capnp.h"
 
 #include "janet.h"
@@ -505,9 +506,16 @@ static int load_one_pack(const char *path)
 		return -1;
 	capnp_janet_register(env);
 	seal_pack_env(env);
+	/* Optional TRACE Cfuns after seal so packs stay pure Cap'n-free. */
+	PD_TRACE_REGISTER_JANET(env);
 
-	if (load_pack_libs(env, path) != 0)
+	PD_TRACE_EVENT(PD_TRACE_LAYER_PACK, PD_TRACE_PHASE_ENTER, "pack-load",
+		       path, -1, NULL, 0);
+	if (load_pack_libs(env, path) != 0) {
+		PD_TRACE_EVENT(PD_TRACE_LAYER_PACK, PD_TRACE_PHASE_ERROR,
+			       "pack-load/lib", path, -1, NULL, 0);
 		return -1;
+	}
 
 	/*
 	 * Snapshot after libs (shared pure helpers may not define entries) and
@@ -517,8 +525,11 @@ static int load_one_pack(const char *path)
 	had_audio_before = resolve_fn(env, "audio-check", &audio_before);
 
 	rc = dobytes_file(env, path);
-	if (rc != 0)
+	if (rc != 0) {
+		PD_TRACE_EVENT(PD_TRACE_LAYER_PACK, PD_TRACE_PHASE_ERROR,
+			       "pack-load/entry", path, -1, NULL, 0);
 		return -1;
+	}
 
 	has_shell = 0;
 	has_audio = 0;
@@ -554,6 +565,8 @@ static int load_one_pack(const char *path)
 		return -1;
 	}
 	npacks++;
+	PD_TRACE_EVENT(PD_TRACE_LAYER_PACK, PD_TRACE_PHASE_GATE, "pack-load",
+		       path, -1, NULL, 0);
 	return 0;
 }
 
@@ -574,6 +587,8 @@ static int load_packs_from_spec(const char *spec, int require_absolute)
 		return -1;
 	if (parse_pack_spec(spec, paths, &n, PACK_MAX, require_absolute) != 0)
 		return -1;
+	PD_TRACE_EVENT(PD_TRACE_LAYER_HOST, PD_TRACE_PHASE_ENTER, "multi-pack-load",
+		       spec, n, NULL, 0);
 	for (i = 0; i < n; i++) {
 		if (load_one_pack(paths[i]) != 0) {
 			unload_packs();
@@ -606,6 +621,8 @@ static int load_packs_from_spec(const char *spec, int require_absolute)
 	pack_spec_set = 1;
 	pack_loaded = 1;
 	pack_failed = 0;
+	PD_TRACE_EVENT(PD_TRACE_LAYER_HOST, PD_TRACE_PHASE_GATE, "multi-pack-load",
+		       pack_spec_buf, npacks, NULL, 0);
 	return 0;
 }
 

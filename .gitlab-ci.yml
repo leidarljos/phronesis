@@ -5,7 +5,7 @@ include:
     file: '/ci-kit/bootstrap/package-validate.gitlab-ci.yml'
 
 # Reproducible via pixi (pixi.lock). Host C library + cmocka tests + full docs.
-stages: [validate, build]
+stages: [validate, build, deploy]
 
 
 # ENOSPC on grokos-ci-packages host: re-queue so GitLab can land on keel
@@ -86,6 +86,15 @@ variables:
   - mull.yml
   - tests/test_policy.c
   - tests/test_capnp_ffi.c
+
+# Playground surface — parity / pages when these change.
+.playground_paths: &playground_paths
+  - playground/**/*
+  - policy/**/*
+  - src/policy*.c
+  - src/capnp_api.c
+  - src/policy_trace.*
+  - schema/policy.capnp
 
 build:pixi:
   stage: build
@@ -226,3 +235,96 @@ mutation:mull:
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
       changes: *mutation_paths
     - if: $CI_PIPELINE_SOURCE == "schedule"
+
+playground:wasm:
+  stage: build
+  image: debian:bookworm-slim
+  interruptible: true
+  allow_failure: true
+  cache: *pixi_cache
+  before_script: *pixi_prepare
+  script:
+    - export PATH="${CI_PROJECT_DIR}/.pixi/envs/ci/bin:${PIXI_HOME}/bin:${PATH}"
+    - |
+      set -euo pipefail
+      if ! command -v emcc >/dev/null 2>&1; then
+        echo "emcc not on runner PATH — playground WASM is built on rg.terra" >&2
+        echo "PLAYGROUND_WASM_SKIPPED=1" > playground-wasm.env
+        exit 0
+      fi
+      pixi run playground-wasm
+      echo "PLAYGROUND_WASM_SKIPPED=0" > playground-wasm.env
+  artifacts:
+    when: always
+    paths:
+      - playground/dist-wasm/
+      - playground-wasm.env
+    expire_in: 7 days
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      changes: *playground_paths
+      when: manual
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      changes: *playground_paths
+      when: manual
+    - when: manual
+      allow_failure: true
+
+playground:parity:
+  stage: build
+  image: debian:bookworm-slim
+  interruptible: true
+  allow_failure: true
+  needs:
+    - job: playground:wasm
+      optional: true
+      artifacts: true
+  cache: *pixi_cache
+  before_script: *pixi_prepare
+  script:
+    - export PATH="${CI_PROJECT_DIR}/.pixi/envs/ci/bin:${PIXI_HOME}/bin:${PATH}"
+    - |
+      set -euo pipefail
+      if ! command -v node >/dev/null 2>&1; then
+        apt-get update -qq
+        apt-get install -y -qq --no-install-recommends nodejs
+      fi
+      if [[ ! -f playground/dist-wasm/policyd-playground.js ]]; then
+        echo "No playground/dist-wasm — using tracked prebuilt assets if present." >&2
+      fi
+      test -f playground/dist-wasm/policyd-playground.js
+      node playground/scripts/parity-node.mjs
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      changes: *playground_paths
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      changes: *playground_paths
+
+# GitLab Pages — Astro dist; members-only project Pages access.
+# Prebuilt playground/dist-wasm/ is tracked so shared runners need no emsdk.
+pages:
+  stage: deploy
+  image: debian:bookworm-slim
+  interruptible: true
+  needs:
+    - job: playground:parity
+      optional: true
+      artifacts: false
+  variables:
+    PUBLIC_BASE: "/grok-policyd/"
+  before_script:
+    - |
+      set -euo pipefail
+      export DEBIAN_FRONTEND=noninteractive
+      apt-get update -qq
+      apt-get install -y -qq --no-install-recommends curl ca-certificates nodejs npm
+  script:
+    - bash playground/scripts/build-site.sh
+    - mkdir -p public
+    - cp -a playground/astro/dist/. public/
+  artifacts:
+    paths:
+      - public
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      changes: *playground_paths

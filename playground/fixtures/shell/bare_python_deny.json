@@ -1,0 +1,9 @@
+{
+  "id": "bare_python_deny",
+  "description": "Bare python3 + script requires uv run (PolicyReason.pythonRequiresUvRun=17).",
+  "method": "checkShell",
+  "agentId": { "hi": 1, "lo": 2 },
+  "cwd": "/ws",
+  "argv": ["python3", "script.py"],
+  "expect": { "decision": 0, "code": 17 }
+}
