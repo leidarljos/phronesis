@@ -7,6 +7,14 @@ include:
 # Reproducible via pixi (pixi.lock). Host C library + cmocka tests + full docs.
 stages: [validate, build]
 
+
+# ENOSPC on grokos-ci-packages host: re-queue so GitLab can land on keel
+# (keel still has disk; packages runners fail at docker prepare).
+default:
+  retry:
+    max: 2
+    when:
+      - runner_system_failure
 # Cancel redundant pipelines on the same ref when a newer commit is pushed.
 # Jobs must be interruptible: true for running work to stop (not only pending).
 workflow:
@@ -67,11 +75,14 @@ variables:
   - rm -rf .pixi/envs
   - pixi install --locked -e ci
 
+
+
 # Policy / Cap'n surface — when these change, run mutation.
 .mutation_paths: &mutation_paths
   - src/policy.c
   - src/capnp_api.c
   - schema/policy.capnp
+  - subprojects/grokos-schema.wrap
   - mull.yml
   - tests/test_policy.c
   - tests/test_capnp_ffi.c
@@ -85,9 +96,12 @@ build:pixi:
   script:
     - export PATH="${CI_PROJECT_DIR}/.pixi/envs/ci/bin:${PIXI_HOME}/bin:${PATH}"
     - export POLICYD_BIN="${CI_PROJECT_DIR}/build/grok-policyd"
+    - bash scripts/ci-seed-schema.sh
+    - export POLICYD_MESON_OPTS="-Dschema_require_sot=true"
     - just build
   after_script:
-    - rm -rf build build-cov docs/build .pixi/envs || true
+    - df -h || true
+    - rm -rf build build-cov build-product docs/build .pixi/envs || true
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
@@ -101,9 +115,12 @@ publish:lib:
   before_script: *pixi_prepare
   script:
     - export PATH="${CI_PROJECT_DIR}/.pixi/envs/ci/bin:${PIXI_HOME}/bin:${PATH}"
+    - bash scripts/ci-seed-schema.sh
+    - export POLICYD_MESON_OPTS="-Dschema_require_sot=true"
     - just publish-lib
   after_script:
-    - rm -rf build .pixi/envs || true
+    - df -h || true
+    - rm -rf build build-cov build-product .pixi/envs || true
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
       variables:
@@ -119,6 +136,8 @@ coverage:pixi:
   before_script: *pixi_prepare
   script:
     - export PATH="${CI_PROJECT_DIR}/.pixi/envs/ci/bin:${PIXI_HOME}/bin:${PATH}"
+    - bash scripts/ci-seed-schema.sh
+    - export POLICYD_MESON_OPTS="-Dschema_require_sot=true"
     - just coverage
   artifacts:
     when: always
@@ -131,6 +150,7 @@ coverage:pixi:
     expire_in: 14 days
   coverage: '/^TOTAL\s+\d+\s+\d+\s+(\d+%)/'
   after_script:
+    - df -h || true
     # Keep coverage-out/ for artifact upload (runs after this).
     - rm -rf build build-cov .pixi/envs || true
   rules:
@@ -198,6 +218,7 @@ mutation:mull:
       - build-mull/mull-report/
     expire_in: 14 days
   after_script:
+    - df -h || true
     - rm -rf .pixi/envs || true
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
