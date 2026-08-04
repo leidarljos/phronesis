@@ -1,8 +1,4 @@
-import {
-  DECISION_LABEL,
-  reasonLabel,
-  type FixtureCatalogEntry,
-} from "@lib/fixtures";
+import { DECISION_LABEL, type FixtureCatalogEntry, reasonLabel } from "@lib/fixtures";
 import type { TraceEvent, TraceSpan } from "@lib/wasm";
 
 /** Per-fixture suite evaluation outcome (Author re-eval / Run suite). */
@@ -67,8 +63,7 @@ export function DecisionPane({
   onRunSuite,
   showRunSuite,
 }: Props) {
-  const label =
-    decision === null ? "—" : (DECISION_LABEL[decision] ?? `D${decision}`);
+  const label = decision === null ? "—" : (DECISION_LABEL[decision] ?? `D${decision}`);
   const badgeClass =
     decision === 0
       ? "badge deny"
@@ -78,7 +73,7 @@ export function DecisionPane({
           ? "badge prompt"
           : "badge idle";
   const roleMap = spansForArgv(spans);
-  const encBase = baseUrl.endsWith("/") ? baseUrl : baseUrl + "/";
+  const encBase = baseUrl.endsWith("/") ? baseUrl : `${baseUrl}/`;
 
   let passCount = 0;
   let failCount = 0;
@@ -110,9 +105,7 @@ export function DecisionPane({
           <dt>code</dt>
           <dd data-testid="decision-code">
             {code === null ? "—" : code}{" "}
-            {code !== null && (
-              <span class="muted">({reasonLabel(code)})</span>
-            )}
+            {code !== null && <span class="muted">({reasonLabel(code)})</span>}
           </dd>
         </div>
         <div>
@@ -121,9 +114,7 @@ export function DecisionPane({
             {code === null ? (
               "—"
             ) : (
-              <a href={`${encBase}encyclopedia/${code}`}>
-                /encyclopedia/{code}
-              </a>
+              <a href={`${encBase}encyclopedia/${code}`}>/encyclopedia/{code}</a>
             )}
           </dd>
         </div>
@@ -138,15 +129,13 @@ export function DecisionPane({
               const hit = roles.length > 0;
               return (
                 <li
-                  key={i}
+                  key={`argv-${i}-${tok}`}
                   class={hit ? "token hit" : "token"}
                   title={roles.join(", ") || undefined}
                 >
                   <span class="idx">{i}</span>
                   <code>{tok}</code>
-                  {hit && (
-                    <span class="roles">{roles.join(" · ")}</span>
-                  )}
+                  {hit && <span class="roles">{roles.join(" · ")}</span>}
                 </li>
               );
             })}

@@ -50,8 +50,7 @@ export const ENCYCLOPEDIA_NOTES: Record<number, EncyclopediaNote> = {
 
   // packLoadFailed @13
   13: {
-    summary:
-      "Deny when a Janet shell pack path is valid but load/compile fails.",
+    summary: "Deny when a Janet shell pack path is valid but load/compile fails.",
     body: [
       "Host lifecycle for reloadShellPack: empty, relative, overlong, or non-file paths use packPathInvalid (22). A path that exists as a regular file but fails Janet load or compile maps to packLoadFailed.",
       "Successful hot-load returns packReloaded (21). Missing default pack at check time is packMissing (12); runtime errors inside shell-check are packRuntimeError (14).",
@@ -125,8 +124,7 @@ export const ENCYCLOPEDIA_NOTES: Record<number, EncyclopediaNote> = {
 
   // shellSecretInArgv @27
   27: {
-    summary:
-      "Deny spawn when any argv token carries live credential material.",
+    summary: "Deny spawn when any argv token carries live credential material.",
     body: [
       "Secrets must not appear in process argv (they leak into TRACE, audit logs, and process listings). policy/lib/shell-secret.janet secret-token? matches vendor PATs (glpat-, ghp_, github_pat_, sk-, Slack xox*, AWS AKIA), PEM private key armor, basic-auth URLs, and password=/api_key= style key-value tokens.",
       "shell-secret-deny returns PolicyReason-shellSecretInArgv. shell.janet applies this after shell-danger and before python law.",

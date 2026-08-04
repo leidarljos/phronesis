@@ -61,7 +61,7 @@ export function decodeShareHash(hash: string): SharePayload | null {
 
 export function applyShareToLocation(payload: SharePayload): void {
   const next = encodeShareHash(payload);
-  if (typeof history !== "undefined" && history.replaceState) {
+  if (history?.replaceState) {
     history.replaceState(null, "", next);
   } else if (typeof location !== "undefined") {
     location.hash = next.slice(1);

@@ -3,11 +3,7 @@
  * Covers comments, strings (incl. long `` / ``` forms), keywords, numbers,
  * and pack-relevant specials — not a full Janet grammar.
  */
-import {
-  LanguageSupport,
-  StreamLanguage,
-  type StreamParser,
-} from "@codemirror/language";
+import { LanguageSupport, StreamLanguage, type StreamParser } from "@codemirror/language";
 import { tags as t } from "@lezer/highlight";
 
 /** Core specials + pack helpers seen in policy/*.janet */
@@ -255,5 +251,3 @@ const janetStream = StreamLanguage.define(janetParser);
 export function janet(): LanguageSupport {
   return new LanguageSupport(janetStream);
 }
-
-export const janetLanguage = janetStream;

@@ -1,13 +1,3 @@
-import { useEffect, useRef } from "preact/hooks";
-import { Compartment, EditorState } from "@codemirror/state";
-import {
-  EditorView,
-  keymap,
-  lineNumbers,
-  highlightActiveLine,
-  highlightActiveLineGutter,
-  drawSelection,
-} from "@codemirror/view";
 import {
   defaultKeymap,
   history,
@@ -20,8 +10,18 @@ import {
   foldKeymap,
   indentOnInput,
 } from "@codemirror/language";
-import { janet } from "@lib/janet-lang";
+import { Compartment, EditorState } from "@codemirror/state";
+import {
+  drawSelection,
+  EditorView,
+  highlightActiveLine,
+  highlightActiveLineGutter,
+  keymap,
+  lineNumbers,
+} from "@codemirror/view";
 import { playgroundEditorTheme, playgroundSyntax } from "@lib/cm-theme";
+import { janet } from "@lib/janet-lang";
+import { useEffect, useRef } from "preact/hooks";
 
 interface Props {
   value: string;
@@ -34,10 +34,7 @@ interface Props {
 }
 
 function editableExtensions(disabled: boolean) {
-  return [
-    EditorView.editable.of(!disabled),
-    EditorState.readOnly.of(!!disabled),
-  ];
+  return [EditorView.editable.of(!disabled), EditorState.readOnly.of(!!disabled)];
 }
 
 export function JanetEditor({
@@ -78,12 +75,7 @@ export function JanetEditor({
         janet(),
         playgroundEditorTheme,
         playgroundSyntax,
-        keymap.of([
-          indentWithTab,
-          ...defaultKeymap,
-          ...historyKeymap,
-          ...foldKeymap,
-        ]),
+        keymap.of([indentWithTab, ...defaultKeymap, ...historyKeymap, ...foldKeymap]),
         updateListener,
         editableComp.current.of(editableExtensions(!!disabled)),
       ],
@@ -97,8 +89,7 @@ export function JanetEditor({
       view.destroy();
       viewRef.current = null;
     };
-    // Mount once per host lifetime (variant change remounts via key).
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // Mount once per host lifetime (variant remounts via React key).
   }, []);
 
   useEffect(() => {
@@ -115,9 +106,7 @@ export function JanetEditor({
     const view = viewRef.current;
     if (!view) return;
     view.dispatch({
-      effects: editableComp.current.reconfigure(
-        editableExtensions(!!disabled),
-      ),
+      effects: editableComp.current.reconfigure(editableExtensions(!!disabled)),
     });
   }, [disabled]);
 
