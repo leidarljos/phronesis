@@ -40,3 +40,13 @@ option(
   value: false,
   description: 'Reserved: extra playground tracing (no product effect when false)',
 )
+
+# Absolute path to capnp-janet's janet_mod.c when using a system package.
+# Empty: use subprojects/capnp-janet when present, else pkg-config variable
+# "janet_mod" from capnp-janet.pc (distros that ship the module source).
+option(
+  'capnp_janet_mod',
+  type: 'string',
+  value: '',
+  description: 'Path to capnp-janet janet_mod.c (system package; optional if pkg-config janet_mod is set)',
+)
