@@ -128,6 +128,11 @@ scripts/coverage.sh              gcovr report (hard-requires gcovr from pixi)
 
 - **VM:** amalgamated Janet under `third_party/janet/` (pin in NOTICE).
 - **Cap'n in Janet:** `capnp-janet` (pkg-config or meson wrap); not vendored sources.
+- **Default on (no env):** Meson installs `policy/shell.janet` + `policy/lib/`
+  under `$prefix/share/grok-policyd/policy/` and bakes that absolute path into
+  the library. Unset `GROKOS_POLICYD_JANET_PACK` still loads product law. Also
+  tries `GROKOS_PREFIX/share/grok-policyd/policy/shell.janet`, FHS paths, then
+  CWD-relative `policy/shell.janet` (dev/tests).
 - **Multi-pack:** `GROKOS_POLICYD_JANET_PACK` is a **colon-separated** list of pack
   files and/or directories of top-level `*.janet` files (PATH-style). Each pack
   loads into its own sealed env (`dirname(pack)/lib/*.janet` optional helpers,
