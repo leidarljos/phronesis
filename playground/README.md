@@ -241,11 +241,13 @@ dynamic-import `public/wasm/policyd-playground.js` (copied from
 
 ### Base path (GitLab Pages)
 
-Default `base` is `/grok-policyd/` (package Pages URL). Override:
+Default local `base` is `/grok-policyd/`. CI derives `PUBLIC_BASE` from
+`CI_PAGES_URL` so nested-group path Pages and unique-domain Pages both work.
+Override:
 
 ```bash
 PUBLIC_BASE=/ npm run build          # site at domain root
-PUBLIC_BASE=/grok-policyd/ npm run build
+PUBLIC_BASE=/grokos-packages/grok-policyd/ npm run build
 ```
 
 ### GitLab Pages (members-only)
@@ -257,9 +259,11 @@ members** (API: `pages_access_level=private`).
 |---------|--------|
 | Pages access | **Only project members** |
 | Public custom domain | **Do not** attach one for the playground |
-| CI job | `pages` (stage `deploy`) → artifact `public/` |
+| CI job | `pages` (stage `deploy`) → artifact `public/` on **every** default-branch pipeline |
+| Live URL | GitLab `CI_PAGES_URL` + `/play/` (also in the `pages` job log as `PAGES_URL=…`) |
 
-**UI:** Settings → General → Visibility → Pages → *Only project members*.
+**UI:** Settings → General → Visibility → Pages → *Only project members*.  
+**Deploy UI:** Deploy → Pages (shows the site URL after the first green `pages` job).
 
 **Checklist / API assert:**
 
