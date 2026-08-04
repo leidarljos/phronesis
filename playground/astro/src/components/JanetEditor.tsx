@@ -66,6 +66,7 @@ export function JanetEditor({ value, onChange, disabled, docKey }: Props) {
         foldGutter(),
         indentOnInput(),
         bracketMatching(),
+        EditorView.lineWrapping,
         janetLanguage,
         playgroundEditorTheme,
         playgroundSyntax,
