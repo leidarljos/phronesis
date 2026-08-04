@@ -4,6 +4,7 @@
  * Outcomes are Decision values (deny/allow/prompt), not C errno.
  */
 #include "internal.h"
+#include "policy_trace.h"
 
 #include <capnp_c.h>
 #include <stdio.h>
@@ -175,9 +176,15 @@ int grok_policy_eval(const char *workspace, const char *tool,
 	grok_policy_result_set(out, GROK_DECISION_DENY,
 			       GROK_REASON_TOOLS_DEFAULT_DENY);
 
+	PD_TRACE_EVENT(PD_TRACE_LAYER_HOST, PD_TRACE_PHASE_ENTER,
+		       "policy-eval", tool && tool[0] ? tool : "", -1, NULL, 0);
+
 	if (env_truthy("GROKOS_POLICYD_DENY_ALL")) {
 		grok_policy_result_set(out, GROK_DECISION_DENY,
 				       GROK_REASON_DENY_ALL);
+				PD_TRACE_EVENT(PD_TRACE_LAYER_HOST, PD_TRACE_PHASE_DECIDE,
+			       "policy-eval/deny-all", "GROKOS_POLICYD_DENY_ALL",
+			       (int)GROK_REASON_DENY_ALL, "deny", 1);
 		return GROK_OK;
 	}
 

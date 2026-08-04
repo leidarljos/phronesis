@@ -1,0 +1,88 @@
+---
+import BaseLayout from "../../layouts/BaseLayout.astro";
+import { POLICY_REASONS } from "../../lib/fixtures";
+import { ENCYCLOPEDIA_NOTES } from "../../lib/encyclopedia-notes";
+
+const base = import.meta.env.BASE_URL;
+const b = base.endsWith("/") ? base : base + "/";
+
+const byGroup = new Map<string, typeof POLICY_REASONS>();
+for (const r of POLICY_REASONS) {
+  const g = r.group || "ungrouped";
+  const list = byGroup.get(g) ?? [];
+  list.push(r);
+  byGroup.set(g, list);
+}
+---
+<BaseLayout title="Encyclopedia · PolicyReason">
+  <h1>PolicyReason encyclopedia</h1>
+  <p class="muted">
+    One page per Cap&apos;n <code>PolicyReason</code> ordinal from
+    <code>schema/policy.capnp</code> (codegen:
+    <code>playground/scripts/gen-encyclopedia.py</code>). Deep-link from
+    TraceView / Decision as <code>/encyclopedia/&lt;code&gt;</code>.
+  </p>
+
+  <p class="hint">
+    {POLICY_REASONS.length} codes (0..{POLICY_REASONS[POLICY_REASONS.length - 1]?.code ?? "—"})
+    · {Object.keys(ENCYCLOPEDIA_NOTES).length} with product notes
+  </p>
+
+  {[...byGroup.entries()].map(([group, reasons]) => (
+    <section class="enc-group">
+      <h2>{group}</h2>
+      <table class="fixture-table">
+        <thead>
+          <tr>
+            <th>code</th>
+            <th>name</th>
+            <th>schema comment</th>
+            <th>notes</th>
+          </tr>
+        </thead>
+        <tbody>
+          {reasons.map((r) => (
+            <tr>
+              <td>
+                <a href={`${b}encyclopedia/${r.code}`}>{r.code}</a>
+              </td>
+              <td>
+                <a href={`${b}encyclopedia/${r.code}`}>
+                  <code>{r.name}</code>
+                </a>
+              </td>
+              <td class="muted">{r.comment || "—"}</td>
+              <td>
+                {ENCYCLOPEDIA_NOTES[r.code] ? (
+                  <span class="badge-note">product</span>
+                ) : (
+                  <span class="muted">stub</span>
+                )}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </section>
+  ))}
+</BaseLayout>
+
+<style>
+  .enc-group {
+    margin-top: 1.25rem;
+  }
+  .enc-group h2 {
+    margin-bottom: 0.5rem;
+    text-transform: none;
+    letter-spacing: 0;
+    color: var(--text);
+    font-size: 1rem;
+  }
+  .badge-note {
+    font-size: 0.75rem;
+    color: var(--allow);
+    border: 1px solid color-mix(in srgb, var(--allow) 40%, transparent);
+    border-radius: 4px;
+    padding: 0.1rem 0.4rem;
+  }
+</style>

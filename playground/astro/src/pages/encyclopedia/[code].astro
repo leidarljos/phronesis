@@ -1,0 +1,135 @@
+---
+import BaseLayout from "../../layouts/BaseLayout.astro";
+import {
+  POLICY_REASONS,
+  REASON_NAMES,
+  reasonLabel,
+  getReason,
+} from "../../lib/fixtures";
+import { ENCYCLOPEDIA_NOTES } from "../../lib/encyclopedia-notes";
+
+export function getStaticPaths() {
+  return POLICY_REASONS.map((r) => ({
+    params: { code: String(r.code) },
+  }));
+}
+
+const code = Number(Astro.params.code);
+const entry = getReason(code);
+const name = reasonLabel(code);
+const known = code in REASON_NAMES;
+const note = ENCYCLOPEDIA_NOTES[code];
+const base = import.meta.env.BASE_URL;
+const b = base.endsWith("/") ? base : base + "/";
+const schemaComment = entry?.comment ?? "";
+const group = entry?.group ?? "";
+---
+<BaseLayout title={`${name} (${code}) · encyclopedia`}>
+  <p>
+    <a href={`${b}encyclopedia`}>← encyclopedia</a>
+    {" · "}
+    <a href={`${b}play`}>play</a>
+  </p>
+  <p class="reason-ordinal">PolicyReason · ordinal {code}</p>
+  <h1 class="reason-name">
+    <code>{name}</code>
+  </h1>
+
+  <div class="card">
+    <dl class="kv">
+      <div>
+        <dt>name</dt>
+        <dd><code>{name}</code></dd>
+      </div>
+      <div>
+        <dt>ordinal</dt>
+        <dd><code>{code}</code></dd>
+      </div>
+      <div>
+        <dt>group</dt>
+        <dd>{group || "—"}</dd>
+      </div>
+      <div>
+        <dt>schema</dt>
+        <dd>
+          {known
+            ? "schema/policy.capnp enum PolicyReason"
+            : "unknown ordinal (not in current enum)"}
+        </dd>
+      </div>
+      {schemaComment && (
+        <div>
+          <dt>schema comment</dt>
+          <dd>{schemaComment}</dd>
+        </div>
+      )}
+    </dl>
+
+    {note ? (
+      <section class="enc-note">
+        <h2>Product note</h2>
+        <p class="enc-summary">{note.summary}</p>
+        {note.body.map((para) => (
+          <p>{para}</p>
+        ))}
+        {note.sources.length > 0 && (
+          <div>
+            <h3>Sources</h3>
+            <ul class="enc-sources">
+              {note.sources.map((s) => (
+                <li>
+                  <code>{s.path}</code>
+                  {s.symbol && (
+                    <>
+                      {" "}
+                      <code class="enc-sym">{s.symbol}</code>
+                    </>
+                  )}
+                  {s.note && <span class="muted"> — {s.note}</span>}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+        {note.relatedFixtures && note.relatedFixtures.length > 0 && (
+          <div>
+            <h3>Related fixtures</h3>
+            <ul>
+              {note.relatedFixtures.map((id) => (
+                <li>
+                  <a href={`${b}fixtures/${id}`}>{id}</a>
+                  {" · "}
+                  <a href={`${b}play?fixture=${id}`}>play</a>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </section>
+    ) : (
+      <p class="hint">
+        Stub page from Cap&apos;n PolicyReason codegen. Machine codes are
+        authoritative in <code>schema/policy.capnp</code>; human labels belong
+        in viewers, not the TCB. High-traffic codes carry product notes in
+        <code>encyclopedia-notes.ts</code>.
+      </p>
+    )}
+  </div>
+</BaseLayout>
+
+<style>
+  .enc-note h2 {
+    margin-top: 1rem;
+  }
+  .enc-summary {
+    font-weight: 600;
+    margin: 0.5rem 0;
+  }
+  .enc-sources {
+    margin: 0.35rem 0 0;
+    padding-left: 1.2rem;
+  }
+  .enc-sym {
+    color: var(--accent);
+  }
+</style>

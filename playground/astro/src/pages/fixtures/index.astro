@@ -1,0 +1,48 @@
+---
+import BaseLayout from "../../layouts/BaseLayout.astro";
+import { listFixtures, DECISION_LABEL, reasonLabel } from "../../lib/fixtures";
+
+const base = import.meta.env.BASE_URL;
+const b = base.endsWith("/") ? base : base + "/";
+const fixtures = listFixtures();
+---
+<BaseLayout title="Fixtures · grok-policyd">
+  <h1>Fixture catalog</h1>
+  <p class="muted">
+    JSON fixtures under <code>playground/fixtures/&#123;shell,path,seat,risk&#125;/</code>.
+    Open one to inspect, or jump into /play with that fixture loaded.
+  </p>
+  <table class="fixture-table">
+    <thead>
+      <tr>
+        <th>id</th>
+        <th>domain</th>
+        <th>method</th>
+        <th>expect</th>
+        <th>description</th>
+      </tr>
+    </thead>
+    <tbody>
+      {fixtures.map((f) => (
+        <tr>
+          <td>
+            <a href={`${b}fixtures/${f.id}`}>{f.id}</a>
+          </td>
+          <td>{f.domain}</td>
+          <td><code>{f.method}</code></td>
+          <td>
+            {f.expect
+              ? `${DECISION_LABEL[f.expect.decision] ?? f.expect.decision} / ${f.expect.code} (${reasonLabel(f.expect.code)})`
+              : "—"}
+          </td>
+          <td class="muted">{f.description}</td>
+        </tr>
+      ))}
+    </tbody>
+  </table>
+  {fixtures.length === 0 && (
+    <p class="hint warn">
+      Catalog empty — run <code>node playground/scripts/copy-wasm-assets.mjs</code> before build.
+    </p>
+  )}
+</BaseLayout>

@@ -32,3 +32,12 @@ credentials.json
 /subprojects/grokos-schema/
 /subprojects/packagecache/
 /subprojects/.wraplock
+
+# Playground build trees (dist-wasm tracked for Pages; do not list it here)
+/playground/wasm/memfs/
+/playground/wasm/deps/
+/playground/wasm/gen/
+/build-playground/
+/playground/astro/node_modules/
+/playground/astro/dist/
+/playground/astro/.astro/
