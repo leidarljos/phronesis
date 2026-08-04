@@ -1,8 +1,9 @@
 // @ts-check
-import { defineConfig } from "astro/config";
-import preact from "@astrojs/preact";
-import { fileURLToPath } from "node:url";
+
 import path from "node:path";
+import { fileURLToPath } from "node:url";
+import preact from "@astrojs/preact";
+import { defineConfig } from "astro/config";
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 

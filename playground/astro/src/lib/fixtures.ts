@@ -48,7 +48,7 @@ export function getFixtureMeta(id: string): FixtureCatalogEntry | undefined {
 
 /** Resolve public URL for a fixture JSON under the site base. */
 export function fixturePublicUrl(file: string, base = import.meta.env.BASE_URL): string {
-  const b = base.endsWith("/") ? base : base + "/";
+  const b = base.endsWith("/") ? base : `${base}/`;
   return `${b}fixtures/${file}`;
 }
 
@@ -72,9 +72,9 @@ export const DECISION_LABEL: Record<number, string> = {
 
 /** Generated from schema/policy.capnp (playground/scripts/gen-encyclopedia.py). */
 export {
-  REASON_NAMES,
-  POLICY_REASONS,
-  reasonLabel,
   getReason,
+  POLICY_REASONS,
   type PolicyReasonEntry,
+  REASON_NAMES,
+  reasonLabel,
 } from "./policy-reasons.generated";

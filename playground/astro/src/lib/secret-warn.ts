@@ -74,6 +74,6 @@ export function warnSecretsInArgv(argv: string[]): SecretWarnResult {
 }
 
 export function redactTokenPreview(tok: string, max = 12): string {
-  if (tok.length <= max) return tok.slice(0, 4) + "…";
-  return tok.slice(0, max) + "…";
+  if (tok.length <= max) return `${tok.slice(0, 4)}…`;
+  return `${tok.slice(0, max)}…`;
 }

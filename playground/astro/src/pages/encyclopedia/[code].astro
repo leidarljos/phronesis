@@ -1,12 +1,7 @@
 ---
 import BaseLayout from "../../layouts/BaseLayout.astro";
-import {
-  POLICY_REASONS,
-  REASON_NAMES,
-  reasonLabel,
-  getReason,
-} from "../../lib/fixtures";
 import { ENCYCLOPEDIA_NOTES } from "../../lib/encyclopedia-notes";
+import { getReason, POLICY_REASONS, REASON_NAMES, reasonLabel } from "../../lib/fixtures";
 
 export function getStaticPaths() {
   return POLICY_REASONS.map((r) => ({

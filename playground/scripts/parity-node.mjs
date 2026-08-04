@@ -9,7 +9,7 @@
  * Requires playground/dist-wasm built with TRACE (playground/wasm/build.sh).
  * Cap'n request bytes: JS encode (capnp-encode.mjs) or optional golden `bin`.
  */
-import { readdirSync, readFileSync, existsSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { encodeFixtureRequest } from "./capnp-encode.mjs";
@@ -56,10 +56,7 @@ function loadFixture(path) {
   if (!raw.id || !raw.method || !raw.expect) {
     fail(`fixture missing id/method/expect: ${path}`);
   }
-  if (
-    typeof raw.expect.decision !== "number" ||
-    typeof raw.expect.code !== "number"
-  ) {
+  if (typeof raw.expect.decision !== "number" || typeof raw.expect.code !== "number") {
     fail(`fixture expect.decision/code must be numbers: ${path}`);
   }
   if (!METHOD_EXPORT[raw.method]) {
@@ -100,12 +97,7 @@ function seedMemfs(Module, memfs) {
 }
 
 function callCheck(Module, fnName, sup, inBytes) {
-  const check = Module.cwrap(fnName, "number", [
-    "number",
-    "number",
-    "number",
-    "number",
-  ]);
+  const check = Module.cwrap(fnName, "number", ["number", "number", "number", "number"]);
   const inPtr = Module._malloc(inBytes.length);
   Module.HEAPU8.set(inBytes, inPtr);
   const outHolder = Module._malloc(4);

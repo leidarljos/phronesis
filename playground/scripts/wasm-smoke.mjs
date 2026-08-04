@@ -20,9 +20,7 @@ const root = join(here, "..", "..");
 const dist = join(root, "playground", "dist-wasm");
 const expectTrace = process.argv.includes("--expect-trace");
 
-const fixtureName = expectTrace
-  ? "shell_check_curl_sh.bin"
-  : "shell_check_uv_run.bin";
+const fixtureName = expectTrace ? "shell_check_curl_sh.bin" : "shell_check_uv_run.bin";
 const fixture = join(root, "playground", "fixtures", "shell", fixtureName);
 
 function fail(msg) {
@@ -118,9 +116,7 @@ if (expectTrace) {
   // Decision.deny = 0, PolicyReason.shellRemoteExec = 24
   if (decision !== 0 || code !== 24) {
     close(sup);
-    fail(
-      `unexpected decision=${decision} code=${code} (want deny=0 code=24)`,
-    );
+    fail(`unexpected decision=${decision} code=${code} (want deny=0 code=24)`);
   }
 
   const jsonPtr = takeTraceJson();
@@ -167,18 +163,13 @@ if (expectTrace) {
   }
 
   const scDeny = events.some(
-    (e) =>
-      e &&
-      e.shortCircuit === true &&
-      (e.decision === "deny" || e.code === 24),
+    (e) => e && e.shortCircuit === true && (e.decision === "deny" || e.code === 24),
   );
   if (!scDeny) {
     fail(`no shortCircuit true on deny event; events=${jsonStr}`);
   }
 
-  const enter = events.some(
-    (e) => e && e.phase === "enter" && e.name === "checkShell",
-  );
+  const enter = events.some((e) => e && e.phase === "enter" && e.name === "checkShell");
   if (!enter) {
     fail(`missing host enter checkShell; events=${jsonStr}`);
   }

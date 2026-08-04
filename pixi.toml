@@ -46,6 +46,9 @@ playground-smoke = { cmd = "node playground/scripts/wasm-smoke.mjs", depends-on 
 playground-parity = "node playground/scripts/parity-node.mjs"
 playground-dev = "bash -c 'cd playground/astro && npm ci && npm run dev'"
 playground-build = "bash playground/scripts/build-site.sh"
+# JS quality (Biome + tsc); no emcc. From packages/grok-policyd:
+#   pixi run playground-check
+playground-check = "bash -c 'cd playground/astro && npm ci && npm run check'"
 
 [environments]
 default = { solve-group = "default" }
