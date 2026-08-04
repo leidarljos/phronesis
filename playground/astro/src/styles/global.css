@@ -640,6 +640,27 @@ textarea {
   gap: 0.75rem;
 }
 
+.pack-body .field-label {
+  display: block;
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  margin-bottom: 0.35rem;
+}
+
+.janet-editor {
+  min-height: 18rem;
+}
+
+.janet-editor .cm-editor {
+  min-height: 18rem;
+}
+
+.janet-editor--disabled {
+  opacity: 0.55;
+  pointer-events: none;
+}
+
 .pack-tree ul {
   list-style: none;
   padding: 0;
