@@ -13,7 +13,8 @@ project(
     check: true,
   ).stdout().strip(),
   license: 'Apache-2.0',
-  meson_version: '>=1.1.0',
+  # Match grokos-schema subproject (meson_version >=1.3).
+  meson_version: '>=1.3.0',
   default_options: [
     'c_std=gnu11',
     'warning_level=2',
@@ -95,19 +96,100 @@ if get_option('mutation')
   ))
 endif
 
-# policy.capnp imports util.capnp — gen script emits both C pairs into build/.
+# Cap'n SoT resolution (IDL only; policyd still owns capnpc-c for its TCB):
+#   1) subproject grokos-schema (monorepo: ln -sfn ../../grokos-schema
+#      subprojects/grokos-schema; CI/dev: subprojects/grokos-schema.wrap)
+#   2) installed pkg-config grokos-schema (schemadir variable)
+#   3) local schema/ pin (SCHEMA_PIN) when wrap clone fails offline
+# Do not install_data() files from a nested subproject (Meson sandbox).
+# Stage IDL via custom_target outputs and install those.
+schema_proj = subproject(
+  'grokos-schema',
+  required: false,
+  default_options: [
+    'with_c=false',
+    'with_rust=false',
+    'with_python_tests=false',
+    'install_idl=false',
+  ],
+)
+grokos_schemadir = ''
+schema_via = ''
+if schema_proj.found()
+  grokos_schemadir = schema_proj.get_variable('schemadir')
+  schema_via = 'subproject'
+endif
+if grokos_schemadir == ''
+  schema_pc = dependency('grokos-schema', required: false)
+  if schema_pc.found()
+    grokos_schemadir = schema_pc.get_variable(
+      'schemadir',
+      pkgconfig_define: ['prefix', get_option('prefix')],
+      default_value: '',
+    )
+    if grokos_schemadir != ''
+      schema_via = 'pkg-config'
+    endif
+  endif
+endif
+if grokos_schemadir == ''
+  # Local pin only for offline dogfood. CI sets -Dschema_require_sot=true.
+  if get_option('schema_require_sot')
+    error(
+      'grokos-schema SoT missing: CI must clone into subprojects/grokos-schema '
+      + '(job-token) or install pkg-config grokos-schema. Local pin disabled '
+      + '(-Dschema_require_sot=true).',
+    )
+  endif
+  grokos_schemadir = meson.current_source_dir() / 'schema'
+  schema_via = 'local-pin'
+  warning('grokos-schema subproject/pkg-config missing; using local schema/ pin')
+endif
+if not fs.is_file(grokos_schemadir / 'policy.capnp') or not fs.is_file(
+  grokos_schemadir / 'util.capnp',
+)
+  error(
+    'Cap\'n SoT incomplete under @0@ (need policy.capnp + util.capnp)'.format(
+      grokos_schemadir,
+    ),
+  )
+endif
+message(
+  'Cap\'n SoT via @0@: schemadir=@1@'.format(schema_via, grokos_schemadir),
+)
+
+# policy imports util — gen script stages both .capnp and emits C into OUTDIR.
+# Outputs 4–5 are installable staged IDL (avoids subproject install sandbox).
 schema_gen = custom_target(
   'policy_capnp',
-  input: files('schema/policy.capnp', 'schema/util.capnp'),
-  output: ['policy.capnp.c', 'policy.capnp.h', 'util.capnp.c', 'util.capnp.h'],
+  output: [
+    'policy.capnp.c',
+    'policy.capnp.h',
+    'util.capnp.c',
+    'util.capnp.h',
+    'policy.capnp',
+    'util.capnp',
+  ],
   command: [
     gen_capnp,
-    '@INPUT0@',
-    '@OUTPUT0@',
-    '@OUTPUT1@',
+    grokos_schemadir,
+    '@OUTDIR@',
     capnpc_c,
   ],
+  depend_files: [
+    grokos_schemadir / 'policy.capnp',
+    grokos_schemadir / 'util.capnp',
+  ],
   build_by_default: true,
+  install: true,
+  install_dir: [
+    false,
+    false,
+    false,
+    false,
+    get_option('datadir') / 'grok-policyd',
+    get_option('datadir') / 'grok-policyd',
+  ],
 )
 
 schema_inc = include_directories('.')
@@ -179,9 +261,7 @@ install_headers(
   subdir: 'grok-policyd',
 )
 
-# Install schema SoT for embedders / code generation.
-install_data('schema/policy.capnp', install_dir: get_option('datadir') / 'grok-policyd')
-install_data('schema/util.capnp', install_dir: get_option('datadir') / 'grok-policyd')
+# Cap'n IDL for embedders: installed from schema_gen staged outputs (above).
 
 pkg.generate(
   policyd_lib,

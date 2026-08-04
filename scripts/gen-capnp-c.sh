@@ -1,26 +1,21 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: Apache-2.0
-# Generate c-capnproto C from schema/policy.capnp into Meson output paths.
-# Usage: gen-capnp-c.sh INPUT.capnp OUT.c OUT.h CAPNPC_C_PATH
+# Generate c-capnproto C from SoT schemadir (policy + util) into Meson OUTDIR.
+# Both .capnp files must live in SCHEMA_DIR (subproject or local pin); no
+# silent mix of SoT policy with a different util.
+# Usage: gen-capnp-c.sh SCHEMA_DIR OUTDIR CAPNPC_C
 set -euo pipefail
-inp=$1
-out_c=$2
-out_h=$3
-capnpc_c=$4
-outdir=$(dirname -- "$out_c")
+schema_dir=$1
+outdir=$2
+capnpc_c=$3
 mkdir -p "$outdir"
-cp -f -- "$inp" "$outdir/policy.capnp"
-# policy.capnp imports util.capnp (shared vocabulary).
-src_dir=$(dirname -- "$inp")
-script_root=$(cd "$(dirname -- "$0")/.." && pwd)
-if [[ -f "$src_dir/util.capnp" ]]; then
-	cp -f -- "$src_dir/util.capnp" "$outdir/util.capnp"
-elif [[ -f "$script_root/schema/util.capnp" ]]; then
-	cp -f -- "$script_root/schema/util.capnp" "$outdir/util.capnp"
-else
-	echo "util.capnp not found next to policy.capnp" >&2
-	exit 1
-fi
+for f in util.capnp policy.capnp; do
+	if [[ ! -f "$schema_dir/$f" ]]; then
+		echo "missing $schema_dir/$f (Cap'n SoT schemadir incomplete)" >&2
+		exit 1
+	fi
+	cp -f -- "$schema_dir/$f" "$outdir/$f"
+done
 command -v capnp >/dev/null || { echo "capnp not found" >&2; exit 1; }
 test -x "$capnpc_c" || command -v "$capnpc_c" >/dev/null || {
 	echo "capnpc-c not found: $capnpc_c" >&2
@@ -29,15 +24,6 @@ test -x "$capnpc_c" || command -v "$capnpc_c" >/dev/null || {
 # util first (AgentId/TraceId), then policy (imports util).
 (cd "$outdir" && capnp compile -I. -o"$capnpc_c" util.capnp)
 (cd "$outdir" && capnp compile -I. -o"$capnpc_c" policy.capnp)
-test -f "$outdir/util.capnp.c"
-test -f "$outdir/util.capnp.h"
-test -f "$outdir/policy.capnp.c"
-test -f "$outdir/policy.capnp.h"
-# Meson @OUTPUT@ may be the same paths; copy if names ever diverge.
-if [[ "$(realpath "$out_c")" != "$(realpath "$outdir/policy.capnp.c")" ]]; then
-	cp -f -- "$outdir/policy.capnp.c" "$out_c"
-fi
-if [[ "$(realpath "$out_h")" != "$(realpath "$outdir/policy.capnp.h")" ]]; then
-	cp -f -- "$outdir/policy.capnp.h" "$out_h"
-fi
-# util outputs sit next to policy (Meson lists them as @OUTPUT2@/@OUTPUT3@).
+test -f "$outdir/util.capnp.c" && test -f "$outdir/util.capnp.h"
+test -f "$outdir/policy.capnp.c" && test -f "$outdir/policy.capnp.h"
+test -f "$outdir/util.capnp" && test -f "$outdir/policy.capnp"

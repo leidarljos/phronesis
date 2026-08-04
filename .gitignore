@@ -29,5 +29,6 @@ credentials.json
 
 # meson wrap checkout / local symlink (not vendored sources)
 /subprojects/capnp-janet/
+/subprojects/grokos-schema/
 /subprojects/packagecache/
-subprojects/.wraplock
+/subprojects/.wraplock

@@ -6,15 +6,16 @@ Policy and multi-agent supervisor (security-critical core) for [GrokOS](https://
 |--|--|
 | **Meta** | https://nova.teachx.ai/trace-analysis/grokos |
 | **Issues** | https://nova.teachx.ai/trace-analysis/grokos/-/issues |
-| **Language** | `schema/policy.capnp` (+ `schema/util.capnp`) — SoT also in [grokos-schema](https://nova.teachx.ai/trace-analysis/grokos-packages/grokos-schema) |
+| **Language** | Cap'n SoT: [grokos-schema](https://nova.teachx.ai/trace-analysis/grokos-packages/grokos-schema) via Meson subproject; local `schema/` pin as fallback |
 | **Product API** | `grok_policyd_handle_capnp()` (in-process FFI) |
 | **C helpers** | `include/grok-policyd/supervisor.h` |
 
 ## Cap'n product API (`interface Policyd`)
 
-Schema SoT: `schema/policy.capnp`. Cap'n is **always** linked. One method per
-domain (no ok|err unions, no CheckBody union). Params message in / result
-message out — zero-copy mappable segments across agent, sessiond, shell.
+Schema SoT: `grokos-schema` (`policy.capnp` + `util.capnp`). Cap'n is **always**
+linked. One method per domain (no ok|err unions, no CheckBody union). Params
+message in / result message out — zero-copy mappable segments across agent,
+sessiond, shell.
 
 | Method | Params root | Result root |
 |--------|-------------|-------------|
@@ -109,17 +110,18 @@ under artifact `build-mull/mull-report/`.
 ## Layout
 
 ```text
-schema/policy.capnp          Cap'n API (pin from grokos-schema)
-schema/util.capnp            Shared vocab (RunState, …); imported by policy
-include/grok-policyd/        Public C ABI (includes handle_capnp)
-src/capnp_api.c              Cap'n dispatch → TCB
-src/policy.c supervisor.c …  TCB
-src/policy_janet.c           Janet pack host (lib/ then entry)
-policy/shell.janet           Product entry (shell-check + audio-check)
-policy/lib/*.janet           Pure helpers loaded before the entry (sorted)
-third_party/janet/           Amalgamation pin (pack VM)
-tests/                       cmocka (pack_lib pure + shell_pack Cap'n + …)
-scripts/coverage.sh          gcovr report (hard-requires gcovr from pixi)
+subprojects/grokos-schema.wrap   Meson wrap (Cap'n SoT from grokos-schema)
+schema/                          Offline pin (SCHEMA_PIN); not the edit SoT
+include/grok-policyd/            Public C ABI (includes handle_capnp)
+src/capnp_api.c                  Cap'n dispatch → TCB
+src/policy.c supervisor.c …      TCB
+src/policy_janet.c               Janet pack host (lib/ then entry)
+policy/shell.janet               Product entry (shell-check + audio-check)
+policy/lib/*.janet               Pure helpers loaded before the entry (sorted)
+third_party/janet/               Amalgamation pin (pack VM)
+tests/                           cmocka (pack_lib pure + shell_pack Cap'n + …)
+scripts/gen-capnp-c.sh           capnpc-c from SoT schemadir → build/
+scripts/coverage.sh              gcovr report (hard-requires gcovr from pixi)
 ```
 
 ### Janet policy packs
@@ -153,3 +155,31 @@ Apache-2.0. See `LICENSE` and `third_party/NOTICE`.
 Set `GROKOS_POLICYD_DENY_ALL=1` (or `true`/`yes`) to force deny on the CLI/string `policy_check` path and on Cap'n `checkAudio`. Used to prove agent/sessiond fail closed under a hard seat. Unset for normal allowlists.
 
 Set `GROKOS_POLICYD_AUDIO_ALLOW=1` only in CI/dogfood to allow all `AudioAction` on `checkAudio`. Leave unset in production images. `DENY_ALL` still wins when both are set.
+
+### Schema SoT (Meson)
+
+Policyd consumes Cap'n IDL **only** through a resolved `schemadir` (never a
+second edit tree of field layouts):
+
+1. **Monorepo dogfood** (preferred when packages sit side-by-side):
+
+   ```bash
+   ln -sfn ../../grokos-schema subprojects/grokos-schema
+   ```
+
+2. **Wrap** (`subprojects/grokos-schema.wrap`): pins `feat/meson-schema-project`
+   until grokos-schema Meson lands on `main` (schema !15); then switch
+   `revision` to `main` or a `schema-vX.Y.Z` tag. Private clone without
+   credentials soft-fails (`required: false`).
+
+3. **pkg-config** `grokos-schema` (`schemadir=…`) when the schema package is
+   installed on the system.
+
+4. **Local pin** `schema/` + `SCHEMA_PIN` when none of the above are available
+   (typical CI without wrap auth). Re-vendor from SoT with
+   `grokos-schema/scripts/vendor-into.sh --dest schema --pin`.
+
+`scripts/gen-capnp-c.sh` always reads `policy.capnp` and `util.capnp` from the
+same schemadir (no mixed sources). Staged IDL installs under
+`$prefix/share/grok-policyd/` from the codegen custom_target (Meson forbids
+`install_data` of nested-subproject files).
