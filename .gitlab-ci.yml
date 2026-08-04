@@ -306,7 +306,8 @@ playground:parity:
 # path filters skipped the first publish after !30 despite playground landing).
 pages:
   stage: deploy
-  image: debian:bookworm-slim
+  # Astro 5 needs Node >=20.3; debian bookworm apt node is 18.x and dies mid-build.
+  image: node:20-bookworm-slim
   interruptible: true
   needs: []
   before_script:
@@ -314,8 +315,11 @@ pages:
       set -euo pipefail
       export DEBIAN_FRONTEND=noninteractive
       apt-get update -qq
-      apt-get install -y -qq --no-install-recommends \
-        curl ca-certificates nodejs npm python3
+      apt-get install -y -qq --no-install-recommends python3 ca-certificates
+      node -v
+      npm -v
+      test -f playground/dist-wasm/policyd-playground.js
+      test -f playground/dist-wasm/policyd-playground.wasm
   script:
     - |
       set -euo pipefail
@@ -332,8 +336,10 @@ pages:
       bash playground/scripts/build-site.sh
       mkdir -p public
       cp -a playground/astro/dist/. public/
+      test -f public/play/index.html || test -f public/play.html || ls -la public | head -30
       # Surface the URL in the job log for humans.
       echo "PAGES_URL=${CI_PAGES_URL:-https://<pages-host>${PUBLIC_BASE}}"
+      echo "PAGES_PLAY=${CI_PAGES_URL:-https://<pages-host>${PUBLIC_BASE}}play/"
   artifacts:
     paths:
       - public
