@@ -6,7 +6,7 @@ import {
   reloadPackPath,
   writeMemfsText,
 } from "@lib/wasm";
-import { useEffect, useState } from "preact/hooks";
+import { useCallback, useEffect, useState } from "preact/hooks";
 import { JanetEditor } from "./JanetEditor";
 
 /** Product entry under MEMFS (always first in the multi-pack colon list). */
@@ -18,13 +18,23 @@ const DEFAULT_PACK = "/policy/shell.janet";
  */
 const DEFAULT_PACK_SPEC = "/policy/shell.janet:/policy/packs.d";
 
+export type PackEditorActions = {
+  expand: () => void;
+  collapse: () => void;
+  writeMemfs: () => Promise<void>;
+  writeReload: () => Promise<void>;
+  isExpanded: () => boolean;
+};
+
 interface Props {
   disabled?: boolean;
   onReloaded?: (rc: number) => void;
   onStatus?: (msg: string) => void;
+  /** Register keyboard-targetable actions with the playground shell. */
+  onActions?: (actions: PackEditorActions | null) => void;
 }
 
-export function PackEditor({ disabled, onReloaded, onStatus }: Props) {
+export function PackEditor({ disabled, onReloaded, onStatus, onActions }: Props) {
   const [tree, setTree] = useState<{ path: string; isDir: boolean }[]>([]);
   const [selected, setSelected] = useState(DEFAULT_PACK);
   const [body, setBody] = useState("");
@@ -62,28 +72,13 @@ export function PackEditor({ disabled, onReloaded, onStatus }: Props) {
   }
 
   // Seed tree/file when the evaluator becomes available (disabled flips false).
-  // Only re-run on the load gate — not on every body/selection change.
   useEffect(() => {
     if (!isEvaluatorReady()) return;
     refreshTree();
     if (!body) loadFile(selected || DEFAULT_PACK);
   }, [disabled]);
 
-  useEffect(() => {
-    if (!expanded) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setExpanded(false);
-    };
-    const prevOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    window.addEventListener("keydown", onKey);
-    return () => {
-      document.body.style.overflow = prevOverflow;
-      window.removeEventListener("keydown", onKey);
-    };
-  }, [expanded]);
-
-  async function onSaveWrite() {
+  const onSaveWrite = useCallback(async () => {
     const m = getModule();
     if (!m) {
       onStatus?.("Load evaluator first");
@@ -100,9 +95,9 @@ export function PackEditor({ disabled, onReloaded, onStatus }: Props) {
     } finally {
       setBusy(false);
     }
-  }
+  }, [selected, body, onStatus]);
 
-  async function onReload() {
+  const onReload = useCallback(async () => {
     if (!isEvaluatorReady()) {
       onStatus?.("Load evaluator first");
       return;
@@ -126,7 +121,19 @@ export function PackEditor({ disabled, onReloaded, onStatus }: Props) {
     } finally {
       setBusy(false);
     }
-  }
+  }, [dirty, selected, body, packSpec, onReloaded, onStatus]);
+
+  useEffect(() => {
+    if (!onActions) return;
+    onActions({
+      expand: () => setExpanded(true),
+      collapse: () => setExpanded(false),
+      writeMemfs: onSaveWrite,
+      writeReload: onReload,
+      isExpanded: () => expanded,
+    });
+    return () => onActions(null);
+  }, [onActions, onSaveWrite, onReload, expanded]);
 
   const editorDisabled = disabled || !selected || !isEvaluatorReady();
 
@@ -186,7 +193,8 @@ export function PackEditor({ disabled, onReloaded, onStatus }: Props) {
             type="button"
             class="btn"
             disabled={disabled || busy || !dirty}
-            onClick={onSaveWrite}
+            onClick={() => void onSaveWrite()}
+            title="⌘S / Ctrl+S"
           >
             Write MEMFS
           </button>
@@ -194,7 +202,8 @@ export function PackEditor({ disabled, onReloaded, onStatus }: Props) {
             type="button"
             class="btn primary"
             disabled={disabled || busy}
-            onClick={onReload}
+            onClick={() => void onReload()}
+            title="⌘⇧S / Ctrl+Shift+S"
           >
             Write + reload multi-pack
           </button>
@@ -212,7 +221,7 @@ export function PackEditor({ disabled, onReloaded, onStatus }: Props) {
           class="btn"
           disabled={editorDisabled}
           onClick={() => setExpanded(true)}
-          title="Open a larger editor (Esc to close)"
+          title="Expand (⌘. / Ctrl+.) — Esc to close"
         >
           Expand
         </button>
@@ -227,7 +236,6 @@ export function PackEditor({ disabled, onReloaded, onStatus }: Props) {
         <div class="pack-body">
           <div class="field">
             <span class="field-label">{selected || "—"}</span>
-            {/* Unmount while modal owns the editor to avoid dual views. */}
             {!expanded && (
               <JanetEditor
                 key={`inline-${selected}`}
@@ -293,7 +301,9 @@ export function PackEditor({ disabled, onReloaded, onStatus }: Props) {
                 <div class="pack-modal-actions">{renderActions()}</div>
               </div>
             </div>
-            <p class="hint pack-modal-hint">Esc or backdrop click to close.</p>
+            <p class="hint pack-modal-hint">
+              Esc closes · ⌘S write · ⌘⇧S reload · ? shortcuts
+            </p>
           </div>
         </div>
       )}

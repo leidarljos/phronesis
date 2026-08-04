@@ -286,6 +286,7 @@ export function MethodForm({
         class="btn primary"
         disabled={disabled || running || isStub}
         onClick={onRun}
+        title="⌘↵ / Ctrl+Enter"
       >
         {running ? "Evaluating…" : "Evaluate"}
       </button>
