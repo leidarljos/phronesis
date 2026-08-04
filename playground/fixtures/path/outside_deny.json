@@ -1,0 +1,9 @@
+{
+  "id": "outside_deny",
+  "description": "fs read outside workspace → pathOutsideWorkspace (2).",
+  "method": "checkPath",
+  "agentId": { "hi": 1, "lo": 2 },
+  "action": "read",
+  "path": "/etc/passwd",
+  "expect": { "decision": 0, "code": 2 }
+}

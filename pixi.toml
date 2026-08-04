@@ -39,6 +39,14 @@ install = { cmd = "meson install -C build", depends-on = ["compile"] }
 coverage = "bash scripts/coverage.sh"
 ci = { depends-on = ["build"] }
 
+
+# Playground WASM (emcc on PATH; run on rg.terra, not laptop). Multi-pack MEMFS seed.
+playground-wasm = "bash playground/wasm/build.sh"
+playground-smoke = { cmd = "node playground/scripts/wasm-smoke.mjs", depends-on = ["playground-wasm"] }
+playground-parity = "node playground/scripts/parity-node.mjs"
+playground-dev = "bash -c 'cd playground/astro && npm ci && npm run dev'"
+playground-build = "bash playground/scripts/build-site.sh"
+
 [environments]
 default = { solve-group = "default" }
 ci = { solve-group = "default" }

@@ -1,0 +1,30 @@
+---
+import BaseLayout from "../layouts/BaseLayout.astro";
+const base = import.meta.env.BASE_URL;
+const join = (p: string) => {
+  const b = base.endsWith("/") ? base : base + "/";
+  return b + p.replace(/^\//, "");
+};
+const play = join("play");
+const fixtures = join("fixtures");
+const encyclopedia = join("encyclopedia");
+---
+<BaseLayout title="grok-policyd playground">
+  <h1>grok-policyd playground</h1>
+  <p class="muted">
+    Cap&apos;n policy checks in the browser (WASM). Probe fixtures, inspect forensic
+    TRACE, or author Janet pack files under MEMFS.
+  </p>
+  <div class="card">
+    <ul>
+      <li><a href={play}>/play</a> — three-pane Probe / Author island (lazy WASM)</li>
+      <li><a href={fixtures}>/fixtures</a> — catalog mirrored from <code>playground/fixtures</code></li>
+      <li><a href={encyclopedia}>/encyclopedia</a> — PolicyReason codes (0..N) with product notes</li>
+    </ul>
+    <p class="hint">
+      WASM is not loaded until you click <strong>Load evaluator</strong> on /play.
+      Build assets with <code>bash playground/wasm/build.sh</code> on rg.terra, then
+      <code>npm run build</code> under <code>playground/astro</code>.
+    </p>
+  </div>
+</BaseLayout>

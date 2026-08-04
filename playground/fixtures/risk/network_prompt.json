@@ -1,0 +1,8 @@
+{
+  "id": "network_prompt",
+  "description": "RiskAction.network → highRiskPrompt (7).",
+  "method": "checkRisk",
+  "agentId": { "hi": 1, "lo": 2 },
+  "action": "network",
+  "expect": { "decision": 2, "code": 7 }
+}

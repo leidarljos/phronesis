@@ -1,0 +1,97 @@
+---
+import { readFileSync, existsSync } from "node:fs";
+import { join, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
+import BaseLayout from "../../layouts/BaseLayout.astro";
+import {
+  listFixtures,
+  DECISION_LABEL,
+  reasonLabel,
+  type FixtureBody,
+} from "../../lib/fixtures";
+
+export function getStaticPaths() {
+  return listFixtures().map((f) => ({
+    params: { id: f.id },
+    props: { file: f.file, domain: f.domain },
+  }));
+}
+
+const { id } = Astro.params;
+const { file } = Astro.props as { file: string; domain: string };
+
+const here = dirname(fileURLToPath(import.meta.url));
+// Prefer public copy (post prebuild); fall back to playground/fixtures
+const publicPath = join(here, "../../../public/fixtures", file);
+const srcPath = join(here, "../../../../fixtures", file);
+const path = existsSync(publicPath) ? publicPath : srcPath;
+
+let body: FixtureBody | null = null;
+let loadError: string | null = null;
+try {
+  body = JSON.parse(readFileSync(path, "utf8")) as FixtureBody;
+} catch (e) {
+  loadError = String(e);
+}
+
+const base = import.meta.env.BASE_URL;
+const b = base.endsWith("/") ? base : base + "/";
+const playHref = `${b}play?fixture=${encodeURIComponent(id!)}`;
+---
+<BaseLayout title={`${id} · fixtures`}>
+  <p><a href={`${b}fixtures`}>← catalog</a></p>
+  <h1><code>{id}</code></h1>
+  {loadError && <p class="error-banner">{loadError}</p>}
+  {body && (
+    <div class="card">
+      <p>{body.description ?? ""}</p>
+      <dl class="kv">
+        <div>
+          <dt>method</dt>
+          <dd><code>{body.method}</code></dd>
+        </div>
+        {body.expect && (
+          <div>
+            <dt>expect</dt>
+            <dd>
+              {DECISION_LABEL[body.expect.decision] ?? body.expect.decision}
+              {" / "}
+              {body.expect.code} ({reasonLabel(body.expect.code)})
+            </dd>
+          </div>
+        )}
+        {body.cwd && (
+          <div>
+            <dt>cwd</dt>
+            <dd><code>{body.cwd}</code></dd>
+          </div>
+        )}
+        {body.path && (
+          <div>
+            <dt>path</dt>
+            <dd><code>{body.path}</code></dd>
+          </div>
+        )}
+        {body.action !== undefined && (
+          <div>
+            <dt>action</dt>
+            <dd><code>{String(body.action)}</code></dd>
+          </div>
+        )}
+      </dl>
+      {body.argv && (
+        <section>
+          <h3>argv</h3>
+          <pre>{body.argv.map((t) => JSON.stringify(t)).join("\n")}</pre>
+        </section>
+      )}
+      <p>
+        <a class="btn primary" href={playHref}>Open in /play</a>
+      </p>
+      <details>
+        <summary>raw JSON</summary>
+        <pre>{JSON.stringify(body, null, 2)}</pre>
+      </details>
+    </div>
+  )}
+</BaseLayout>
