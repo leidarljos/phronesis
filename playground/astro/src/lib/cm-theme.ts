@@ -3,8 +3,9 @@
  * Highlighting uses stable class names so colors live in global.css (reliable
  * under Vite/Preact; tag-only styles were easy to miss next to default ink).
  */
-import { EditorView } from "@codemirror/view";
+
 import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
+import { EditorView } from "@codemirror/view";
 import { tags as t } from "@lezer/highlight";
 
 /** Editor chrome (surfaces, caret, selection) using CSS variables. */

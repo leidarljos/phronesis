@@ -1,5 +1,3 @@
-import { useEffect, useState } from "preact/hooks";
-import { JanetEditor } from "./JanetEditor";
 import {
   getModule,
   isEvaluatorReady,
@@ -8,6 +6,8 @@ import {
   reloadPackPath,
   writeMemfsText,
 } from "@lib/wasm";
+import { useEffect, useState } from "preact/hooks";
+import { JanetEditor } from "./JanetEditor";
 
 /** Product entry under MEMFS (always first in the multi-pack colon list). */
 const DEFAULT_PACK = "/policy/shell.janet";
@@ -61,18 +61,12 @@ export function PackEditor({ disabled, onReloaded, onStatus }: Props) {
     }
   }
 
+  // Seed tree/file when the evaluator becomes available (disabled flips false).
+  // Only re-run on the load gate — not on every body/selection change.
   useEffect(() => {
-    if (isEvaluatorReady()) {
-      refreshTree();
-      loadFile(DEFAULT_PACK);
-    }
-  }, [disabled]);
-
-  useEffect(() => {
-    if (!disabled && isEvaluatorReady()) {
-      refreshTree();
-      if (!body) loadFile(selected || DEFAULT_PACK);
-    }
+    if (!isEvaluatorReady()) return;
+    refreshTree();
+    if (!body) loadFile(selected || DEFAULT_PACK);
   }, [disabled]);
 
   useEffect(() => {
@@ -80,11 +74,11 @@ export function PackEditor({ disabled, onReloaded, onStatus }: Props) {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") setExpanded(false);
     };
-    const prev = document.body.style.overflow;
+    const prevOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     window.addEventListener("keydown", onKey);
     return () => {
-      document.body.style.overflow = prev;
+      document.body.style.overflow = prevOverflow;
       window.removeEventListener("keydown", onKey);
     };
   }, [expanded]);
@@ -184,9 +178,7 @@ export function PackEditor({ disabled, onReloaded, onStatus }: Props) {
             value={packSpec}
             disabled={disabled || busy}
             spellcheck={false}
-            onInput={(e) =>
-              setPackSpec((e.target as HTMLInputElement).value)
-            }
+            onInput={(e) => setPackSpec((e.target as HTMLInputElement).value)}
           />
         </label>
         <div class="btn-row">
@@ -247,22 +239,19 @@ export function PackEditor({ disabled, onReloaded, onStatus }: Props) {
               />
             )}
             {expanded && (
-              <p class="hint pack-editor-parked">
-                Editor open in expanded view…
-              </p>
+              <p class="hint pack-editor-parked">Editor open in expanded view…</p>
             )}
           </div>
           {renderActions()}
           <p class="hint">
-            Product multi-pack: colon-separated absolute{" "}
-            <code>.janet</code> files and/or directories (e.g.{" "}
-            <code>/policy/shell.janet:/policy/packs.d</code>). Each pack loads
-            its own sealed env + sibling <code>lib/*.janet</code>. Composition
-            is fail-closed: <strong>deny &gt; prompt &gt; allow</strong> across
-            packs that define <code>shell-check</code> /{" "}
-            <code>audio-check</code>. Default MEMFS seeds product{" "}
-            <code>shell.janet</code> plus <code>packs.d/extra-canary.janet</code>{" "}
-            (denies argv containing <code>multipack-demo</code>).
+            Product multi-pack: colon-separated absolute <code>.janet</code> files and/or
+            directories (e.g. <code>/policy/shell.janet:/policy/packs.d</code>). Each pack
+            loads its own sealed env + sibling <code>lib/*.janet</code>. Composition is
+            fail-closed: <strong>deny &gt; prompt &gt; allow</strong> across packs that
+            define <code>shell-check</code> / <code>audio-check</code>. Default MEMFS
+            seeds product <code>shell.janet</code> plus{" "}
+            <code>packs.d/extra-canary.janet</code> (denies argv containing{" "}
+            <code>multipack-demo</code>).
           </p>
         </div>
       </div>
@@ -286,11 +275,7 @@ export function PackEditor({ disabled, onReloaded, onStatus }: Props) {
                 <h2>Pack editor</h2>
                 <code class="pack-modal-path">{selected || "—"}</code>
               </div>
-              <button
-                type="button"
-                class="btn"
-                onClick={() => setExpanded(false)}
-              >
+              <button type="button" class="btn" onClick={() => setExpanded(false)}>
                 Close
               </button>
             </header>

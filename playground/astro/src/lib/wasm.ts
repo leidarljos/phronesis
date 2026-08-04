@@ -3,11 +3,7 @@
  * Mirrors playground/scripts/parity-node.mjs cwrap usage.
  */
 
-import {
-  encodeFixtureRequest,
-  type EncodeRequest,
-  type MethodName,
-} from "./capnp-codec";
+import { type EncodeRequest, encodeFixtureRequest, type MethodName } from "./capnp-codec";
 
 export type EmscriptenModule = {
   cwrap: (
@@ -29,9 +25,7 @@ export type EmscriptenModule = {
     stat: (path: string) => { mode: number; size: number };
     isDir: (mode: number) => boolean;
     unlink: (path: string) => void;
-    analyzePath: (
-      path: string,
-    ) => { exists: boolean; object?: { mode: number } };
+    analyzePath: (path: string) => { exists: boolean; object?: { mode: number } };
   };
   locateFile?: (path: string) => string;
 };
@@ -43,6 +37,7 @@ export type TraceSpan = {
 };
 
 export type TraceEvent = {
+  seq?: number;
   phase?: string;
   name?: string;
   decision?: string | number;
@@ -74,7 +69,7 @@ let supervisor: number | null = null;
 let mod: EmscriptenModule | null = null;
 
 function wasmBaseUrl(base = import.meta.env.BASE_URL): string {
-  const b = base.endsWith("/") ? base : base + "/";
+  const b = base.endsWith("/") ? base : `${base}/`;
   return `${b}wasm/`;
 }
 
@@ -101,35 +96,28 @@ export async function loadEvaluator(
       typeof window !== "undefined"
         ? new URL(`${root}policyd-playground.js`, window.location.href).href
         : `${root}policyd-playground.js`;
-    const runtimeImport = new Function(
-      "u",
-      "return import(u)",
-    ) as (u: string) => Promise<Record<string, unknown>>;
+    type ModularizeFactory = (opts: {
+      locateFile: (path: string) => string;
+    }) => Promise<EmscriptenModule>;
+    const runtimeImport = new Function("u", "return import(u)") as (
+      u: string,
+    ) => Promise<Record<string, unknown>>;
     const imported = await runtimeImport(jsUrl);
-    const factory =
-      (imported.default as unknown) ??
-      imported.PolicydPlayground ??
-      imported;
-    if (typeof factory !== "function") {
+    const factoryCandidate = imported.default ?? imported.PolicydPlayground ?? imported;
+    if (typeof factoryCandidate !== "function") {
       throw new Error("WASM module did not export MODULARIZE factory");
     }
-    const Module = (await (
-      factory as (opts: {
-        locateFile: (path: string) => string;
-      }) => Promise<EmscriptenModule>
-    )({
+    const factory = factoryCandidate as ModularizeFactory;
+    const Module = await factory({
       locateFile(path: string) {
         if (typeof window !== "undefined") {
           return new URL(root + path, window.location.href).href;
         }
         return root + path;
       },
-    })) as EmscriptenModule;
+    });
 
-    const open = Module.cwrap("pd_supervisor_open", "number", [
-      "string",
-      "string",
-    ]);
+    const open = Module.cwrap("pd_supervisor_open", "number", ["string", "string"]);
     const sup = open("/pd-state", "/pd-runtime") as number;
     if (!sup) throw new Error("pd_supervisor_open returned null");
 
@@ -151,7 +139,7 @@ export async function loadEvaluator(
 export function hasExport(Module: EmscriptenModule, name: string): boolean {
   const m = Module as unknown as Record<string, unknown>;
   const cand =
-    m["_" + name] ||
+    m[`_${name}`] ||
     (m.asm as Record<string, unknown> | undefined)?.[name] ||
     (m.wasmExports as Record<string, unknown> | undefined)?.[name];
   return typeof cand === "function";
@@ -167,7 +155,7 @@ export function seedMemfs(
     const parts = path.split("/").filter(Boolean);
     let cur = "";
     for (let i = 0; i < parts.length - 1; i++) {
-      cur += "/" + parts[i];
+      cur += `/${parts[i]}`;
       try {
         Module.FS.mkdir(cur);
       } catch {
@@ -184,12 +172,7 @@ function callCheck(
   sup: number,
   inBytes: Uint8Array,
 ): { outPtr: number; outLen: number } {
-  const check = Module.cwrap(fnName, "number", [
-    "number",
-    "number",
-    "number",
-    "number",
-  ]);
+  const check = Module.cwrap(fnName, "number", ["number", "number", "number", "number"]);
   const inPtr = Module._malloc(inBytes.length);
   Module.HEAPU8.set(inBytes, inPtr);
   const outHolder = Module._malloc(4);
@@ -259,9 +242,7 @@ export async function runCheck(
     throw new Error(`method ${method} has no WASM export (stub?)`);
   }
   if (!hasExport(Module, exportName)) {
-    throw new Error(
-      `export ${exportName} missing — rebuild playground WASM on rg.terra`,
-    );
+    throw new Error(`export ${exportName} missing — rebuild playground WASM on rg.terra`);
   }
 
   seedMemfs(Module, memfs);
@@ -336,7 +317,7 @@ export function writeMemfsText(
   const parts = path.split("/").filter(Boolean);
   let cur = "";
   for (let i = 0; i < parts.length - 1; i++) {
-    cur += "/" + parts[i];
+    cur += `/${parts[i]}`;
     try {
       Module.FS.mkdir(cur);
     } catch {

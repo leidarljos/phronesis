@@ -40,4 +40,7 @@ credentials.json
 /build-playground/
 /playground/astro/node_modules/
 /playground/astro/dist/
+# Copied by predev/prebuild (source of truth: dist-wasm + fixtures/)
+/playground/astro/public/wasm/
+/playground/astro/public/fixtures/
 /playground/astro/.astro/

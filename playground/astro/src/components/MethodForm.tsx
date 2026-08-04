@@ -1,10 +1,6 @@
 import type { MethodName } from "@lib/capnp-codec";
-import {
-  PATH_ACTIONS,
-  RISK_ACTIONS,
-  SEAT_ACTIONS,
-} from "@lib/capnp-codec";
-import { listFixtures, type FixtureCatalogEntry } from "@lib/fixtures";
+import { PATH_ACTIONS, RISK_ACTIONS, SEAT_ACTIONS } from "@lib/capnp-codec";
+import { type FixtureCatalogEntry, listFixtures } from "@lib/fixtures";
 
 export interface MethodFormState {
   method: MethodName | string;
@@ -95,8 +91,7 @@ export function MethodForm({
   const actions = actionOptions(form.method);
   const isStub = form.method === "checkModel" || form.method === "admitModel";
   const isShell = form.method === "checkShell";
-  const needsPath =
-    form.method === "checkPath" || form.method === "checkRisk";
+  const needsPath = form.method === "checkPath" || form.method === "checkRisk";
   const needsAction =
     form.method === "checkPath" ||
     form.method === "checkSeat" ||
@@ -281,8 +276,8 @@ export function MethodForm({
 
       {isStub && (
         <p class="hint warn">
-          {form.method} is a form stub only — no Cap&apos;n encode / WASM export
-          in this playground yet.
+          {form.method} is a form stub only — no Cap&apos;n encode / WASM export in this
+          playground yet.
         </p>
       )}
 

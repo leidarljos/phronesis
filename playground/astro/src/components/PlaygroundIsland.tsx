@@ -1,40 +1,32 @@
-import { useCallback, useEffect, useMemo, useState } from "preact/hooks";
+import type { EncodeRequest } from "@lib/capnp-codec";
+import { type FixtureBody, fetchFixture, listFixtures } from "@lib/fixtures";
+import { warnSecretsInArgv } from "@lib/secret-warn";
 import {
-  DecisionPane,
-  collectSpans,
-  type SuiteResults,
-} from "./DecisionPane";
+  applyShareToLocation,
+  encodeShareHash,
+  type PlayMode,
+  readShareFromLocation,
+  type SharePayload,
+  shareUrlAbsolute,
+} from "@lib/share-state";
+import {
+  isEvaluatorReady,
+  type LoadState,
+  loadEvaluator,
+  runCheck,
+  type TraceEvent,
+} from "@lib/wasm";
+import { useCallback, useEffect, useMemo, useState } from "preact/hooks";
+import { collectSpans, DecisionPane, type SuiteResults } from "./DecisionPane";
 import {
   DEFAULT_FORM,
-  MethodForm,
   defaultActionForMethod,
   formToArgv,
+  MethodForm,
   type MethodFormState,
 } from "./MethodForm";
 import { PackEditor } from "./PackEditor";
 import { TraceView } from "./TraceView";
-import {
-  fetchFixture,
-  listFixtures,
-  type FixtureBody,
-} from "@lib/fixtures";
-import {
-  applyShareToLocation,
-  encodeShareHash,
-  readShareFromLocation,
-  shareUrlAbsolute,
-  type PlayMode,
-  type SharePayload,
-} from "@lib/share-state";
-import { warnSecretsInArgv } from "@lib/secret-warn";
-import {
-  isEvaluatorReady,
-  loadEvaluator,
-  runCheck,
-  type LoadState,
-  type TraceEvent,
-} from "@lib/wasm";
-import type { EncodeRequest } from "@lib/capnp-codec";
 
 function formFromShare(p: SharePayload): MethodFormState {
   const method = p.method || "checkShell";
@@ -110,10 +102,7 @@ interface Props {
   baseUrl?: string;
 }
 
-export default function PlaygroundIsland({
-  initialFixtureId,
-  baseUrl,
-}: Props) {
+export default function PlaygroundIsland({ initialFixtureId, baseUrl }: Props) {
   const base = baseUrl ?? import.meta.env.BASE_URL ?? "/";
   const [mode, setMode] = useState<PlayMode>("probe");
   const [loadState, setLoadState] = useState<LoadState>("idle");
@@ -125,9 +114,9 @@ export default function PlaygroundIsland({
   const [trace, setTrace] = useState<TraceEvent[]>([]);
   const [evalError, setEvalError] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
-  const [lastMemfs, setLastMemfs] = useState<
-    Record<string, string> | undefined
-  >(undefined);
+  const [lastMemfs, setLastMemfs] = useState<Record<string, string> | undefined>(
+    undefined,
+  );
   const [shareMsg, setShareMsg] = useState<string | null>(null);
   const [hydrated, setHydrated] = useState(false);
   const [suiteResults, setSuiteResults] = useState<SuiteResults>({});
@@ -232,11 +221,7 @@ export default function PlaygroundIsland({
     for (const meta of shell) {
       try {
         const fx = await fetchFixture(meta.id, base);
-        const result = await runCheck(
-          fx.method,
-          fixtureToRequest(fx),
-          fx.memfs,
-        );
+        const result = await runCheck(fx.method, fixtureToRequest(fx), fx.memfs);
         const expect = meta.expect;
         const ok =
           expect != null &&
@@ -272,7 +257,7 @@ export default function PlaygroundIsland({
     const warn = warnSecretsInArgv(argv);
     if (warn.risky) {
       const ok = window.confirm(
-        `${warn.message}\n\nTokens: ${warn.tokens.map((t) => t.slice(0, 16) + "…").join(", ")}\n\nShare anyway?`,
+        `${warn.message}\n\nTokens: ${warn.tokens.map((t) => `${t.slice(0, 16)}…`).join(", ")}\n\nShare anyway?`,
       );
       if (!ok) {
         setShareMsg("Share cancelled (secret-looking argv)");
@@ -386,8 +371,8 @@ export default function PlaygroundIsland({
             <div class="author-probe-hint pane">
               <p class="hint">
                 After a successful pack reload the shell fixture suite re-runs
-                automatically (green/red in the list). Use Run suite any time,
-                or Probe with the current form for a single check.
+                automatically (green/red in the list). Use Run suite any time, or Probe
+                with the current form for a single check.
               </p>
               <button
                 type="button"
@@ -410,7 +395,7 @@ export default function PlaygroundIsland({
             emptyHint={
               ready
                 ? "Run Evaluate to capture TRACE events."
-                : 'Load evaluator, then Evaluate (e.g. curl_sh fixture).'
+                : "Load evaluator, then Evaluate (e.g. curl_sh fixture)."
             }
           />
         </div>

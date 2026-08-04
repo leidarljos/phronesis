@@ -45,8 +45,8 @@
   --radius-xs: 4px;
 
   --font: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-  --mono: ui-monospace, SFMono-Regular, "Cascadia Code", "IBM Plex Mono", Menlo,
-    monospace;
+  --mono:
+    ui-monospace, SFMono-Regular, "Cascadia Code", "IBM Plex Mono", Menlo, monospace;
 
   font-family: var(--font);
   font-feature-settings: "cv11", "ss01", "kern", "liga";
@@ -324,7 +324,9 @@ textarea {
   border-radius: var(--radius-sm);
   padding: 0.45rem 0.55rem;
   min-height: 36px;
-  transition: border-color 0.12s ease, box-shadow 0.12s ease;
+  transition:
+    border-color 0.12s ease,
+    box-shadow 0.12s ease;
 }
 
 input:hover,
@@ -358,7 +360,10 @@ textarea {
   border-radius: var(--radius-sm);
   padding: 0.45rem 0.85rem;
   min-height: 36px;
-  transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease;
+  transition:
+    background 0.12s ease,
+    border-color 0.12s ease,
+    color 0.12s ease;
 }
 
 .btn:hover:not(:disabled) {

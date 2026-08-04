@@ -56,6 +56,29 @@ PUBLIC_BASE=/ npm run dev -- --host 127.0.0.1 --port 4321
 Or from repo root: `pixi run playground-dev` (runs `npm ci` + `astro dev` under
 `playground/astro`; set `PUBLIC_BASE=/` if asset paths look wrong).
 
+### JavaScript quality (Astro / TypeScript)
+
+There is **no** product-meson gate for the playground UI. Local and continuous
+integration use **Biome** (lint + format) and **`tsc --noEmit`** on
+`playground/astro` + `playground/scripts`:
+
+```bash
+# from packages/grok-policyd
+cd playground/astro && npm ci && npm run check
+# or: pixi run playground-check
+```
+
+| Command | What |
+|---------|------|
+| `npm run lint` | Biome check (TS/TSX + Node scripts) |
+| `npm run lint:fix` | Biome write fixes |
+| `npm run typecheck` | `tsc --noEmit` (strict) |
+| `npm run check` | lint + typecheck |
+
+Job **`playground:check`** runs the same on playground path changes. Astro
+`.astro` pages are out of Biome’s TypeScript scope (frontmatter false positives);
+`tsc` covers the island components.
+
 ### Static site (Pages-shaped, optional)
 
 ```bash

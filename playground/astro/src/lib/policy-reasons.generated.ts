@@ -10,35 +10,205 @@ export interface PolicyReasonEntry {
 
 export const POLICY_REASONS: PolicyReasonEntry[] = [
   { code: 0, name: "unspecified", comment: "", group: "" },
-  { code: 1, name: "toolsDefaultDeny", comment: "", group: "Path / seat / protocol plane" },
-  { code: 2, name: "pathOutsideWorkspace", comment: "", group: "Path / seat / protocol plane" },
-  { code: 3, name: "pathUnderWorkspaceAllow", comment: "", group: "Path / seat / protocol plane" },
+  {
+    code: 1,
+    name: "toolsDefaultDeny",
+    comment: "",
+    group: "Path / seat / protocol plane",
+  },
+  {
+    code: 2,
+    name: "pathOutsideWorkspace",
+    comment: "",
+    group: "Path / seat / protocol plane",
+  },
+  {
+    code: 3,
+    name: "pathUnderWorkspaceAllow",
+    comment: "",
+    group: "Path / seat / protocol plane",
+  },
   { code: 4, name: "invalidMessage", comment: "", group: "Path / seat / protocol plane" },
   { code: 5, name: "fieldTooLong", comment: "", group: "Path / seat / protocol plane" },
   { code: 6, name: "denyAll", comment: "", group: "Path / seat / protocol plane" },
   { code: 7, name: "highRiskPrompt", comment: "", group: "Path / seat / protocol plane" },
   { code: 8, name: "seatBoardAllow", comment: "", group: "Path / seat / protocol plane" },
-  { code: 9, name: "modelStartAllow", comment: "", group: "Path / seat / protocol plane" },
-  { code: 10, name: "missingToolAction", comment: "", group: "Path / seat / protocol plane" },
-  { code: 11, name: "unknownSeatAction", comment: "", group: "Path / seat / protocol plane" },
-  { code: 12, name: "packMissing", comment: "", group: "checkShell pack host (Cap'n ShellView → pack → Cap'n PolicyDecision)" },
-  { code: 13, name: "packLoadFailed", comment: "", group: "checkShell pack host (Cap'n ShellView → pack → Cap'n PolicyDecision)" },
-  { code: 14, name: "packRuntimeError", comment: "", group: "checkShell pack host (Cap'n ShellView → pack → Cap'n PolicyDecision)" },
-  { code: 15, name: "packBadResult", comment: "", group: "checkShell pack host (Cap'n ShellView → pack → Cap'n PolicyDecision)" },
-  { code: 16, name: "shellViewBuildFailed", comment: "", group: "checkShell pack host (Cap'n ShellView → pack → Cap'n PolicyDecision)" },
-  { code: 17, name: "pythonRequiresUvRun", comment: "", group: "Shell content pack product law (uv / python / PEP 723)" },
-  { code: 18, name: "pythonDashCDenied", comment: "", group: "Shell content pack product law (uv / python / PEP 723)" },
-  { code: 19, name: "pythonMissingPep723", comment: "", group: "Shell content pack product law (uv / python / PEP 723)" },
-  { code: 20, name: "shellExecAllow", comment: "", group: "Shell content pack product law (uv / python / PEP 723)" },
-  { code: 21, name: "packReloaded", comment: "Successful hot-load of a Janet shell pack.", group: "Shell pack host lifecycle (reloadShellPack)" },
-  { code: 22, name: "packPathInvalid", comment: "Reload rejected: empty/relative/overlong path, or path not a regular file.", group: "Shell pack host lifecycle (reloadShellPack)" },
-  { code: 23, name: "shellDangerousRunner", comment: "poetry, conda, mamba, pipx, nix-shell, bare pip install, ...", group: "Shell content pack: dangerous runners / privilege / remote exec / git" },
-  { code: 24, name: "shellRemoteExec", comment: "curl|sh, wget|bash, fetch|sh class patterns in argv", group: "Shell content pack: dangerous runners / privilege / remote exec / git" },
-  { code: 25, name: "shellPrivilegeDenied", comment: "sudo, su, doas, pkexec", group: "Shell content pack: dangerous runners / privilege / remote exec / git" },
-  { code: 26, name: "shellGitDangerous", comment: "force-push, reset --hard to remote-tracking, clean -fdx against VCS", group: "Shell content pack: dangerous runners / privilege / remote exec / git" },
-  { code: 27, name: "shellSecretInArgv", comment: "Path class that must not leave the seat via Read/view (credentials dirs)", group: "Secret material must not appear in argv (glpat-/ghp_/PEM/basic-auth URL/...)" },
-  { code: 28, name: "pathSensitiveDeny", comment: "RiskAction.secretExport fail-closed (never allow export of secrets off-seat)", group: "Secret material must not appear in argv (glpat-/ghp_/PEM/basic-auth URL/...)" },
-  { code: 29, name: "secretExportDenied", comment: "", group: "Secret material must not appear in argv (glpat-/ghp_/PEM/basic-auth URL/...)" },
+  {
+    code: 9,
+    name: "modelStartAllow",
+    comment: "",
+    group: "Path / seat / protocol plane",
+  },
+  {
+    code: 10,
+    name: "missingToolAction",
+    comment: "",
+    group: "Path / seat / protocol plane",
+  },
+  {
+    code: 11,
+    name: "unknownSeatAction",
+    comment: "",
+    group: "Path / seat / protocol plane",
+  },
+  {
+    code: 12,
+    name: "packMissing",
+    comment: "",
+    group: "checkShell pack host (Cap'n ShellView → pack → Cap'n PolicyDecision)",
+  },
+  {
+    code: 13,
+    name: "packLoadFailed",
+    comment: "",
+    group: "checkShell pack host (Cap'n ShellView → pack → Cap'n PolicyDecision)",
+  },
+  {
+    code: 14,
+    name: "packRuntimeError",
+    comment: "",
+    group: "checkShell pack host (Cap'n ShellView → pack → Cap'n PolicyDecision)",
+  },
+  {
+    code: 15,
+    name: "packBadResult",
+    comment: "",
+    group: "checkShell pack host (Cap'n ShellView → pack → Cap'n PolicyDecision)",
+  },
+  {
+    code: 16,
+    name: "shellViewBuildFailed",
+    comment: "",
+    group: "checkShell pack host (Cap'n ShellView → pack → Cap'n PolicyDecision)",
+  },
+  {
+    code: 17,
+    name: "pythonRequiresUvRun",
+    comment: "",
+    group: "Shell content pack product law (uv / python / PEP 723)",
+  },
+  {
+    code: 18,
+    name: "pythonDashCDenied",
+    comment: "",
+    group: "Shell content pack product law (uv / python / PEP 723)",
+  },
+  {
+    code: 19,
+    name: "pythonMissingPep723",
+    comment: "",
+    group: "Shell content pack product law (uv / python / PEP 723)",
+  },
+  {
+    code: 20,
+    name: "shellExecAllow",
+    comment: "",
+    group: "Shell content pack product law (uv / python / PEP 723)",
+  },
+  {
+    code: 21,
+    name: "packReloaded",
+    comment: "Successful hot-load of a Janet shell pack.",
+    group: "Shell pack host lifecycle (reloadShellPack)",
+  },
+  {
+    code: 22,
+    name: "packPathInvalid",
+    comment: "Reload rejected: empty/relative/overlong path, or path not a regular file.",
+    group: "Shell pack host lifecycle (reloadShellPack)",
+  },
+  {
+    code: 23,
+    name: "shellDangerousRunner",
+    comment: "poetry, conda, mamba, pipx, nix-shell, bare pip install, ...",
+    group: "Shell content pack: dangerous runners / privilege / remote exec / git",
+  },
+  {
+    code: 24,
+    name: "shellRemoteExec",
+    comment: "curl|sh, wget|bash, fetch|sh class patterns in argv",
+    group: "Shell content pack: dangerous runners / privilege / remote exec / git",
+  },
+  {
+    code: 25,
+    name: "shellPrivilegeDenied",
+    comment: "sudo, su, doas, pkexec",
+    group: "Shell content pack: dangerous runners / privilege / remote exec / git",
+  },
+  {
+    code: 26,
+    name: "shellGitDangerous",
+    comment: "force-push, reset --hard to remote-tracking, clean -fdx against VCS",
+    group: "Shell content pack: dangerous runners / privilege / remote exec / git",
+  },
+  {
+    code: 27,
+    name: "shellSecretInArgv",
+    comment: "Path class that must not leave the seat via Read/view (credentials dirs)",
+    group: "Secret material must not appear in argv (glpat-/ghp_/PEM/basic-auth URL/...)",
+  },
+  {
+    code: 28,
+    name: "pathSensitiveDeny",
+    comment:
+      "RiskAction.secretExport fail-closed (never allow export of secrets off-seat)",
+    group: "Secret material must not appear in argv (glpat-/ghp_/PEM/basic-auth URL/...)",
+  },
+  {
+    code: 29,
+    name: "secretExportDenied",
+    comment: "",
+    group: "Secret material must not appear in argv (glpat-/ghp_/PEM/basic-auth URL/...)",
+  },
+  {
+    code: 30,
+    name: "audioMicOpenDeny",
+    comment: "Default deny for opening a capture device.",
+    group:
+      "checkAudio (voice plane gates; meta #97 Track E / epic #92) TCB only — no waveforms / PCM. sessiond checks before voiceArm / inject.",
+  },
+  {
+    code: 31,
+    name: "audioListenArmPrompt",
+    comment: "Confirm class for listen arm; hard seats fail closed on prompt.",
+    group:
+      "checkAudio (voice plane gates; meta #97 Track E / epic #92) TCB only — no waveforms / PCM. sessiond checks before voiceArm / inject.",
+  },
+  {
+    code: 32,
+    name: "audioAlwaysListenDeny",
+    comment: "Default deny for always-listen / no-wake persistent listen.",
+    group:
+      "checkAudio (voice plane gates; meta #97 Track E / epic #92) TCB only — no waveforms / PCM. sessiond checks before voiceArm / inject.",
+  },
+  {
+    code: 33,
+    name: "audioNetworkSttDeny",
+    comment: "Default deny for network / cloud STT backends.",
+    group:
+      "checkAudio (voice plane gates; meta #97 Track E / epic #92) TCB only — no waveforms / PCM. sessiond checks before voiceArm / inject.",
+  },
+  {
+    code: 34,
+    name: "audioInjectDeny",
+    comment: "Default deny for voicePushUtterance harness inject (production).",
+    group:
+      "checkAudio (voice plane gates; meta #97 Track E / epic #92) TCB only — no waveforms / PCM. sessiond checks before voiceArm / inject.",
+  },
+  {
+    code: 35,
+    name: "audioFixtureAllow",
+    comment: "Test/dogfood allow via GROKOS_POLICYD_AUDIO_ALLOW (all AudioAction).",
+    group:
+      "checkAudio (voice plane gates; meta #97 Track E / epic #92) TCB only — no waveforms / PCM. sessiond checks before voiceArm / inject.",
+  },
+  {
+    code: 36,
+    name: "audioUnknownAction",
+    comment: "Unknown / unmapped AudioAction → deny.",
+    group:
+      "checkAudio (voice plane gates; meta #97 Track E / epic #92) TCB only — no waveforms / PCM. sessiond checks before voiceArm / inject.",
+  },
 ];
 
 /** Stable PolicyReason names keyed by ordinal. */
@@ -73,6 +243,13 @@ export const REASON_NAMES: Record<number, string> = {
   27: "shellSecretInArgv",
   28: "pathSensitiveDeny",
   29: "secretExportDenied",
+  30: "audioMicOpenDeny",
+  31: "audioListenArmPrompt",
+  32: "audioAlwaysListenDeny",
+  33: "audioNetworkSttDeny",
+  34: "audioInjectDeny",
+  35: "audioFixtureAllow",
+  36: "audioUnknownAction",
 };
 
 export function reasonLabel(code: number): string {

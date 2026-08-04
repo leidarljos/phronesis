@@ -12,9 +12,7 @@ function shortCircuitWhy(events: TraceEvent[]): string | null {
     (e) =>
       e &&
       e.shortCircuit === true &&
-      (e.decision === "deny" ||
-        e.decision === 0 ||
-        typeof e.code === "number"),
+      (e.decision === "deny" || e.decision === 0 || typeof e.code === "number"),
   );
   if (!sc) return null;
   const parts: string[] = ["shortCircuit"];
@@ -27,9 +25,7 @@ function shortCircuitWhy(events: TraceEvent[]): string | null {
 
 export function TraceView({ events, emptyHint, baseUrl }: Props) {
   const why = shortCircuitWhy(events);
-  const encBase = (baseUrl ?? "/").endsWith("/")
-    ? (baseUrl ?? "/")
-    : `${baseUrl ?? ""}/`;
+  const encBase = (baseUrl ?? "/").endsWith("/") ? (baseUrl ?? "/") : `${baseUrl ?? ""}/`;
 
   return (
     <div class="pane trace-view">
@@ -49,21 +45,21 @@ export function TraceView({ events, emptyHint, baseUrl }: Props) {
       ) : (
         <ol class="trace-steps">
           {events.map((e, i) => (
-            <li key={i} class="trace-step" data-phase={e.phase ?? undefined}>
+            <li
+              key={`trace-${typeof e.seq === "number" ? e.seq : i}-${e.phase ?? ""}-${e.name ?? ""}`}
+              class="trace-step"
+              data-phase={e.phase ?? undefined}
+            >
               <div class="trace-head">
                 <span class="phase">{e.phase ?? "—"}</span>
                 <span class="name">{e.name ?? ""}</span>
                 {typeof e.code === "number" && (
                   <span class="code">
                     code=
-                    <a href={`${encBase}encyclopedia/${e.code}`}>
-                      {e.code}
-                    </a>
+                    <a href={`${encBase}encyclopedia/${e.code}`}>{e.code}</a>
                   </span>
                 )}
-                {e.shortCircuit === true && (
-                  <span class="sc-tag">shortCircuit</span>
-                )}
+                {e.shortCircuit === true && <span class="sc-tag">shortCircuit</span>}
               </div>
               {e.decision !== undefined && (
                 <div class="muted">decision={String(e.decision)}</div>
@@ -71,7 +67,7 @@ export function TraceView({ events, emptyHint, baseUrl }: Props) {
               {Array.isArray(e.spans) && e.spans.length > 0 && (
                 <ul class="span-list">
                   {e.spans.map((s, j) => (
-                    <li key={j}>
+                    <li key={`span-${s.target ?? ""}-${s.index ?? j}-${s.role ?? j}`}>
                       {s.target}
                       {typeof s.index === "number" ? `[${s.index}]` : ""}
                       {s.role ? `:${s.role}` : ""}
