@@ -94,15 +94,34 @@ export async function loadEvaluator(
 
   modulePromise = (async () => {
     const root = wasmBaseUrl(base);
-    const jsUrl = `${root}policyd-playground.js`;
-    const imported = await import(/* @vite-ignore */ jsUrl);
+    // Absolute URL so assets resolve under base; runtime import() so Vite
+    // does not treat /public/wasm/* as a source import (public files are
+    // static only — import() of them fails in dev).
+    const jsUrl =
+      typeof window !== "undefined"
+        ? new URL(`${root}policyd-playground.js`, window.location.href).href
+        : `${root}policyd-playground.js`;
+    const runtimeImport = new Function(
+      "u",
+      "return import(u)",
+    ) as (u: string) => Promise<Record<string, unknown>>;
+    const imported = await runtimeImport(jsUrl);
     const factory =
-      imported.default ?? imported.PolicydPlayground ?? imported;
+      (imported.default as unknown) ??
+      imported.PolicydPlayground ??
+      imported;
     if (typeof factory !== "function") {
       throw new Error("WASM module did not export MODULARIZE factory");
     }
-    const Module = (await factory({
+    const Module = (await (
+      factory as (opts: {
+        locateFile: (path: string) => string;
+      }) => Promise<EmscriptenModule>
+    )({
       locateFile(path: string) {
+        if (typeof window !== "undefined") {
+          return new URL(root + path, window.location.href).href;
+        }
         return root + path;
       },
     })) as EmscriptenModule;
