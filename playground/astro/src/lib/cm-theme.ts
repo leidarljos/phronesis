@@ -13,12 +13,18 @@ export const playgroundEditorTheme = EditorView.theme(
       backgroundColor: "var(--bg-input)",
       fontSize: "0.8125rem",
       fontFamily: "var(--mono)",
+      width: "100%",
+      maxWidth: "100%",
+      height: "100%",
     },
     ".cm-content": {
       caretColor: "var(--accent)",
       fontFamily: "var(--mono)",
       padding: "0.55rem 0",
       minHeight: "18rem",
+      /* With lineWrapping, content stays inside the column. */
+      width: "100%",
+      maxWidth: "100%",
     },
     ".cm-cursor, .cm-dropCursor": {
       borderLeftColor: "var(--accent)",
@@ -50,6 +56,7 @@ export const playgroundEditorTheme = EditorView.theme(
       maxHeight: "28rem",
       fontFamily: "var(--mono)",
       lineHeight: "1.45",
+      width: "100%",
     },
     "&.cm-focused": {
       outline: "none",
@@ -57,6 +64,8 @@ export const playgroundEditorTheme = EditorView.theme(
     "&.cm-editor": {
       borderRadius: "var(--radius-xs)",
       border: "1px solid var(--border)",
+      width: "100%",
+      maxWidth: "100%",
     },
     "&.cm-editor.cm-focused": {
       borderColor: "var(--accent)",
