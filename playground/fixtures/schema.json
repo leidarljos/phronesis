@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://grokos.local/policyd-playground-fixture.schema.json",
+  "title": "grok-policyd playground fixture",
+  "type": "object",
+  "required": ["id", "method", "expect"],
+  "additionalProperties": false,
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Stable fixture id (matches filename stem preferred)."
+    },
+    "description": {
+      "type": "string"
+    },
+    "method": {
+      "type": "string",
+      "enum": ["checkShell", "checkPath", "checkSeat", "checkRisk"]
+    },
+    "agentId": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "hi": { "type": "integer", "minimum": 0 },
+        "lo": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "cwd": {
+      "type": "string",
+      "description": "checkShell only: absolute cwd under agent workspace for allow path-plane."
+    },
+    "argv": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "checkShell only: spawn argv."
+    },
+    "path": {
+      "type": "string",
+      "description": "checkPath / checkRisk optional path context."
+    },
+    "action": {
+      "description": "PathAction / SeatAction / RiskAction name or ordinal.",
+      "oneOf": [{ "type": "string" }, { "type": "integer", "minimum": 0 }]
+    },
+    "memfs": {
+      "type": "object",
+      "description": "Absolute MEMFS paths → file bodies to write before the check.",
+      "additionalProperties": { "type": "string" }
+    },
+    "expect": {
+      "type": "object",
+      "required": ["decision", "code"],
+      "additionalProperties": false,
+      "properties": {
+        "decision": {
+          "type": "integer",
+          "enum": [0, 1, 2],
+          "description": "Decision.deny|allow|prompt"
+        },
+        "code": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "PolicyReason ordinal (schema/policy.capnp)"
+        }
+      }
+    },
+    "bin": {
+      "type": "string",
+      "description": "Optional relative path to golden Cap'n .bin (overrides encode)."
+    }
+  }
+}

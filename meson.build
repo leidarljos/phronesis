@@ -212,6 +212,8 @@ lib_srcs = files(
   'src/policy.c',
   'src/policy_reason.c',
   'src/policy_janet.c',
+  # TRACE ring: empty TU unless -DGROKOS_POLICYD_TRACE=1 (playground only).
+  'src/policy_trace.c',
   'src/supervisor.c',
   'src/version.c',
   'src/capnp_api.c',
@@ -385,3 +387,14 @@ alias_target('lib', policyd_lib)
 alias_target('cli', cli)
 alias_target('example', example)
 alias_target('tests', supervisor_test)
+
+# Playground WASM: playground/wasm/build.sh (direct emcc); not product CI graph.
+if get_option('playground')
+  message(
+    'playground=true: use bash playground/wasm/build.sh (direct emcc); '
+    + 'meson does not build wasm in the product graph',
+  )
+endif
+if get_option('playground_trace')
+  message('playground_trace=true: reserved; no product code paths change')
+endif

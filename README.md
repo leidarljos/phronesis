@@ -188,3 +188,22 @@ second edit tree of field layouts):
 same schemadir (no mixed sources). Staged IDL installs under
 `$prefix/share/grok-policyd/` from the codegen custom_target (Meson forbids
 `install_data` of nested-subproject files).
+
+## Playground (WASM, multi-pack; not product)
+
+Interactive probe for Cap'n `checkShell` / path / seat / risk with bit-identical
+WASM TCB, optional TRACE, and the **same multi-pack load path as product**:
+
+- Default `GROKOS_POLICYD_JANET_PACK=/policy/shell.janet:/policy/packs.d`
+- Composition deny > prompt > allow across packs that define the entry
+- Author mode reloads a colon list (not a single file only)
+
+```bash
+# Prebuilt: playground/dist-wasm/ (parity/site need no emsdk)
+pixi run playground-parity
+pixi run playground-build
+# Full WASM rebuild: emcc on rg.terra only
+pixi run playground-wasm
+```
+
+Details: [`playground/README.md`](playground/README.md).

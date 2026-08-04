@@ -9,6 +9,7 @@
 #endif
 #include "internal.h"
 #include "policy_janet.h"
+#include "policy_trace.h"
 #include "policy.capnp.h"
 #include "util.capnp.h"
 
@@ -200,7 +201,12 @@ void grok_policyd_check_seat(grok_supervisor_t *sup, const uint8_t *in,
 
 	(void)sup;
 	memset(&agent, 0, sizeof(agent));
+	PD_TRACE_EVENT(PD_TRACE_LAYER_HOST, PD_TRACE_PHASE_ENTER, "checkShell",
+		       "grok_policyd_check_shell", -1, NULL, 0);
 	if (open_in(in, in_len, &c) != 0) {
+		PD_TRACE_EVENT(PD_TRACE_LAYER_CAPNP, PD_TRACE_PHASE_ERROR,
+			       "checkShell/open", "invalid Cap'n message",
+			       (int)GROK_REASON_INVALID_MESSAGE, "deny", 1);
 		deny_msg(agent, GROK_REASON_INVALID_MESSAGE, out, out_len);
 		return;
 	}
@@ -294,6 +300,21 @@ void grok_policyd_check_path(grok_supervisor_t *sup, const uint8_t *in,
 	emit_decision(&pr, agent, out, out_len);
 }
 
+#ifdef GROKOS_POLICYD_TRACE
+static const char *decision_str(grok_decision_t d)
+{
+	switch (d) {
+	case GROK_DECISION_ALLOW:
+		return "allow";
+	case GROK_DECISION_PROMPT:
+		return "prompt";
+	case GROK_DECISION_DENY:
+	default:
+		return "deny";
+	}
+}
+#endif
+
 void grok_policyd_check_shell(grok_supervisor_t *sup, const uint8_t *in,
 			      size_t in_len, uint8_t **out, size_t *out_len)
 {
@@ -327,9 +348,16 @@ void grok_policyd_check_shell(grok_supervisor_t *sup, const uint8_t *in,
 	cwd[cl] = '\0';
 
 	/* Path plane first; content pack returns Cap'n PolicyDecision for passthrough. */
+	PD_TRACE_EVENT(PD_TRACE_LAYER_HOST, PD_TRACE_PHASE_GATE,
+		       "checkShell/path-plane", cwd[0] ? cwd : "", -1, NULL, 0);
 	(void)grok_policy_eval(ws, "shell", "exec", cwd[0] ? cwd : NULL, &pr);
 	if (pr.decision != GROK_DECISION_ALLOW) {
 		capn_free(&c);
+#ifdef GROKOS_POLICYD_TRACE
+		PD_TRACE_EVENT(PD_TRACE_LAYER_HOST, PD_TRACE_PHASE_DECIDE,
+			       "checkShell/path-plane", "path plane short-circuit",
+			       (int)pr.code, decision_str(pr.decision), 1);
+#endif
 		emit_decision(&pr, agent, out, out_len);
 		return;
 	}
@@ -343,6 +371,9 @@ void grok_policyd_check_shell(grok_supervisor_t *sup, const uint8_t *in,
 		uint8_t *pack_out = NULL;
 		size_t pack_len = 0;
 
+		PD_TRACE_EVENT(PD_TRACE_LAYER_HOST, PD_TRACE_PHASE_ENTER,
+			       "checkShell/pack", "multi-pack shell-check compose", -1,
+			       NULL, 0);
 		grok_policy_shell_pack(ws, cwd, sc.argv, &pack_out, &pack_len);
 		capn_free(&c);
 		if (pack_out && pack_len) {

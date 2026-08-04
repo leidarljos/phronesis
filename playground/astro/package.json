@@ -1,0 +1,23 @@
+{
+  "name": "grok-policyd-playground",
+  "private": true,
+  "type": "module",
+  "version": "0.1.0",
+  "scripts": {
+    "predev": "node ../scripts/copy-wasm-assets.mjs && python3 ../scripts/gen-encyclopedia.py",
+    "dev": "astro dev",
+    "prebuild": "node ../scripts/copy-wasm-assets.mjs && python3 ../scripts/gen-encyclopedia.py",
+    "build": "astro build",
+    "gen:encyclopedia": "python3 ../scripts/gen-encyclopedia.py",
+    "preview": "astro preview",
+    "astro": "astro"
+  },
+  "dependencies": {
+    "@astrojs/preact": "^4.0.4",
+    "astro": "^5.7.10",
+    "preact": "^10.26.5"
+  },
+  "devDependencies": {
+    "typescript": "^5.8.3"
+  }
+}

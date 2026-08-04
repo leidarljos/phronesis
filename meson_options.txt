@@ -24,3 +24,19 @@ option(
   value: false,
   description: 'Fail if grokos-schema subproject/pkg-config is missing (CI)',
 )
+
+# Playground WASM is built by playground/wasm/build.sh (direct emcc), not the
+# product default meson path. Options reserved/documented only.
+option(
+  'playground',
+  type: 'boolean',
+  value: false,
+  description: 'Reserved: enable playground WASM targets (use build.sh for v1)',
+)
+
+option(
+  'playground_trace',
+  type: 'boolean',
+  value: false,
+  description: 'Reserved: extra playground tracing (no product effect when false)',
+)
