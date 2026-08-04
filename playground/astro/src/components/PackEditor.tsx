@@ -1,4 +1,5 @@
 import { useEffect, useState } from "preact/hooks";
+import { JanetEditor } from "./JanetEditor";
 import {
   getModule,
   isEvaluatorReady,
@@ -165,19 +166,18 @@ export function PackEditor({ disabled, onReloaded, onStatus }: Props) {
           </ul>
         </aside>
         <div class="pack-body">
-          <label class="field">
-            <span>{selected || "—"}</span>
-            <textarea
-              rows={18}
+          <div class="field">
+            <span class="field-label">{selected || "—"}</span>
+            <JanetEditor
               value={body}
-              disabled={disabled || !selected}
-              spellcheck={false}
-              onInput={(e) => {
-                setBody((e.target as HTMLTextAreaElement).value);
+              docKey={selected}
+              disabled={disabled || !selected || !isEvaluatorReady()}
+              onChange={(text) => {
+                setBody(text);
                 setDirty(true);
               }}
             />
-          </label>
+          </div>
           <label class="field">
             <span>Multi-pack reload spec (colon list)</span>
             <input
