@@ -679,6 +679,19 @@ textarea {
   white-space: nowrap;
 }
 
+.pack-editor-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.pack-editor-parked {
+  min-height: 4rem;
+  display: flex;
+  align-items: center;
+}
+
 /* CodeMirror host: fill column, never expand the outer three-pane grid. */
 .janet-editor {
   display: block;
@@ -703,13 +716,167 @@ textarea {
 }
 
 .janet-editor .cm-content {
-  /* Prefer wrap; long tokens still scroll inside scroller, not the page grid. */
   max-width: 100%;
 }
 
 .janet-editor--disabled {
   opacity: 0.55;
   pointer-events: none;
+}
+
+/* Expanded modal: fill available height */
+.janet-editor--expanded {
+  min-height: 0;
+  flex: 1;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.janet-editor--expanded .cm-editor {
+  flex: 1;
+  min-height: 0;
+  height: 100%;
+  display: flex !important;
+  flex-direction: column;
+}
+
+.janet-editor--expanded .cm-scroller {
+  max-height: none !important;
+  flex: 1;
+  min-height: 0;
+}
+
+/*
+ * Janet token colors (class-based HighlightStyle).
+ * Saturated enough to read as syntax, not body ink.
+ */
+.cm-line .j-kw {
+  color: #a5b4fc;
+  font-weight: 600;
+}
+.cm-line .j-atom {
+  color: #d8b4fe;
+}
+.cm-line .j-num {
+  color: #f0abfc;
+}
+.cm-line .j-str {
+  color: #6ee7b7;
+}
+.cm-line .j-cmt {
+  color: #6b7280;
+  font-style: italic;
+}
+.cm-line .j-br {
+  color: #9ca3af;
+}
+.cm-line .j-meta {
+  color: #fbbf24;
+}
+.cm-line .j-id {
+  color: #e5e7eb;
+}
+.cm-line .j-op,
+.cm-line .j-def {
+  color: #67e8f9;
+}
+
+/* —— Pack editor expand modal —— */
+.pack-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  background: rgba(0, 0, 0, 0.72);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.25rem;
+  box-sizing: border-box;
+}
+
+.pack-modal {
+  width: min(1120px, 96vw);
+  height: min(88vh, 900px);
+  max-height: 88vh;
+  background: var(--bg-pane);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.55);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.pack-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-header);
+  flex-shrink: 0;
+}
+
+.pack-modal-title {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.pack-modal-title h2 {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.pack-modal-path {
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pack-modal-body {
+  display: grid;
+  grid-template-columns: minmax(0, 11rem) minmax(0, 1fr);
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.pack-modal-body .pack-tree {
+  min-height: 0;
+  overflow: auto;
+}
+
+.pack-modal-body .pack-tree ul {
+  max-height: none;
+}
+
+.pack-modal-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.pack-modal-actions {
+  flex-shrink: 0;
+}
+
+.pack-modal-hint {
+  margin: 0;
+  padding: 0 1rem 0.65rem;
+  flex-shrink: 0;
 }
 
 .pack-tree ul {

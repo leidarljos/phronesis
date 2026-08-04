@@ -20,7 +20,7 @@ import {
   foldKeymap,
   indentOnInput,
 } from "@codemirror/language";
-import { janetLanguage } from "@lib/janet-lang";
+import { janet } from "@lib/janet-lang";
 import { playgroundEditorTheme, playgroundSyntax } from "@lib/cm-theme";
 
 interface Props {
@@ -29,6 +29,8 @@ interface Props {
   disabled?: boolean;
   /** Bumps when the edited file path changes so the doc is replaced. */
   docKey?: string;
+  /** Larger scroller for modal / expanded layout. */
+  variant?: "inline" | "expanded";
 }
 
 function editableExtensions(disabled: boolean) {
@@ -38,7 +40,13 @@ function editableExtensions(disabled: boolean) {
   ];
 }
 
-export function JanetEditor({ value, onChange, disabled, docKey }: Props) {
+export function JanetEditor({
+  value,
+  onChange,
+  disabled,
+  docKey,
+  variant = "inline",
+}: Props) {
   const hostRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
   const editableComp = useRef(new Compartment());
@@ -67,7 +75,7 @@ export function JanetEditor({ value, onChange, disabled, docKey }: Props) {
         indentOnInput(),
         bracketMatching(),
         EditorView.lineWrapping,
-        janetLanguage,
+        janet(),
         playgroundEditorTheme,
         playgroundSyntax,
         keymap.of([
@@ -83,15 +91,16 @@ export function JanetEditor({ value, onChange, disabled, docKey }: Props) {
 
     const view = new EditorView({ state, parent });
     viewRef.current = view;
+    // Layout may still be settling (modal open) — remeasure once.
+    requestAnimationFrame(() => view.requestMeasure());
     return () => {
       view.destroy();
       viewRef.current = null;
     };
-    // Mount once; value / disabled synced in effects below.
+    // Mount once per host lifetime (variant change remounts via key).
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // External doc replace (file switch). Own edits already match `value`.
   useEffect(() => {
     const view = viewRef.current;
     if (!view) return;
@@ -112,12 +121,20 @@ export function JanetEditor({ value, onChange, disabled, docKey }: Props) {
     });
   }, [disabled]);
 
+  useEffect(() => {
+    viewRef.current?.requestMeasure();
+  }, [variant]);
+
   return (
     <div
       ref={hostRef}
-      class={
-        disabled ? "janet-editor janet-editor--disabled" : "janet-editor"
-      }
+      class={[
+        "janet-editor",
+        variant === "expanded" ? "janet-editor--expanded" : "",
+        disabled ? "janet-editor--disabled" : "",
+      ]
+        .filter(Boolean)
+        .join(" ")}
       data-doc-key={docKey ?? ""}
       aria-disabled={disabled ? "true" : undefined}
     />

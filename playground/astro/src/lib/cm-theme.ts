@@ -1,5 +1,7 @@
 /**
  * CodeMirror theme tokens aligned with playground DESIGN.md / global.css.
+ * Highlighting uses stable class names so colors live in global.css (reliable
+ * under Vite/Preact; tag-only styles were easy to miss next to default ink).
  */
 import { EditorView } from "@codemirror/view";
 import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
@@ -9,7 +11,7 @@ import { tags as t } from "@lezer/highlight";
 export const playgroundEditorTheme = EditorView.theme(
   {
     "&": {
-      color: "var(--text)",
+      color: "var(--text-secondary)",
       backgroundColor: "var(--bg-input)",
       fontSize: "0.8125rem",
       fontFamily: "var(--mono)",
@@ -18,26 +20,26 @@ export const playgroundEditorTheme = EditorView.theme(
       height: "100%",
     },
     ".cm-content": {
-      caretColor: "var(--accent)",
+      caretColor: "var(--accent-hover)",
       fontFamily: "var(--mono)",
       padding: "0.55rem 0",
       minHeight: "18rem",
-      /* With lineWrapping, content stays inside the column. */
       width: "100%",
       maxWidth: "100%",
+      color: "var(--text-secondary)",
     },
     ".cm-cursor, .cm-dropCursor": {
-      borderLeftColor: "var(--accent)",
+      borderLeftColor: "var(--accent-hover)",
     },
     "&.cm-focused .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection":
       {
         backgroundColor: "var(--accent-soft)",
       },
     ".cm-activeLine": {
-      backgroundColor: "rgba(255, 255, 255, 0.03)",
+      backgroundColor: "rgba(255, 255, 255, 0.035)",
     },
     ".cm-activeLineGutter": {
-      backgroundColor: "rgba(255, 255, 255, 0.03)",
+      backgroundColor: "rgba(255, 255, 255, 0.035)",
     },
     ".cm-gutters": {
       backgroundColor: "var(--bg-elev)",
@@ -55,7 +57,7 @@ export const playgroundEditorTheme = EditorView.theme(
       overflow: "auto",
       maxHeight: "28rem",
       fontFamily: "var(--mono)",
-      lineHeight: "1.45",
+      lineHeight: "1.5",
       width: "100%",
     },
     "&.cm-focused": {
@@ -78,18 +80,23 @@ export const playgroundEditorTheme = EditorView.theme(
   { dark: true },
 );
 
-/** Syntax colors — semantic, scarce accent (DESIGN.md). */
+/**
+ * Map Lezer tags → stable class names (styled in global.css `.j-*`).
+ * Class-based is more reliable than inline HighlightStyle colors here.
+ */
 export const playgroundHighlightStyle = HighlightStyle.define([
-  { tag: t.keyword, color: "#828fff" },
-  { tag: t.atom, color: "#c4b5fd" },
-  { tag: t.number, color: "#f0abfc" },
-  { tag: t.string, color: "#59d499" },
-  { tag: t.comment, color: "#5c6370", fontStyle: "italic" },
-  { tag: t.bracket, color: "#8b919c" },
-  { tag: t.meta, color: "#ffc533" },
-  { tag: t.variableName, color: "#f4f5f7" },
-  { tag: t.bool, color: "#828fff" },
-  { tag: t.null, color: "#828fff" },
+  { tag: t.keyword, class: "j-kw" },
+  { tag: t.atom, class: "j-atom" },
+  { tag: t.number, class: "j-num" },
+  { tag: t.string, class: "j-str" },
+  { tag: t.comment, class: "j-cmt" },
+  { tag: t.bracket, class: "j-br" },
+  { tag: t.meta, class: "j-meta" },
+  { tag: t.variableName, class: "j-id" },
+  { tag: t.bool, class: "j-kw" },
+  { tag: t.null, class: "j-kw" },
+  { tag: t.operator, class: "j-op" },
+  { tag: t.definition(t.variableName), class: "j-def" },
 ]);
 
 export const playgroundSyntax = syntaxHighlighting(playgroundHighlightStyle);

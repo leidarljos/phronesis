@@ -3,7 +3,11 @@
  * Covers comments, strings (incl. long `` / ``` forms), keywords, numbers,
  * and pack-relevant specials — not a full Janet grammar.
  */
-import { StreamLanguage, type StreamParser } from "@codemirror/language";
+import {
+  LanguageSupport,
+  StreamLanguage,
+  type StreamParser,
+} from "@codemirror/language";
 import { tags as t } from "@lezer/highlight";
 
 /** Core specials + pack helpers seen in policy/*.janet */
@@ -72,15 +76,27 @@ const KEYWORDS = new Set([
   "require",
 ]);
 
+/** Common pack-side helpers — tint as “builtin” for scannability. */
+const BUILTINS = new Set([
+  "decide",
+  "shell-check",
+  "audio-check",
+  "shell-danger-deny",
+  "shell-secret-deny",
+  "touches-python?",
+  "uv-run?",
+  "pep723?",
+  "any-pep723?",
+  "read-argv",
+]);
+
 type ModeState = {
-  /** Remaining chars of a multi-line `#|…|#` comment, or null. */
   commentDepth: number;
-  /** Closing long-string delimiter (one or more backticks), or null. */
   longStringDelim: string | null;
 };
 
 function isSymbolStart(ch: string): boolean {
-  return /[A-Za-z_!$%&*+\-./:<=>?@^~]/.test(ch);
+  return /[A-Za-z_!$%&*+\-./<=>?@^~]/.test(ch);
 }
 
 function isSymbolCont(ch: string): boolean {
@@ -117,7 +133,6 @@ const janetParser: StreamParser<ModeState> = {
     return { commentDepth: 0, longStringDelim: null };
   },
   token(stream, state) {
-    // Multi-line block comment
     if (state.commentDepth > 0) {
       while (!stream.eol()) {
         if (stream.match("#|")) {
@@ -134,7 +149,6 @@ const janetParser: StreamParser<ModeState> = {
       return "comment";
     }
 
-    // Long string (one or more backticks) continuing across lines
     if (state.longStringDelim) {
       const delim = state.longStringDelim;
       while (!stream.eol()) {
@@ -149,7 +163,6 @@ const janetParser: StreamParser<ModeState> = {
 
     if (stream.eatSpace()) return null;
 
-    // Line comment or start of block comment
     if (stream.peek() === "#") {
       if (stream.match("#|")) {
         state.commentDepth = 1;
@@ -171,7 +184,6 @@ const janetParser: StreamParser<ModeState> = {
       return "comment";
     }
 
-    // Long string open: one or more `
     if (stream.peek() === "`") {
       let ticks = "";
       while (stream.peek() === "`") ticks += stream.next();
@@ -186,41 +198,35 @@ const janetParser: StreamParser<ModeState> = {
       return "string";
     }
 
-    // Short string
     if (stream.peek() === '"') {
       stream.next();
       return tokenString(stream, '"');
     }
 
-    // Keyword :foo or ::foo
+    // Keyword atoms :foo
     if (stream.peek() === ":") {
       stream.next();
-      if (stream.eat(":")) {
-        /* :: */
-      }
-      if (stream.eatWhile(isSymbolCont)) return "atom";
+      stream.eat(":");
+      stream.eatWhile(isSymbolCont);
       return "atom";
     }
 
-    // Numbers
     if (stream.match(/^-?(?:0x[0-9a-fA-F]+|\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)/)) {
       return "number";
     }
 
-    // Punctuation
     if (stream.match(/^[()[\]{}]/)) return "bracket";
     if (stream.match(/^['~,|]/)) return "meta";
 
-    // Symbols / keywords
     if (stream.peek() && isSymbolStart(stream.peek()!)) {
       let word = "";
       while (stream.peek() && isSymbolCont(stream.peek()!)) {
         word += stream.next();
       }
       if (KEYWORDS.has(word)) return "keyword";
-      // Module-qualified calls like capnp/get-bool — treat head as property-ish
-      if (word.includes("/")) return "variableName";
-      return "variableName";
+      // Pack helpers + mod/name calls — use "atom" (stable highlight tag).
+      if (BUILTINS.has(word) || word.includes("/")) return "atom";
+      return "variable";
     }
 
     stream.next();
@@ -239,8 +245,15 @@ const janetParser: StreamParser<ModeState> = {
     comment: t.comment,
     bracket: t.bracket,
     meta: t.meta,
-    variableName: t.variableName,
+    variable: t.variableName,
   },
 };
 
-export const janetLanguage = StreamLanguage.define(janetParser);
+const janetStream = StreamLanguage.define(janetParser);
+
+/** LanguageSupport wrapper so highlighting facets attach reliably. */
+export function janet(): LanguageSupport {
+  return new LanguageSupport(janetStream);
+}
+
+export const janetLanguage = janetStream;
