@@ -302,29 +302,43 @@ playground:parity:
 
 # GitLab Pages — Astro dist; members-only project Pages access.
 # Prebuilt playground/dist-wasm/ is tracked so shared runners need no emsdk.
+# Always deploy on default branch (do not gate on rules:changes — merge-commit
+# path filters skipped the first publish after !30 despite playground landing).
 pages:
   stage: deploy
   image: debian:bookworm-slim
   interruptible: true
-  needs:
-    - job: playground:parity
-      optional: true
-      artifacts: false
-  variables:
-    PUBLIC_BASE: "/grok-policyd/"
+  needs: []
   before_script:
     - |
       set -euo pipefail
       export DEBIAN_FRONTEND=noninteractive
       apt-get update -qq
-      apt-get install -y -qq --no-install-recommends curl ca-certificates nodejs npm
+      apt-get install -y -qq --no-install-recommends \
+        curl ca-certificates nodejs npm python3
   script:
-    - bash playground/scripts/build-site.sh
-    - mkdir -p public
-    - cp -a playground/astro/dist/. public/
+    - |
+      set -euo pipefail
+      # CI_PAGES_URL is the live Pages origin for this project (path or unique domain).
+      # Derive PUBLIC_BASE so Astro asset paths match whatever host form the instance uses.
+      if [[ -n "${CI_PAGES_URL:-}" ]]; then
+        PUBLIC_BASE="$(python3 -c 'import os; from urllib.parse import urlparse; p=urlparse(os.environ["CI_PAGES_URL"]).path.rstrip("/"); print((p+"/") if p else "/")')"
+      else
+        # Nested path under top-level group Pages host (trace-analysis/…).
+        PUBLIC_BASE="/grokos-packages/grok-policyd/"
+      fi
+      export PUBLIC_BASE
+      echo "CI_PAGES_URL=${CI_PAGES_URL:-<unset>} PUBLIC_BASE=${PUBLIC_BASE}"
+      bash playground/scripts/build-site.sh
+      mkdir -p public
+      cp -a playground/astro/dist/. public/
+      # Surface the URL in the job log for humans.
+      echo "PAGES_URL=${CI_PAGES_URL:-https://<pages-host>${PUBLIC_BASE}}"
   artifacts:
     paths:
       - public
   rules:
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
-      changes: *playground_paths
+    - if: $CI_PIPELINE_SOURCE == "web"
+      when: manual
+      allow_failure: true
