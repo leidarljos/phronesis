@@ -363,3 +363,21 @@ pages:
     - if: $CI_PIPELINE_SOURCE == "web"
       when: manual
       allow_failure: true
+
+# OpenMandriva packaging: bump Release in grokos-packaging/grok-policyd for this SHA.
+# Downstream pipeline commits 0.YYYYMMDDHHMMSS.N and builds RPMs → Pages repo.
+# Requires: packaging project allows CI job tokens from this project (clone product);
+#           PACKAGING_PUSH_TOKEN on packaging project (push Release bumps).
+trigger:packaging:
+  stage: deploy
+  interruptible: true
+  needs:
+    - job: build:pixi
+  trigger:
+    project: trace-analysis/grokos-packaging/grok-policyd
+    branch: master
+    strategy: depend
+  variables:
+    UPSTREAM_SHA: $CI_COMMIT_SHA
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
