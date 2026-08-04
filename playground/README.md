@@ -48,9 +48,10 @@ cd playground/astro
 npm ci
 PUBLIC_BASE=/ npm run dev -- --host 127.0.0.1 --port 4321
 # open http://127.0.0.1:4321/play
-#   → Load evaluator
+#   → Load evaluator (or ⌘L / Ctrl+L)
 #   → leave default curl|sh argv (or pick fixture curl_sh_deny)
-#   → Evaluate → DENY / PolicyReason 24 / token highlights / TRACE steps
+#   → Evaluate (⌘↵) → DENY / PolicyReason 24 / token highlights / TRACE steps
+#   → press ? for the full shortcuts list (chips under the toolbar always show the main chords)
 ```
 
 Or from repo root: `pixi run playground-dev` (runs `npm ci` + `astro dev` under

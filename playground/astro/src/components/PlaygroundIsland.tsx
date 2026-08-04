@@ -9,6 +9,7 @@ import {
   type SharePayload,
   shareUrlAbsolute,
 } from "@lib/share-state";
+import { isMod, isTypingTarget } from "@lib/shortcuts";
 import {
   isEvaluatorReady,
   type LoadState,
@@ -16,7 +17,7 @@ import {
   runCheck,
   type TraceEvent,
 } from "@lib/wasm";
-import { useCallback, useEffect, useMemo, useState } from "preact/hooks";
+import { useCallback, useEffect, useMemo, useRef, useState } from "preact/hooks";
 import { collectSpans, DecisionPane, type SuiteResults } from "./DecisionPane";
 import {
   DEFAULT_FORM,
@@ -25,7 +26,8 @@ import {
   MethodForm,
   type MethodFormState,
 } from "./MethodForm";
-import { PackEditor } from "./PackEditor";
+import { PackEditor, type PackEditorActions } from "./PackEditor";
+import { ShortcutsHelp } from "./ShortcutsHelp";
 import { TraceView } from "./TraceView";
 
 function formFromShare(p: SharePayload): MethodFormState {
@@ -121,9 +123,21 @@ export default function PlaygroundIsland({ initialFixtureId, baseUrl }: Props) {
   const [hydrated, setHydrated] = useState(false);
   const [suiteResults, setSuiteResults] = useState<SuiteResults>({});
   const [suiteRunning, setSuiteRunning] = useState(false);
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const packActionsRef = useRef<PackEditorActions | null>(null);
+  /** Expand requested before Author/PackEditor mounted (e.g. ⌘. from Probe). */
+  const pendingExpandRef = useRef(false);
 
   const fixtures = useMemo(() => listFixtures(), []);
   const ready = loadState === "ready" || isEvaluatorReady();
+
+  const onPackActions = useCallback((actions: PackEditorActions | null) => {
+    packActionsRef.current = actions;
+    if (actions && pendingExpandRef.current) {
+      pendingExpandRef.current = false;
+      actions.expand();
+    }
+  }, []);
 
   // Hydrate from hash + optional fixture id
   useEffect(() => {
@@ -276,6 +290,97 @@ export default function PlaygroundIsland({ initialFixtureId, baseUrl }: Props) {
   const argv = formToArgv(form);
   const spans = collectSpans(trace);
 
+  // App-level keybindings (catalog in @lib/shortcuts + ShortcutsHelp).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const typing = isTypingTarget(e.target);
+      const mod = isMod(e);
+
+      if (e.key === "Escape") {
+        const pack = packActionsRef.current;
+        if (pack?.isExpanded()) {
+          e.preventDefault();
+          pack.collapse();
+          return;
+        }
+        if (shortcutsOpen) {
+          e.preventDefault();
+          setShortcutsOpen(false);
+        }
+        return;
+      }
+
+      // "?" toggles help when not typing (Shift+/ on US layouts).
+      if (!typing && (e.key === "?" || (e.key === "/" && e.shiftKey))) {
+        e.preventDefault();
+        setShortcutsOpen((o) => !o);
+        return;
+      }
+
+      if (!mod) return;
+
+      const key = e.key.toLowerCase();
+
+      if (key === "l" && !e.shiftKey) {
+        if (loadState === "ready" || isEvaluatorReady()) return;
+        e.preventDefault();
+        void onLoadEvaluator();
+        return;
+      }
+
+      if (key === "1" && !e.shiftKey) {
+        e.preventDefault();
+        setMode("probe");
+        return;
+      }
+      if (key === "2" && !e.shiftKey) {
+        e.preventDefault();
+        setMode("author");
+        return;
+      }
+
+      if (key === "enter") {
+        e.preventDefault();
+        if (e.shiftKey) void onRunSuite();
+        else if (mode === "probe") void onRun();
+        else void onRunSuite();
+        return;
+      }
+
+      if (key === "s") {
+        e.preventDefault();
+        const pack = packActionsRef.current;
+        if (!pack) {
+          setMode("author");
+          setStatus("Author mode — press ⌘S / Ctrl+S again to write MEMFS");
+          return;
+        }
+        if (e.shiftKey) void pack.writeReload();
+        else void pack.writeMemfs();
+        return;
+      }
+
+      if (key === "." || e.code === "Period") {
+        e.preventDefault();
+        if (packActionsRef.current) {
+          packActionsRef.current.expand();
+        } else {
+          pendingExpandRef.current = true;
+          setMode("author");
+        }
+        return;
+      }
+
+      if (key === "u" && e.shiftKey) {
+        e.preventDefault();
+        onShare();
+      }
+    };
+
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [shortcutsOpen, loadState, mode, onLoadEvaluator, onRun, onRunSuite, onShare]);
+
   if (!hydrated) {
     return <div class="playground loading-shell">Loading…</div>;
   }
@@ -290,6 +395,7 @@ export default function PlaygroundIsland({ initialFixtureId, baseUrl }: Props) {
             class={mode === "probe" ? "active" : ""}
             aria-selected={mode === "probe"}
             onClick={() => setMode("probe")}
+            title="⌘1 / Ctrl+1"
           >
             Probe
           </button>
@@ -299,6 +405,7 @@ export default function PlaygroundIsland({ initialFixtureId, baseUrl }: Props) {
             class={mode === "author" ? "active" : ""}
             aria-selected={mode === "author"}
             onClick={() => setMode("author")}
+            title="⌘2 / Ctrl+2"
           >
             Author
           </button>
@@ -312,17 +419,20 @@ export default function PlaygroundIsland({ initialFixtureId, baseUrl }: Props) {
               disabled={loadState === "loading"}
               onClick={onLoadEvaluator}
               data-testid="load-evaluator"
+              title="⌘L / Ctrl+L"
             >
               {loadState === "loading" ? "Loading WASM…" : "Load evaluator"}
             </button>
           ) : (
             <span class="status ok">Evaluator loaded</span>
           )}
-          <button type="button" class="btn" onClick={onShare}>
+          <button type="button" class="btn" onClick={onShare} title="⌘⇧U / Ctrl+Shift+U">
             Share URL
           </button>
         </div>
       </div>
+
+      <ShortcutsHelp open={shortcutsOpen} onToggle={() => setShortcutsOpen((o) => !o)} />
 
       {loadError && <p class="error-banner">{loadError}</p>}
       {shareMsg && <p class="hint">{shareMsg}</p>}
@@ -343,6 +453,7 @@ export default function PlaygroundIsland({ initialFixtureId, baseUrl }: Props) {
             <PackEditor
               disabled={!ready}
               onStatus={setStatus}
+              onActions={onPackActions}
               onReloaded={(rc) => {
                 if (rc === 0) {
                   setStatus("Pack reloaded — re-evaluating shell suite…");
