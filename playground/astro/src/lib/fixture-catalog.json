@@ -14,7 +14,7 @@
     "id": "curl_sh_deny",
     "domain": "shell",
     "method": "checkShell",
-    "description": "curl + sh tokens in argv \u2192 shellRemoteExec (24).",
+    "description": "curl + sh tokens in argv → shellRemoteExec (24).",
     "file": "shell/curl_sh_deny.json",
     "expect": {
       "decision": 0,
@@ -25,7 +25,7 @@
     "id": "cwd_outside_deny",
     "domain": "shell",
     "method": "checkShell",
-    "description": "Shell path-plane: cwd outside agent workspace \u2192 pathOutsideWorkspace (2).",
+    "description": "Shell path-plane: cwd outside agent workspace → pathOutsideWorkspace (2).",
     "file": "shell/cwd_outside_deny.json",
     "expect": {
       "decision": 0,
@@ -36,7 +36,7 @@
     "id": "glpat_secret_deny",
     "domain": "shell",
     "method": "checkShell",
-    "description": "GitLab PAT material in argv \u2192 shellSecretInArgv (27).",
+    "description": "GitLab PAT-shaped material in argv (canary, not a real secret) -> shellSecretInArgv (27). Token intentionally too short for secrets:scan gitlab-pat regex.",
     "file": "shell/glpat_secret_deny.json",
     "expect": {
       "decision": 0,
@@ -47,11 +47,22 @@
     "id": "missing_pep723_deny",
     "domain": "shell",
     "method": "checkShell",
-    "description": "uv run of .py without PEP 723 block \u2192 pythonMissingPep723 (19).",
+    "description": "uv run of .py without PEP 723 block → pythonMissingPep723 (19).",
     "file": "shell/missing_pep723_deny.json",
     "expect": {
       "decision": 0,
       "code": 19
+    }
+  },
+  {
+    "id": "multipack_canary_deny",
+    "domain": "shell",
+    "method": "checkShell",
+    "description": "Second pack in packs.d denies argv containing multipack-demo (compose deny over product allow path). Requires multi-pack default spec.",
+    "file": "shell/multipack_canary_deny.json",
+    "expect": {
+      "decision": 0,
+      "code": 23
     }
   },
   {
@@ -69,7 +80,7 @@
     "id": "uv_pep723_allow",
     "domain": "shell",
     "method": "checkShell",
-    "description": "uv run of PEP 723 script under workspace \u2192 shellExecAllow (20).",
+    "description": "uv run of PEP 723 script under workspace → shellExecAllow (20).",
     "file": "shell/uv_pep723_allow.json",
     "expect": {
       "decision": 1,
@@ -80,7 +91,7 @@
     "id": "outside_deny",
     "domain": "path",
     "method": "checkPath",
-    "description": "fs read outside workspace \u2192 pathOutsideWorkspace (2).",
+    "description": "fs read outside workspace → pathOutsideWorkspace (2).",
     "file": "path/outside_deny.json",
     "expect": {
       "decision": 0,
@@ -91,7 +102,7 @@
     "id": "sensitive_deny",
     "domain": "path",
     "method": "checkPath",
-    "description": "Read of credential path under workspace \u2192 pathSensitiveDeny (28).",
+    "description": "Read of credential path under workspace → pathSensitiveDeny (28).",
     "file": "path/sensitive_deny.json",
     "expect": {
       "decision": 0,
@@ -102,7 +113,7 @@
     "id": "under_workspace_allow",
     "domain": "path",
     "method": "checkPath",
-    "description": "fs read under agent workspace \u2192 pathUnderWorkspaceAllow (3).",
+    "description": "fs read under agent workspace → pathUnderWorkspaceAllow (3).",
     "file": "path/under_workspace_allow.json",
     "expect": {
       "decision": 1,
@@ -113,7 +124,7 @@
     "id": "publish_run_allow",
     "domain": "seat",
     "method": "checkSeat",
-    "description": "SeatAction.publishRun \u2192 seatBoardAllow (8).",
+    "description": "SeatAction.publishRun → seatBoardAllow (8).",
     "file": "seat/publish_run_allow.json",
     "expect": {
       "decision": 1,
@@ -124,7 +135,7 @@
     "id": "network_prompt",
     "domain": "risk",
     "method": "checkRisk",
-    "description": "RiskAction.network \u2192 highRiskPrompt (7).",
+    "description": "RiskAction.network → highRiskPrompt (7).",
     "file": "risk/network_prompt.json",
     "expect": {
       "decision": 2,
@@ -135,18 +146,11 @@
     "id": "secret_export_deny",
     "domain": "risk",
     "method": "checkRisk",
-    "description": "RiskAction.secretExport \u2192 secretExportDenied (29).",
+    "description": "RiskAction.secretExport → secretExportDenied (29).",
     "file": "risk/secret_export_deny.json",
     "expect": {
       "decision": 0,
       "code": 29
     }
-  },
-  {
-    "id": "multipack_canary_deny",
-    "domain": "shell",
-    "title": "Multi-pack canary deny",
-    "file": "shell/multipack_canary_deny.json",
-    "description": "packs.d extra pack denies multipack-demo (compose over product)"
   }
 ]

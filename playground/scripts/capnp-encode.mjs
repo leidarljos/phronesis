@@ -83,8 +83,7 @@ class CapnArena {
     }
     // type=01 | offset<<2 | elementSize<<32 | elementCount<<35
     const lo = ((offset << 2) | 1) >>> 0;
-    const hi =
-      ((elementSize & 7) | ((elementCount & 0x1fffffff) << 3)) >>> 0;
+    const hi = ((elementSize & 7) | ((elementCount & 0x1fffffff) << 3)) >>> 0;
     this.setWord(at, BigInt(lo) | (BigInt(hi) << 32n));
   }
 
@@ -266,11 +265,7 @@ export function encodeFixtureRequest(req) {
     case "checkSeat":
       return encodeSeatCheck(agent, actionOrdinal(req.action, "seat"));
     case "checkRisk":
-      return encodeRiskCheck(
-        agent,
-        actionOrdinal(req.action, "risk"),
-        req.path ?? "",
-      );
+      return encodeRiskCheck(agent, actionOrdinal(req.action, "risk"), req.path ?? "");
     case "reloadShellPack":
       return encodeReloadShellPack(req.path ?? "");
     default:

@@ -182,6 +182,48 @@
       "name": "secretExportDenied",
       "comment": "",
       "group": "Secret material must not appear in argv (glpat-/ghp_/PEM/basic-auth URL/...)"
+    },
+    {
+      "code": 30,
+      "name": "audioMicOpenDeny",
+      "comment": "Default deny for opening a capture device.",
+      "group": "checkAudio (voice plane gates; meta #97 Track E / epic #92) TCB only \u2014 no waveforms / PCM. sessiond checks before voiceArm / inject."
+    },
+    {
+      "code": 31,
+      "name": "audioListenArmPrompt",
+      "comment": "Confirm class for listen arm; hard seats fail closed on prompt.",
+      "group": "checkAudio (voice plane gates; meta #97 Track E / epic #92) TCB only \u2014 no waveforms / PCM. sessiond checks before voiceArm / inject."
+    },
+    {
+      "code": 32,
+      "name": "audioAlwaysListenDeny",
+      "comment": "Default deny for always-listen / no-wake persistent listen.",
+      "group": "checkAudio (voice plane gates; meta #97 Track E / epic #92) TCB only \u2014 no waveforms / PCM. sessiond checks before voiceArm / inject."
+    },
+    {
+      "code": 33,
+      "name": "audioNetworkSttDeny",
+      "comment": "Default deny for network / cloud STT backends.",
+      "group": "checkAudio (voice plane gates; meta #97 Track E / epic #92) TCB only \u2014 no waveforms / PCM. sessiond checks before voiceArm / inject."
+    },
+    {
+      "code": 34,
+      "name": "audioInjectDeny",
+      "comment": "Default deny for voicePushUtterance harness inject (production).",
+      "group": "checkAudio (voice plane gates; meta #97 Track E / epic #92) TCB only \u2014 no waveforms / PCM. sessiond checks before voiceArm / inject."
+    },
+    {
+      "code": 35,
+      "name": "audioFixtureAllow",
+      "comment": "Test/dogfood allow via GROKOS_POLICYD_AUDIO_ALLOW (all AudioAction).",
+      "group": "checkAudio (voice plane gates; meta #97 Track E / epic #92) TCB only \u2014 no waveforms / PCM. sessiond checks before voiceArm / inject."
+    },
+    {
+      "code": 36,
+      "name": "audioUnknownAction",
+      "comment": "Unknown / unmapped AudioAction \u2192 deny.",
+      "group": "checkAudio (voice plane gates; meta #97 Track E / epic #92) TCB only \u2014 no waveforms / PCM. sessiond checks before voiceArm / inject."
     }
   ]
 }

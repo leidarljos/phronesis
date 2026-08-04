@@ -10,14 +10,26 @@
     "build": "astro build",
     "gen:encyclopedia": "python3 ../scripts/gen-encyclopedia.py",
     "preview": "astro preview",
-    "astro": "astro"
+    "astro": "astro",
+    "lint": "biome check src astro.config.mjs ../scripts",
+    "lint:fix": "biome check --write src astro.config.mjs ../scripts",
+    "format": "biome format --write src astro.config.mjs ../scripts",
+    "typecheck": "tsc --noEmit",
+    "check": "npm run lint && npm run typecheck"
   },
   "dependencies": {
     "@astrojs/preact": "^4.0.4",
+    "@codemirror/commands": "^6.10.4",
+    "@codemirror/language": "^6.12.4",
+    "@codemirror/state": "^6.7.1",
+    "@codemirror/view": "^6.43.7",
+    "@lezer/highlight": "^1.2.3",
     "astro": "^5.7.10",
     "preact": "^10.26.5"
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.2.4",
+    "@types/node": "^26.1.2",
     "typescript": "^5.8.3"
   }
 }

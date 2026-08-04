@@ -300,6 +300,21 @@ playground:parity:
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
       changes: *playground_paths
 
+# Biome + TypeScript for playground Astro/TS/JS (no emcc, no WASM).
+playground:check:
+  stage: build
+  image: node:22-bookworm-slim
+  interruptible: true
+  script:
+    - cd playground/astro
+    - npm ci
+    - npm run check
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      changes: *playground_paths
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      changes: *playground_paths
+
 # GitLab Pages — Astro dist; members-only project Pages access.
 # Prebuilt playground/dist-wasm/ is tracked so shared runners need no emsdk.
 # Always deploy on default branch (do not gate on rules:changes — merge-commit

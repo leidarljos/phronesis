@@ -151,10 +151,7 @@ export function encodePathCheck(
   return arena.toUint8Array();
 }
 
-export function encodeSeatCheck(
-  agent: AgentId | undefined,
-  action: number,
-): Uint8Array {
+export function encodeSeatCheck(agent: AgentId | undefined, action: number): Uint8Array {
   const hi = agent?.hi ?? 1;
   const lo = agent?.lo ?? 2;
   const { arena, dataOff, ptrOff } = beginRoot(1, 1);
@@ -249,11 +246,7 @@ export function encodeFixtureRequest(req: EncodeRequest): Uint8Array {
     case "checkSeat":
       return encodeSeatCheck(agent, actionOrdinal(req.action, "seat"));
     case "checkRisk":
-      return encodeRiskCheck(
-        agent,
-        actionOrdinal(req.action, "risk"),
-        req.path ?? "",
-      );
+      return encodeRiskCheck(agent, actionOrdinal(req.action, "risk"), req.path ?? "");
     case "reloadShellPack":
       return encodeReloadShellPack(req.path ?? "");
     case "checkModel":

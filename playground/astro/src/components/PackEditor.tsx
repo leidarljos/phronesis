@@ -1,4 +1,3 @@
-import { useEffect, useState } from "preact/hooks";
 import {
   getModule,
   isEvaluatorReady,
@@ -7,6 +6,8 @@ import {
   reloadPackPath,
   writeMemfsText,
 } from "@lib/wasm";
+import { useCallback, useEffect, useState } from "preact/hooks";
+import { JanetEditor } from "./JanetEditor";
 
 /** Product entry under MEMFS (always first in the multi-pack colon list). */
 const DEFAULT_PACK = "/policy/shell.janet";
@@ -17,20 +18,30 @@ const DEFAULT_PACK = "/policy/shell.janet";
  */
 const DEFAULT_PACK_SPEC = "/policy/shell.janet:/policy/packs.d";
 
+export type PackEditorActions = {
+  expand: () => void;
+  collapse: () => void;
+  writeMemfs: () => Promise<void>;
+  writeReload: () => Promise<void>;
+  isExpanded: () => boolean;
+};
+
 interface Props {
   disabled?: boolean;
   onReloaded?: (rc: number) => void;
   onStatus?: (msg: string) => void;
+  /** Register keyboard-targetable actions with the playground shell. */
+  onActions?: (actions: PackEditorActions | null) => void;
 }
 
-export function PackEditor({ disabled, onReloaded, onStatus }: Props) {
+export function PackEditor({ disabled, onReloaded, onStatus, onActions }: Props) {
   const [tree, setTree] = useState<{ path: string; isDir: boolean }[]>([]);
   const [selected, setSelected] = useState(DEFAULT_PACK);
   const [body, setBody] = useState("");
   const [dirty, setDirty] = useState(false);
   const [busy, setBusy] = useState(false);
-  /** Active multi-pack colon list shown to Author mode (reload target). */
   const [packSpec, setPackSpec] = useState(DEFAULT_PACK_SPEC);
+  const [expanded, setExpanded] = useState(false);
 
   function refreshTree() {
     const m = getModule();
@@ -60,22 +71,14 @@ export function PackEditor({ disabled, onReloaded, onStatus }: Props) {
     }
   }
 
+  // Seed tree/file when the evaluator becomes available (disabled flips false).
   useEffect(() => {
-    if (isEvaluatorReady()) {
-      refreshTree();
-      loadFile(DEFAULT_PACK);
-    }
+    if (!isEvaluatorReady()) return;
+    refreshTree();
+    if (!body) loadFile(selected || DEFAULT_PACK);
   }, [disabled]);
 
-  // Re-scan when evaluator becomes ready (parent toggles disabled)
-  useEffect(() => {
-    if (!disabled && isEvaluatorReady()) {
-      refreshTree();
-      if (!body) loadFile(selected || DEFAULT_PACK);
-    }
-  }, [disabled]);
-
-  async function onSaveWrite() {
+  const onSaveWrite = useCallback(async () => {
     const m = getModule();
     if (!m) {
       onStatus?.("Load evaluator first");
@@ -92,9 +95,9 @@ export function PackEditor({ disabled, onReloaded, onStatus }: Props) {
     } finally {
       setBusy(false);
     }
-  }
+  }, [selected, body, onStatus]);
 
-  async function onReload() {
+  const onReload = useCallback(async () => {
     if (!isEvaluatorReady()) {
       onStatus?.("Load evaluator first");
       return;
@@ -106,8 +109,6 @@ export function PackEditor({ disabled, onReloaded, onStatus }: Props) {
         writeMemfsText(m, selected, body);
         setDirty(false);
       }
-      // Multi-pack: reload the full colon list (entry + packs.d / extras).
-      // lib/*.janet under each entry's dirname still load with that pack.
       const spec = (packSpec || DEFAULT_PACK_SPEC).trim() || DEFAULT_PACK_SPEC;
       const rc = await reloadPackPath(spec);
       onReloaded?.(rc);
@@ -120,12 +121,110 @@ export function PackEditor({ disabled, onReloaded, onStatus }: Props) {
     } finally {
       setBusy(false);
     }
+  }, [dirty, selected, body, packSpec, onReloaded, onStatus]);
+
+  useEffect(() => {
+    if (!onActions) return;
+    onActions({
+      expand: () => setExpanded(true),
+      collapse: () => setExpanded(false),
+      writeMemfs: onSaveWrite,
+      writeReload: onReload,
+      isExpanded: () => expanded,
+    });
+    return () => onActions(null);
+  }, [onActions, onSaveWrite, onReload, expanded]);
+
+  const editorDisabled = disabled || !selected || !isEvaluatorReady();
+
+  function onEditorChange(text: string) {
+    setBody(text);
+    setDirty(true);
+  }
+
+  function renderTree() {
+    return (
+      <aside class="pack-tree">
+        <div class="tree-actions">
+          <button
+            type="button"
+            class="btn"
+            disabled={disabled || busy}
+            onClick={refreshTree}
+          >
+            Refresh
+          </button>
+        </div>
+        <ul>
+          {tree.map((e) => (
+            <li key={e.path}>
+              <button
+                type="button"
+                class={e.path === selected ? "tree-item active" : "tree-item"}
+                disabled={disabled}
+                onClick={() => loadFile(e.path)}
+                title={e.path}
+              >
+                {e.path}
+              </button>
+            </li>
+          ))}
+          {tree.length === 0 && <li class="muted">No /policy files yet</li>}
+        </ul>
+      </aside>
+    );
+  }
+
+  function renderActions() {
+    return (
+      <>
+        <label class="field">
+          <span>Multi-pack reload spec (colon list)</span>
+          <input
+            type="text"
+            value={packSpec}
+            disabled={disabled || busy}
+            spellcheck={false}
+            onInput={(e) => setPackSpec((e.target as HTMLInputElement).value)}
+          />
+        </label>
+        <div class="btn-row">
+          <button
+            type="button"
+            class="btn"
+            disabled={disabled || busy || !dirty}
+            onClick={() => void onSaveWrite()}
+            title="⌘S / Ctrl+S"
+          >
+            Write MEMFS
+          </button>
+          <button
+            type="button"
+            class="btn primary"
+            disabled={disabled || busy}
+            onClick={() => void onReload()}
+            title="⌘⇧S / Ctrl+Shift+S"
+          >
+            Write + reload multi-pack
+          </button>
+        </div>
+      </>
+    );
   }
 
   return (
     <div class="pane pack-editor">
-      <header class="pane-header">
+      <header class="pane-header pack-editor-header">
         <h2>Pack editor</h2>
+        <button
+          type="button"
+          class="btn"
+          disabled={editorDisabled}
+          onClick={() => setExpanded(true)}
+          title="Expand (⌘. / Ctrl+.) — Esc to close"
+        >
+          Expand
+        </button>
       </header>
 
       {!isEvaluatorReady() && (
@@ -133,94 +232,81 @@ export function PackEditor({ disabled, onReloaded, onStatus }: Props) {
       )}
 
       <div class="pack-layout">
-        <aside class="pack-tree">
-          <div class="tree-actions">
-            <button
-              type="button"
-              class="btn"
-              disabled={disabled || busy}
-              onClick={refreshTree}
-            >
-              Refresh
-            </button>
-          </div>
-          <ul>
-            {tree.map((e) => (
-              <li key={e.path}>
-                <button
-                  type="button"
-                  class={
-                    e.path === selected ? "tree-item active" : "tree-item"
-                  }
-                  disabled={disabled}
-                  onClick={() => loadFile(e.path)}
-                >
-                  {e.path}
-                </button>
-              </li>
-            ))}
-            {tree.length === 0 && (
-              <li class="muted">No /policy files yet</li>
-            )}
-          </ul>
-        </aside>
+        {renderTree()}
         <div class="pack-body">
-          <label class="field">
-            <span>{selected || "—"}</span>
-            <textarea
-              rows={18}
-              value={body}
-              disabled={disabled || !selected}
-              spellcheck={false}
-              onInput={(e) => {
-                setBody((e.target as HTMLTextAreaElement).value);
-                setDirty(true);
-              }}
-            />
-          </label>
-          <label class="field">
-            <span>Multi-pack reload spec (colon list)</span>
-            <input
-              type="text"
-              value={packSpec}
-              disabled={disabled || busy}
-              spellcheck={false}
-              onInput={(e) =>
-                setPackSpec((e.target as HTMLInputElement).value)
-              }
-            />
-          </label>
-          <div class="btn-row">
-            <button
-              type="button"
-              class="btn"
-              disabled={disabled || busy || !dirty}
-              onClick={onSaveWrite}
-            >
-              Write MEMFS
-            </button>
-            <button
-              type="button"
-              class="btn primary"
-              disabled={disabled || busy}
-              onClick={onReload}
-            >
-              Write + reload multi-pack
-            </button>
+          <div class="field">
+            <span class="field-label">{selected || "—"}</span>
+            {!expanded && (
+              <JanetEditor
+                key={`inline-${selected}`}
+                value={body}
+                docKey={selected}
+                variant="inline"
+                disabled={editorDisabled}
+                onChange={onEditorChange}
+              />
+            )}
+            {expanded && (
+              <p class="hint pack-editor-parked">Editor open in expanded view…</p>
+            )}
           </div>
+          {renderActions()}
           <p class="hint">
-            Product multi-pack: colon-separated absolute{" "}
-            <code>.janet</code> files and/or directories (e.g.{" "}
-            <code>/policy/shell.janet:/policy/packs.d</code>). Each pack loads
-            its own sealed env + sibling <code>lib/*.janet</code>. Composition
-            is fail-closed: <strong>deny &gt; prompt &gt; allow</strong> across
-            packs that define <code>shell-check</code> /{" "}
-            <code>audio-check</code>. Default MEMFS seeds product{" "}
-            <code>shell.janet</code> plus <code>packs.d/extra-canary.janet</code>{" "}
-            (denies argv containing <code>multipack-demo</code>).
+            Product multi-pack: colon-separated absolute <code>.janet</code> files and/or
+            directories (e.g. <code>/policy/shell.janet:/policy/packs.d</code>). Each pack
+            loads its own sealed env + sibling <code>lib/*.janet</code>. Composition is
+            fail-closed: <strong>deny &gt; prompt &gt; allow</strong> across packs that
+            define <code>shell-check</code> / <code>audio-check</code>. Default MEMFS
+            seeds product <code>shell.janet</code> plus{" "}
+            <code>packs.d/extra-canary.janet</code> (denies argv containing{" "}
+            <code>multipack-demo</code>).
           </p>
         </div>
       </div>
+
+      {expanded && (
+        <div
+          class="pack-modal-backdrop"
+          role="presentation"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setExpanded(false);
+          }}
+        >
+          <div
+            class="pack-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Pack editor expanded"
+          >
+            <header class="pack-modal-header">
+              <div class="pack-modal-title">
+                <h2>Pack editor</h2>
+                <code class="pack-modal-path">{selected || "—"}</code>
+              </div>
+              <button type="button" class="btn" onClick={() => setExpanded(false)}>
+                Close
+              </button>
+            </header>
+            <div class="pack-modal-body">
+              {renderTree()}
+              <div class="pack-modal-editor">
+                <JanetEditor
+                  key={`expanded-${selected}`}
+                  value={body}
+                  docKey={selected}
+                  variant="expanded"
+                  disabled={editorDisabled}
+                  onChange={onEditorChange}
+                />
+                <div class="pack-modal-actions">{renderActions()}</div>
+              </div>
+            </div>
+            <p class="hint pack-modal-hint">
+              Esc closes · ⌘S write · ⌘⇧S reload · ? shortcuts
+            </p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
