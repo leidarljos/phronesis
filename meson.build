@@ -195,15 +195,37 @@ schema_gen = custom_target(
 schema_inc = include_directories('.')
 janet_inc = include_directories('third_party/janet')
 
-# External HaoZeke/capnp-janet: pkg-config (rg-forge) with wrap fallback.
-# Do not vendor that tree here. Subproject supplies janet_mod_src for the host
-# to compile against third_party/janet amalgamation.
-capnp_janet_dep = dependency(
-  'capnp-janet',
-  fallback: ['capnp-janet', 'capnp_janet_dep'],
-)
-capnp_janet_proj = subproject('capnp-janet')
-capnp_janet_mod_src = capnp_janet_proj.get_variable('capnp_janet_mod_src')
+# External HaoZeke/capnp-janet: do not vendor that tree here.
+# Link libcapnp_janet; compile janet_mod.c into this host (Janet amalgamation).
+# Prefer a local subproject/wrap for dogfood; otherwise system pkg-config.
+# Always forcing subproject() breaks when pkg-config already resolved the dep
+# (Meson cannot re-override it) and forces distros to ship a second copy.
+capnp_janet_sp = subproject('capnp-janet', required: false)
+if capnp_janet_sp.found()
+  capnp_janet_dep = capnp_janet_sp.get_variable('capnp_janet_dep')
+  capnp_janet_mod_src = capnp_janet_sp.get_variable('capnp_janet_mod_src')
+  message('capnp-janet via subproject')
+else
+  capnp_janet_dep = dependency('capnp-janet', required: true)
+  mod_path = get_option('capnp_janet_mod')
+  if mod_path == ''
+    mod_path = capnp_janet_dep.get_variable('janet_mod', default_value: '')
+  endif
+  if mod_path == ''
+    error(
+      'capnp-janet found via pkg-config but janet_mod.c path is unknown. '
+      + 'Pass -Dcapnp_janet_mod=/path/to/janet_mod.c, set pkg-config variable '
+      + 'janet_mod on capnp-janet.pc, or provide subprojects/capnp-janet '
+      + '(wrap or monorepo checkout).',
+    )
+  endif
+  if not fs.is_file(mod_path)
+    error('capnp_janet_mod is not a file: @0@'.format(mod_path))
+  endif
+  message('capnp-janet via pkg-config; janet_mod=@0@'.format(mod_path))
+  # Absolute path is a valid Meson source; hosts own the Janet amalgamation.
+  capnp_janet_mod_src = [mod_path]
+endif
 
 lib_srcs = files(
   'src/paths.c',
