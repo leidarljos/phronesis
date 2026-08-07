@@ -107,52 +107,10 @@ Job **`mutation:mull`**: Ubuntu 24.04, system Clang + Mull, pixi for deps only
 schedules. Prints the IDE survivor list at the end of the job log; full report
 under artifact `build-mull/mull-report/`.
 
-## Layout
 
-```text
-subprojects/grokos-schema.wrap   Meson wrap (Cap'n SoT from grokos-schema)
-schema/                          Offline pin (SCHEMA_PIN); not the edit SoT
-include/grok-policyd/            Public C ABI (includes handle_capnp)
-src/capnp_api.c                  Cap'n dispatch → TCB
-src/policy.c supervisor.c …      TCB
-src/policy_janet.c               Janet pack host (lib/ then entry)
-policy/shell.janet               Product entry (shell-check + audio-check)
-policy/lib/*.janet               Pure helpers loaded before the entry (sorted)
-third_party/janet/               Amalgamation pin (pack VM)
-tests/                           cmocka (pack_lib pure + shell_pack Cap'n + …)
-scripts/gen-capnp-c.sh           capnpc-c from SoT schemadir → build/
-scripts/coverage.sh              gcovr report (hard-requires gcovr from pixi)
-```
+## Layout law
 
-### Janet policy packs
-
-- **VM:** amalgamated Janet under `third_party/janet/` (pin in NOTICE).
-- **Cap'n in Janet:** `capnp-janet` (Meson subproject/wrap, or system pkg-config).
-  Not vendored sources. Distros: install `capnp-janet` + module source, then either
-  set pkg-config variable `janet_mod` to `janet_mod.c` or pass
-  `-Dcapnp_janet_mod=/usr/share/capnp-janet/janet_mod.c` (path may vary).
-- **Default on (no env):** Meson installs `policy/shell.janet` + `policy/lib/`
-  under `$prefix/share/grok-policyd/policy/` and bakes that absolute path into
-  the library. Unset `GROKOS_POLICYD_JANET_PACK` still loads product law. Also
-  tries `GROKOS_PREFIX/share/grok-policyd/policy/shell.janet`, FHS paths, then
-  CWD-relative `policy/shell.janet` (dev/tests).
-- **Multi-pack:** `GROKOS_POLICYD_JANET_PACK` is a **colon-separated** list of pack
-  files and/or directories of top-level `*.janet` files (PATH-style). Each pack
-  loads into its own sealed env (`dirname(pack)/lib/*.janet` optional helpers,
-  then the entry). Cap'n `reloadShellPack` accepts the same absolute list.
-  Example: `/etc/grokos/shell.janet:/opt/extra/secrets.janet` or
-  `/etc/grokos/packs.d` (sorted top-level entries; non-entry `.janet` skipped).
-- **Composition:** every pack that defines `shell-check` / `audio-check` runs;
-  host keeps the most restrictive outcome (**deny > prompt > allow**). Deny
-  short-circuits. Fail closed if no pack defines the needed entry.
-- **Load order (per pack):** sealed env → sibling `lib/*.janet` (sorted) → pack file.
-  Entry must define `shell-check` and/or `audio-check`. Pure helpers in
-  `policy/lib/` stay Cap'n-free so `tests/test_pack_lib.c` can unit-test them
-  without a supervisor (`voice-law` for voice gates; python/danger/secret for shell).
-- **Shell:** Cap'n `ShellView` → `shell-check` (uv, PEP 723, danger, secrets).
-- **Audio:** Cap'n `AudioCheck` passed through to `audio-check` (action table in `voice-law`);
-  host stamps `agentId` and applies `DENY_ALL` / `AUDIO_ALLOW` before the pack.
-- **Tests:** pure law in `pack_lib` suite; product Cap'n path in `shell_pack` / `capnp_ffi`.
+Root **README.md only**. No `docs/`, no satellite handbooks, no Makefile. meson→just→pixi.
 
 ## License
 
