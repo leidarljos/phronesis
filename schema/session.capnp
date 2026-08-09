@@ -48,76 +48,86 @@ struct Request {
   # Exactly one op. Unknown arms must not be invented by clients.
 
   op :union {
-    ping @0 :Void;
+    ping @0:Void;
     # Liveness. Response: pong.
 
-    status @1 :Void;
+    status @1:Void;
     # Aggregate seat snapshot. Response: status.
 
-    getMode @2 :Void;
+    getMode @2:Void;
     # Current SeatMode. Response: mode.
 
-    setMode @3 :SetMode;
+    setMode @3:SetMode;
     # Set product mode. Response: mode (echo).
 
-    doctor @4 :Void;
+    doctor @4:Void;
     # Hard/soft check report. Response: doctor.
 
-    goal @5 :Goal;
-    # Supervised goal path (may spawn model).
-
-    cancelGoal @6 :CancelGoal;
-    # Cancel by id. Response: error if none active.
-
-    shutdown @7 :Void;
+    shutdown @5:Void;
     # Graceful sessiond exit. Response: bye.
 
     # Seat run board (multi-peer visibility). sessiond retains a bounded board.
     # Any same-uid client may list/get/events after peers publish via reportAgent.
 
-    reportAgent @8 :ReportAgent;
+    reportAgent @6:ReportAgent;
     # Upsert one board row. Gated by peercred + optional policyd seat check.
 
-    listAgents @9 :Void;
+    listAgents @7:Void;
     # Full board snapshot. Response: agentsList.
 
-    getRun @10 :GetRun;
+    getRun @8:GetRun;
     # One row by id. Response: runDetail or error.
 
-    listRunEvents @11 :ListRunEvents;
+    listRunEvents @9:ListRunEvents;
     # Retained event trail. Response: runEvents.
 
     # ------------------------------------------------------------------
-    # Typed agent farm (parent↔child via sessiond; not generic Goal).
-    # One sessiond-allocated agentId for dispatch, process, board, messages,
-    # cancel, and results. policyd authorizes these ops; never model payloads.
+    # Subagent plane — Cap'n RPC = stock SubagentBackend / SubagentEvent,
+    # only remote (sessiond SERVER owns the single registry).
+    #
+    # Local (stock grok-build, one process):
+    #   ChannelBackend → SubagentCoordinator (same procedure names/semantics).
+    # Seated (GrokOS):
+    #   Cap'n client → these Request arms → sessiond (no second coordinator).
+    #
+    # Task tool / get_task_output / kill_task / between-turn Completions and
+    # Outstanding MUST call these procedures. Do not invent parallel "farm"
+    # product APIs; CLI farm/spawn is only sugar over the same RPCs.
+    # policyd authorizes; never model HTTP payloads on this bus.
     # ------------------------------------------------------------------
 
-    spawnAgent @12 :SpawnAgent;
-    # Admit + record + launch/supervise grokos-agent. Response: agentAdmitted
-    # (returns immediately; does not wait for model completion).
+    spawnAgent @10:SpawnAgent;
+    # = SubagentBackend::spawn / SubagentEvent::Spawn (admit half).
+    # sessiond mints AgentId + registry row only. Does NOT exec the child;
+    # admitter-local parent launches product agent (same as stock: coordinator
+    # accepts, ChildRunner runs elsewhere). Response: agentAdmitted immediately.
 
-    getAgent @13 :GetAgent;
+    getAgent @11:GetAgent;
+    # = SubagentBackend::query (non-blocking snapshot) / Inspect body.
     # One agent by canonical id. Response: agentDetail.
 
-    listChildren @14 :ListChildren;
-    # Children of parentId. Response: childrenList.
+    listChildren @12:ListChildren;
+    # = ListActive / ListRunning (children of parent). Response: childrenList.
 
-    watchAgentEvents @15 :WatchAgentEvents;
-    # Events for agentId with seq > sinceSeq (long-poll friendly). Response: agentEvents.
+    watchAgentEvents @13:WatchAgentEvents;
+    # Join / progress stream (stock blocking Query(block=true) long-poll).
+    # Events for agentId with seq > sinceSeq. Response: agentEvents.
 
-    sendAgentMessage @16 :SendAgentMessage;
-    # Parent/sibling → agent mailbox via sessiond. Response: messageAccepted.
+    sendAgentMessage @14:SendAgentMessage;
+    # Parent/sibling → agent mailbox (sessiond holds queue). Response: messageAccepted.
+    # Receiver drains via querySubagent / watch — same process would use in-memory
+    # waiters; RPC keeps the queue in sessiond.
 
-    cancelAgent @17 :CancelAgent;
-    # Kill supervised process group/cgroup/scope; wait for confirmed death.
-    # Response: agentCancelled (terminal reason preserved).
+    cancelAgent @15:CancelAgent;
+    # = SubagentBackend::cancel / SubagentEvent::Cancel(SubagentId).
+    # Best-effort process stop + confirmed terminal on registry.
+    # Response: agentCancelled.
 
-    reportAgentProgress @18 :ReportAgentProgress;
-    # Agent → sessiond progress / tool milestones. Response: progressAck.
+    reportAgentProgress @16:ReportAgentProgress;
+    # Child → registry progress (stock ActiveChild progress). Response: progressAck.
 
-    completeAgent @19 :CompleteAgent;
-    # Agent → sessiond terminal result. Response: completeAck.
+    completeAgent @17:CompleteAgent;
+    # Child → terminal result (stock finish_child). Response: completeAck.
 
     # ------------------------------------------------------------------
     # Workspace plane (herdr-class pane/tab topology on the Cap'n bus).
@@ -125,16 +135,16 @@ struct Request {
     # so peers (shell CLI, agent, MCP) share stable pane↔agent bindings.
     # ------------------------------------------------------------------
 
-    reportPane @20 :ReportPane;
+    reportPane @18:ReportPane;
     # Upsert one pane row (shell product after list/split/start). Response: paneDetail.
 
-    listPanes @21 :ListPanes;
+    listPanes @19:ListPanes;
     # Snapshot of pane registry. Response: panesList.
 
-    getPane @22 :GetPane;
+    getPane @20:GetPane;
     # One pane by id (+ optional workspace). Response: paneDetail or error.
 
-    releasePane @23 :ReleasePane;
+    releasePane @21:ReleasePane;
     # Drop registry row when pane closed. Response: bye (void ok).
 
     # ------------------------------------------------------------------
@@ -144,25 +154,25 @@ struct Request {
     # reading private session transcripts.
     # ------------------------------------------------------------------
 
-    upsertWork @24 :UpsertWork;
+    upsertWork @22:UpsertWork;
     # Create or refresh a work node. Response: workDetail.
 
-    listWork @25 :ListWork;
+    listWork @23:ListWork;
     # Snapshot of work nodes (optional status filter). Response: workList.
 
-    getWork @26 :GetWork;
+    getWork @24:GetWork;
     # One work node by id. Response: workDetail or error.
 
-    claimWork @27 :ClaimWork;
+    claimWork @25:ClaimWork;
     # CAS claim Ready/Todo→Claimed. Response: workClaimed or error.
 
-    completeWork @28 :CompleteWork;
+    completeWork @26:CompleteWork;
     # Terminal status (done|failed|cancelled). Response: workDetail.
 
-    linkWork @29 :LinkWork;
+    linkWork @27:LinkWork;
     # parent → child dependency edge. Response: workAck.
 
-    verifyWork @30 :Void;
+    verifyWork @28:Void;
     # Structural DAG verify (cycles, missing deps). Response: workAck or error.
 
     # ------------------------------------------------------------------
@@ -174,27 +184,94 @@ struct Request {
     # Text length fail-closed: implementer policy (see VoiceSize); not schema consts.
     # ------------------------------------------------------------------
 
-    voiceStatus @31 :Void;
+    voiceStatus @29:Void;
     # Snapshot VoiceListenState. Response: voice.
     # Equivalent to status.voice for CLI/doctor; does not arm or capture.
 
-    voiceArm @32 :VoiceArm;
+    voiceArm @30:VoiceArm;
     # Start listen mode (off by default). Response: voice (echo state).
     # Server may return error.denied (policy) or error.offline (audio down).
     # Does not select STT backend/model on the wire (sessiond pin / config).
 
-    voiceDisarm @33 :Void;
+    voiceDisarm @31:Void;
     # Stop listen / release capture. Response: voice.
     # Idempotent: already-disarmed is success with armed=false.
 
-    watchVoiceEvents @34 :WatchVoiceEvents;
+    watchVoiceEvents @32:WatchVoiceEvents;
     # Partial/final/armed/disarmed/error trail (long-poll friendly).
     # Response: voiceEvents. Primary stream path (not SessionEvent memfd).
 
-    voicePushUtterance @35 :VoicePushUtterance;
+    voicePushUtterance @33:VoicePushUtterance;
     # Harness/dev inject of transcript text (no mic). Response: voice.
     # Production seats should policy-deny (tool=voice action=inject).
     # Overlong text → error.invalid (do not truncate client injects).
+
+    # ------------------------------------------------------------------
+    # Pane geometry control (Cap'n product API only).
+    # Law: agents / farm / tools speak Cap'n here — never shell out to
+    # `grokos-shell pane …`, never invent engine IPC from agent-core.
+    # sessiond is SERVER: admit + drive mux (shell product is sessiond's
+    # adapter). Response shapes are the seat registry truth.
+    # ------------------------------------------------------------------
+
+    splitPane @34:SplitPane;
+    # Create tiled pane (optional root command + optional agentId bind).
+    # Response: paneDetail.
+
+    focusPane @35:FocusPane;
+    # Focus by paneId, or by direction when direction is set. Response: paneDetail or bye.
+
+    closePane @36:ClosePane;
+    # Close pane + release registry row. Response: bye.
+
+    readPane @37:ReadPane;
+    # Dump pane buffer. Response: paneBuffer.
+
+    writePane @38:WritePane;
+    # Write text (optional Enter). Response: bye.
+
+    # ------------------------------------------------------------------
+    # Subagent plane (continued) — procedures stock drains each turn that
+    # were missing as Cap'n RPC (must not stay ChannelBackend-only).
+    # Ordinals continue after writePane; additive for 0.3.x.
+    # ------------------------------------------------------------------
+
+    querySubagent @39:QuerySubagent;
+    # = SubagentBackend::query (block + timeout_ms). Response: subagentSnapshot
+    # or error.notFound. Prefer this over getAgent when block/timeout matter.
+
+    drainSubagentCompletions @40:DrainSubagentCompletions;
+    # = SubagentEvent::Completions (between-turn / idle reminder).
+    # Returns terminal children for parent not in suppressIds, then marks them
+    # drained on sessiond (one-shot surface, stock buffer_completions semantics).
+    # Response: subagentCompletions.
+
+    subagentOutstanding @41:SubagentOutstanding;
+    # = SubagentEvent::Outstanding (turn freeze / usage incomplete).
+    # Live + background children for parentAgentId + optional parentPromptId.
+    # Response: subagentOutstandingReply.
+
+    subagentRegistryCounts @42:Void;
+    # = SubagentEvent::RegistryCounts. Response: subagentRegistryCounts.
+    # Snapshot pending/active/completed under the caller's seat scope.
+
+    # ------------------------------------------------------------------
+    # Multi-process seat attach tokens (meta #126).
+    # sessiond mints after a live hard prepare; clients present the token
+    # on later tools. Not a same-UID stamp file. Not Policyd.admitSeat.
+    # Cap'n Policyd remains tool allow/deny TCB after checkAdmit succeeds.
+    # ------------------------------------------------------------------
+
+    issueAdmit @43:IssueAdmit;
+    # Mint a short-lived opaque token bound to this seat + workspace + mode.
+    # Response: admitIssued. Fail closed if sessiond would reject hard prepare.
+
+    checkAdmit @44:CheckAdmit;
+    # Validate token (unknown / expired / revoked / mode mismatch → error).
+    # Success may refresh expiry. Response: admitOk.
+
+    revokeAdmit @45:RevokeAdmit;
+    # Drop one token, or all when token is empty. Response: bye.
   }
 }
 
@@ -414,7 +491,7 @@ struct SendAgentMessage {
 
 struct CancelAgent {
   agentId @0 :Util.AgentId;
-  # Non-zero required (unlike cancelGoal empty=all).
+  # Non-zero required (unlike cancel all via zero cancelAgent).
   reason @1 :Text;
   # Human reason only; machine outcome is TerminalReason on response.
 }
@@ -446,6 +523,126 @@ struct CompleteAgent {
   # Opaque model conversation handle.
   message @5 :Text;
   # Human terminal message (open).
+}
+
+# --- Stock SubagentBackend procedures as Cap'n (remote coordinator) -----------
+
+struct QuerySubagent {
+  # = SubagentBackend::query / SubagentEvent::Query
+
+  agentId @0 :Util.AgentId;
+  # Non-zero child id.
+  parentId @1 :Util.AgentId;
+  # Zero = no parent scope filter; non-zero = only if parent matches.
+  block @2 :Bool;
+  # true = wait until terminal or timeoutMs (stock Query.block).
+  timeoutMs @3 :UInt32 = 0;
+  # 0 with block=false = immediate snapshot; 0 with block=true = product default.
+}
+
+struct DrainSubagentCompletions {
+  # = SubagentEvent::Completions (between-turn drain)
+
+  parentId @0 :Util.AgentId;
+  # Parent AgentId (seat GROKOS_RUN_ID). Zero = invalid.
+  suppressIds @1 :List(Util.AgentId);
+  # Already-surfaced children (stock suppress_ids). Empty = none.
+}
+
+struct SubagentCompletionEntry {
+  # Stock SubagentCompletionSummary on the wire.
+
+  agentId @0 :Util.AgentId;
+  subagentType @1 :Text;
+  # Role/type token (open catalog string; maps to AgentRole when closed).
+  description @2 :Text;
+  success @3 :Bool;
+  durationMs @4 :UInt64;
+  toolCalls @5 :UInt32;
+  turns @6 :UInt32;
+  output @7 :Text;
+  # Final output tail (open content).
+}
+
+struct SubagentCompletions {
+  entries @0 :List(SubagentCompletionEntry);
+}
+
+struct SubagentOutstanding {
+  # = SubagentEvent::Outstanding
+
+  parentId @0 :Util.AgentId;
+  # Seat parent AgentId (non-zero).
+  parentPromptId @1 :Text;
+  # Stock prompt_id scope; empty = all prompts under parent.
+}
+
+struct SubagentOutstandingReply {
+  liveIds @0 :List(Util.AgentId);
+  # Turn-blocking live children (stock live_ids).
+  backgroundLive @1 :Bool;
+  # Any background live child under scope.
+  subagentUsageNotApplied @2 :Bool;
+  # Sticky incomplete usage flag (stock).
+}
+
+struct SubagentRegistryCounts {
+  pending @0 :UInt32;
+  active @1 :UInt32;
+  completed @2 :UInt32;
+}
+
+# --- Multi-process seat attach tokens (sessiond-issued; meta #126) ------------
+
+struct IssueAdmit {
+  # Mint after live sessiond + workspace bind (hard prepare).
+
+  workspace @0 :Text;
+  # Absolute workspace bind path. Required non-empty.
+  agentId @1 :Util.AgentId;
+  # Optional farm/run id (zero = seat-only attach, no spawnAgent).
+}
+
+struct CheckAdmit {
+  token @0 :Text;
+  # Opaque hex from admitIssued.token. Required non-empty.
+  workspace @1 :Text;
+  # Optional echo; when non-empty must match the issued workspace.
+}
+
+struct RevokeAdmit {
+  token @0 :Text;
+  # Non-empty = that token. Empty = revoke all tokens on this sessiond.
+}
+
+struct AdmitIssued {
+  token @0 :Text;
+  # Opaque hex (sessiond-only store). Not AgentId. Not a stamp file body.
+  expiryUnix @1 :Util.UnixSecs;
+  # Exclusive unix seconds. Product default TTL 900s unless sessiond config.
+}
+
+struct AdmitOk {
+  expiryUnix @0 :Util.UnixSecs;
+  # Current expiry (may be refreshed on check).
+}
+
+struct SubagentSnapshot {
+  # Stock SubagentSnapshot for querySubagent response.
+
+  agentId @0 :Util.AgentId;
+  description @1 :Text;
+  subagentType @2 :Text;
+  state @3 :Util.RunState;
+  # initializing≈admitted/starting; running; terminal succeeded|failed|cancelled.
+  output @4 :Text;
+  # Completed output or empty.
+  error @5 :Text;
+  # Failed/cancelled reason or empty.
+  toolCalls @6 :UInt32;
+  turns @7 :UInt32;
+  durationMs @8 :UInt64;
+  startedAtEpochMs @9 :UInt64;
 }
 
 struct AgentRecord {
@@ -631,54 +828,51 @@ struct SetMode {
   # Closed product mode (was Text in v0.1).
 }
 
-struct Goal {
-  text @0 :Text;
-  # User goal prompt. Required non-empty for success. Open content.
-  cwd @1 :Text;
-  # Working directory; empty = sessiond default. Open path string.
-  maxTurns @2 :UInt32 = 8;
-  parentId @3 :Util.AgentId;
-  # Farm parent when this goal is a subagent; zero = root.
-  traceId @4 :Util.TraceId;
-  # Farm correlation; zero = sessiond mints.
-}
 
-struct CancelGoal {
-  id @0 :Util.AgentId;
-  # Zero = cancel all active goals on sessiond.
-}
 
 struct Response {
   ok :union {
-    pong @0 :Pong;
-    status @1 :StatusInfo;
-    mode @2 :Mode;
-    doctor @3 :DoctorReport;
-    goalStarted @4 :GoalStarted;
-    goalFinished @5 :GoalFinished;
-    error @6 :Error;
-    bye @7 :Void;
-    agentsList @8 :AgentsList;
-    runDetail @9 :AgentInfo;
-    runEvents @10 :RunEventsList;
-    agentAdmitted @11 :AgentAdmitted;
-    agentDetail @12 :AgentRecord;
-    childrenList @13 :ChildrenList;
-    agentEvents @14 :AgentEventsList;
-    messageAccepted @15 :Void;
-    agentCancelled @16 :AgentCancelled;
-    progressAck @17 :Void;
-    completeAck @18 :Void;
-    panesList @19 :PanesList;
-    paneDetail @20 :PaneRecord;
-    workDetail @21 :WorkRecord;
-    workList @22 :WorkList;
-    workClaimed @23 :WorkClaimed;
-    workAck @24 :Void;
-    voice @25 :VoiceListenState;
+    pong @0:Pong;
+    status @1:StatusInfo;
+    mode @2:Mode;
+    doctor @3:DoctorReport;
+    error @4:Error;
+    bye @5:Void;
+    agentsList @6:AgentsList;
+    runDetail @7:AgentInfo;
+    runEvents @8:RunEventsList;
+    agentAdmitted @9:AgentAdmitted;
+    agentDetail @10:AgentRecord;
+    childrenList @11:ChildrenList;
+    agentEvents @12:AgentEventsList;
+    messageAccepted @13:Void;
+    agentCancelled @14:AgentCancelled;
+    progressAck @15:Void;
+    completeAck @16:Void;
+    panesList @17:PanesList;
+    paneDetail @18:PaneRecord;
+    workDetail @19:WorkRecord;
+    workList @20:WorkList;
+    workClaimed @21:WorkClaimed;
+    workAck @22:Void;
+    voice @23:VoiceListenState;
     # voiceStatus / voiceArm / voiceDisarm / voicePushUtterance.
-    voiceEvents @26 :VoiceEventsList;
+    voiceEvents @24:VoiceEventsList;
     # watchVoiceEvents.
+    paneBuffer @25:PaneBuffer;
+    # readPane text payload.
+    subagentSnapshot @26:SubagentSnapshot;
+    # querySubagent.
+    subagentCompletions @27:SubagentCompletions;
+    # drainSubagentCompletions.
+    subagentOutstandingReply @28:SubagentOutstandingReply;
+    # subagentOutstanding.
+    subagentRegistryCounts @29:SubagentRegistryCounts;
+    # subagentRegistryCounts.
+    admitIssued @30:AdmitIssued;
+    # issueAdmit.
+    admitOk @31:AdmitOk;
+    # checkAdmit (expiry may be refreshed).
   }
 }
 
@@ -746,6 +940,69 @@ struct PaneRecord {
 
 struct PanesList {
   panes @0 :List(PaneRecord);
+}
+
+struct SplitPane {
+  # Create a tiled pane in the mux session (workspaceId).
+  # sessiond SERVER implements; clients never drive the engine socket.
+  # Farm visibility: after SpawnAgent admit, Cap'n splitPane with command
+  # (pane root process) + agentId (bind board row). No CLI shell-out.
+
+  workspaceId @0 :Text;
+  # Mux session name; empty = product default (grokos-develop).
+  direction @1 :Text;
+  # left|right|up|down; empty = engine default placement.
+  name @2 :Text;
+  # Optional pane title.
+  cwd @3 :Text;
+  # Absolute working directory for the new pane process. Empty = session default.
+  command @4 :Text;
+  # Pane **root** process: absolute executable path, optional argv joined
+  # product-side (first token is argv0). Empty = default interactive shell
+  # in that pane only. Not "type into bash"; not agent shelling grokos-shell.
+  noFocus @5 :Bool;
+  # When true, do not steal focus from the caller pane.
+  agentId @6 :Util.AgentId;
+  # Optional Cap'n bind (zero = unbound). Farm: set to SpawnAgent-minted id
+  # so listPanes / getPane show the child without a second invent protocol.
+}
+
+struct FocusPane {
+  paneId @0 :Text;
+  # When non-empty, focus this pane id.
+  workspaceId @1 :Text;
+  direction @2 :Text;
+  # When non-empty (and paneId empty), move focus left|right|up|down.
+}
+
+struct ClosePane {
+  paneId @0 :Text;
+  workspaceId @1 :Text;
+}
+
+struct ReadPane {
+  paneId @0 :Text;
+  workspaceId @1 :Text;
+  source @2 :Text;
+  # visible | recent | recent-unwrapped (herdr-class). Empty = visible.
+  lines @3 :UInt32;
+  # 0 = full dump for source; else last N lines.
+  ansi @4 :Bool;
+  # Keep ANSI when true (default strip for recent-unwrapped).
+}
+
+struct WritePane {
+  paneId @0 :Text;
+  workspaceId @1 :Text;
+  text @2 :Text;
+  enter @3 :Bool;
+  # When true, append newline (pane run parity).
+}
+
+struct PaneBuffer {
+  paneId @0 :Text;
+  workspaceId @1 :Text;
+  text @2 :Text;
 }
 
 # --- Work DAG plane ---------------------------------------------------------
@@ -1069,19 +1326,7 @@ enum ErrorCode {
   internal @5;
 }
 
-struct GoalStarted {
-  id @0 :Util.AgentId;
-  # sessiond-minted run id (xxh3-128).
-}
 
-struct GoalFinished {
-  id @0 :Util.AgentId;
-  code @1 :Int32;
-  stdoutTail @2 :Text;
-  # Open content peel.
-  sessionId @3 :Text;
-  # Model conversation id (open), not AgentId.
-}
 
 struct LoadState {
   level @0 :UInt8;
