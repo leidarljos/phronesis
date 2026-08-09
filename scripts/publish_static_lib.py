@@ -32,6 +32,38 @@ def die(msg: str) -> None:
     raise SystemExit(1)
 
 
+def schema_pin_path() -> Path:
+    """SCHEMA_PIN for the wrap SHA ci-seed-schema checked out (publish:lib)."""
+    pin = ROOT / "build" / "SCHEMA_PIN"
+    sot = ROOT / "subprojects" / "grokos-schema"
+    sha = "unknown"
+    ver = ""
+    if (sot / ".git").exists() or (sot / "schema" / "policy.capnp").is_file():
+        proc = subprocess.run(
+            ["git", "-C", str(sot), "rev-parse", "HEAD"],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        if proc.returncode == 0:
+            sha = proc.stdout.strip()
+        vfile = sot / "VERSION"
+        if vfile.is_file():
+            ver = vfile.read_text().strip()
+    if not ver:
+        local = ROOT / "schema" / "SCHEMA_PIN"
+        if local.is_file():
+            return local
+    pin.parent.mkdir(parents=True, exist_ok=True)
+    pin.write_text(
+        f"schema_version={ver or 'unknown'}\n"
+        f"schema_git_sha={sha}\n"
+        f"source=grokos-schema\n"
+        f"files=util.capnp,session.capnp,policy.capnp\n"
+    )
+    return pin
+
+
 def verify_archive() -> None:
     if not LIB.is_file() or LIB.stat().st_size == 0:
         die(f"missing or empty archive: {LIB}")
@@ -59,44 +91,50 @@ def upload() -> None:
     if not curl:
         die("curl not found on PATH")
 
-    url = (
+    sha = os.environ["CI_COMMIT_SHA"]
+    base = (
         f"{os.environ['CI_API_V4_URL']}/projects/{os.environ['CI_PROJECT_ID']}"
-        f"/packages/generic/{PACKAGE}/{os.environ['CI_COMMIT_SHA']}/{FILE}"
+        f"/packages/generic/{PACKAGE}/{sha}"
     )
-    print(f"publish {LIB.stat().st_size} bytes -> {url}")
-
-    out = Path("/tmp/publish-static-lib.out")
-    proc = subprocess.run(
-        [
-            curl,
-            "-sS",
-            "-o",
-            str(out),
-            "-w",
-            "%{http_code}",
-            "--header",
-            f"JOB-TOKEN: {os.environ['CI_JOB_TOKEN']}",
-            "--upload-file",
-            str(LIB),
-            url,
-        ],
-        check=False,
-        capture_output=True,
-        text=True,
-    )
-    code = (proc.stdout or "").strip()
-    body = out.read_text() if out.is_file() else ""
-    if body:
-        print(body)
-    if proc.returncode != 0:
-        die(f"curl failed (exit {proc.returncode}): {proc.stderr or proc.stdout}")
-    if code not in ("200", "201"):
-        die(f"package upload failed (http={code})")
-    print(f"http={code}")
+    pin = schema_pin_path()
+    for path in (LIB, pin):
+        remote = path.name
+        url = f"{base}/{remote}"
+        print(f"publish {path.stat().st_size} bytes -> {url}")
+        out = Path("/tmp/publish-static-lib.out")
+        proc = subprocess.run(
+            [
+                curl,
+                "-sS",
+                "-o",
+                str(out),
+                "-w",
+                "%{http_code}",
+                "--header",
+                f"JOB-TOKEN: {os.environ['CI_JOB_TOKEN']}",
+                "--upload-file",
+                str(path),
+                url,
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        code = (proc.stdout or "").strip()
+        body = out.read_text() if out.is_file() else ""
+        if body:
+            print(body)
+        if proc.returncode != 0:
+            die(f"curl failed (exit {proc.returncode}): {proc.stderr or proc.stdout}")
+        if code not in ("200", "201"):
+            die(f"package upload failed (http={code})")
+        print(f"http={code}")
 
 
 def main() -> None:
     verify_archive()
+    pin = schema_pin_path()
+    print(f"schema pin: {pin.read_text().strip()}")
     if os.environ.get("POLICYD_PUBLISH_DRY_RUN") == "1":
         print("dry-run: skip package registry upload")
         return

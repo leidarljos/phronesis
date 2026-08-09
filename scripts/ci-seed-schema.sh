@@ -17,16 +17,25 @@ if [[ -f subprojects/grokos-schema.wrap ]]; then
   rev=$(grep -E '^revision' subprojects/grokos-schema.wrap | awk '{print $3}' | tr -d '[:space:]' || true)
 fi
 git clone --filter=blob:none "$url" "${dest}"
-if [[ -n "${rev}" ]]; then
-  git -C "${dest}" fetch --depth 1 origin "${rev}" 2>/dev/null || true
-  git -C "${dest}" checkout --detach "${rev}" 2>/dev/null \
-    || git -C "${dest}" checkout --detach "origin/${rev}" 2>/dev/null \
-    || git -C "${dest}" checkout feat/meson-schema-project 2>/dev/null \
-    || git -C "${dest}" checkout main
-else
-  git -C "${dest}" checkout feat/meson-schema-project 2>/dev/null \
-    || git -C "${dest}" checkout main
+if [[ -z "${rev}" ]]; then
+  echo "ci-seed-schema: wrap missing revision" >&2
+  exit 1
+fi
+git -C "${dest}" fetch origin "${rev}" \
+  || git -C "${dest}" fetch --depth 1 origin "${rev}" \
+  || true
+if ! git -C "${dest}" checkout --detach "${rev}" 2>/dev/null \
+  && ! git -C "${dest}" checkout --detach "origin/${rev}" 2>/dev/null; then
+  echo "ci-seed-schema: cannot checkout wrap revision ${rev}" >&2
+  exit 1
+fi
+got="$(git -C "${dest}" rev-parse HEAD)"
+# wrap rev may be an annotated tag; compare peeled commit
+want="$(git -C "${dest}" rev-parse "${rev}^{commit}" 2>/dev/null || echo "$rev")"
+if [[ "$got" != "$want" && "$got" != "$rev" ]]; then
+  echo "ci-seed-schema: HEAD ${got} != wrap ${rev}" >&2
+  exit 1
 fi
 test -f "${dest}/schema/policy.capnp"
 test -f "${dest}/meson.build"
-echo "GROKOS_SCHEMA_SOT=${dest} sha=$(git -C "${dest}" rev-parse HEAD)"
+echo "GROKOS_SCHEMA_SOT=${dest} sha=${got} wrap=${rev}"
