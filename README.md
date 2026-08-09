@@ -133,17 +133,25 @@ second edit tree of field layouts):
    ln -sfn ../../grokos-schema subprojects/grokos-schema
    ```
 
-2. **Wrap** (`subprojects/grokos-schema.wrap`): pins `feat/meson-schema-project`
-   until grokos-schema Meson lands on `main` (schema !15); then switch
-   `revision` to `main` or a `schema-vX.Y.Z` tag. Private clone without
-   credentials soft-fails (`required: false`).
+2. **Wrap** (`subprojects/grokos-schema.wrap`): **schema-v0.3.10** /
+   `65d9669` (meta #126 / #131). CI `publish:lib` / `build:pixi` run
+   `scripts/ci-seed-schema.sh` (job token) then `-Dschema_require_sot=true`.
+   The published `.a` is that wrap revision — not the offline `schema/` pin.
+   Wrap clone without credentials is for local meson only (`required: false`).
 
 3. **pkg-config** `grokos-schema` (`schemadir=…`) when the schema package is
    installed on the system.
 
 4. **Local pin** `schema/` + `SCHEMA_PIN` when none of the above are available
-   (typical CI without wrap auth). Re-vendor from SoT with
+   (offline dogfood only). Re-vendor from SoT with
    `grokos-schema/scripts/vendor-into.sh --dest schema --pin`.
+
+A prebuilt `libgrok_policyd.a` (GitLab generic `libgrok_policyd/<sha>/` or
+conda `grok-policyd-musl-static`) was built from the wrap SHA seeded at
+publish time. Consumers compare that SHA to the product pin (session/agent
+schema-v0.3.10). `publish:lib` uploads `SCHEMA_PIN` next to the `.a` so the
+consumer can read it; a missing stamp after the wrap moved cannot prove
+`65d9669` (stale wrap-era archive) and must not link quietly.
 
 `scripts/gen-capnp-c.sh` always reads `policy.capnp` and `util.capnp` from the
 same schemadir (no mixed sources). Staged IDL installs under
