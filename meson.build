@@ -267,6 +267,10 @@ thread_dep = dependency('threads')
 # into the library as GROKOS_POLICYD_DEFAULT_JANET_PACK.
 policy_pack_install = get_option('datadir') / 'grok-policyd' / 'policy'
 install_data(
+  'schema/SCHEMA_PIN',
+  install_dir: get_option('datadir') / 'grok-policyd',
+)
+install_data(
   'policy/shell.janet',
   install_dir: policy_pack_install,
 )

@@ -333,11 +333,10 @@ interface Policyd {
   agentStatus @8 AgentQuery -> AgentStatus;
 
   reloadShellPack @9 ReloadShellPack -> PolicyDecision;
-  # Unload any loaded Janet shell pack and load path. Next checkShell with
-  # non-empty argv uses the new pack. Fail-closed on load error.
+  # Unload any loaded Janet packs and load path (colon list / packs.d).
+  # Next checkShell / checkAudio compose across packs. Fail-closed on load error.
 
   checkAudio @10 AudioCheck -> PolicyDecision;
-  # Voice/audio gates (meta #97). Product table: Janet audio-check pack
-  # (AudioCheck Cap'n in). Host TCB: DENY_ALL / AUDIO_ALLOW env; stamp agentId.
-  # No waveforms.
+  # Voice/audio gates (meta #97). Default deny / prompt per AudioAction.
+  # No waveforms. Fixture allow: GROKOS_POLICYD_AUDIO_ALLOW (TCB env).
 }

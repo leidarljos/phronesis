@@ -142,8 +142,14 @@ second edit tree of field layouts):
    installed on the system.
 
 4. **Local pin** `schema/` + `SCHEMA_PIN` when none of the above are available
-   (typical CI without wrap auth). Re-vendor from SoT with
+   (offline dogfood only). Re-vendor from SoT with
    `grokos-schema/scripts/vendor-into.sh --dest schema --pin`.
+
+Product consumers that take a prebuilt `libgrok_policyd.a` (conda
+`grok-policyd-musl-static`) must ship `SCHEMA_PIN` next to the archive
+(`musl-static/grok-policyd/SCHEMA_PIN`). No stamp, or `schema_git_sha`
+≠ the product pin, is a refuse — same shape as a floating product seed.
+Current lockstep: **schema-v0.3.10** / `65d9669` (meta #131 / #126).
 
 `scripts/gen-capnp-c.sh` always reads `policy.capnp` and `util.capnp` from the
 same schemadir (no mixed sources). Staged IDL installs under
