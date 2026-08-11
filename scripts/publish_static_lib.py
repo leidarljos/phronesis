@@ -33,35 +33,11 @@ def die(msg: str) -> None:
 
 
 def schema_pin_path() -> Path:
-    """SCHEMA_PIN for the wrap SHA ci-seed-schema checked out (publish:lib)."""
-    pin = ROOT / "build" / "SCHEMA_PIN"
-    sot = ROOT / "subprojects" / "grokos-schema"
-    sha = "unknown"
-    ver = ""
-    if (sot / ".git").exists() or (sot / "schema" / "policy.capnp").is_file():
-        proc = subprocess.run(
-            ["git", "-C", str(sot), "rev-parse", "HEAD"],
-            check=False,
-            capture_output=True,
-            text=True,
-        )
-        if proc.returncode == 0:
-            sha = proc.stdout.strip()
-        vfile = sot / "VERSION"
-        if vfile.is_file():
-            ver = vfile.read_text().strip()
-    if not ver:
-        local = ROOT / "schema" / "SCHEMA_PIN"
-        if local.is_file():
-            return local
-    pin.parent.mkdir(parents=True, exist_ok=True)
-    pin.write_text(
-        f"schema_version={ver or 'unknown'}\n"
-        f"schema_git_sha={sha}\n"
-        f"source=grokos-schema\n"
-        f"files=util.capnp,session.capnp,policy.capnp\n"
-    )
-    return pin
+    """Ship the in-tree interface stamp next to the archive."""
+    local = ROOT / "schema" / "SCHEMA_PIN"
+    if not local.is_file():
+        die(f"missing {local}")
+    return local
 
 
 def verify_archive() -> None:

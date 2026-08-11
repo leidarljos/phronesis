@@ -82,7 +82,7 @@ variables:
   - src/policy.c
   - src/capnp_api.c
   - schema/policy.capnp
-  - subprojects/grokos-schema.wrap
+  - schema/util.capnp
   - mull.yml
   - tests/test_policy.c
   - tests/test_capnp_ffi.c
@@ -105,8 +105,6 @@ build:pixi:
   script:
     - export PATH="${CI_PROJECT_DIR}/.pixi/envs/ci/bin:${PIXI_HOME}/bin:${PATH}"
     - export POLICYD_BIN="${CI_PROJECT_DIR}/build/grok-policyd"
-    - bash scripts/ci-seed-schema.sh
-    - export POLICYD_MESON_OPTS="-Dschema_require_sot=true"
     - just build
   after_script:
     - df -h || true
@@ -124,8 +122,6 @@ publish:lib:
   before_script: *pixi_prepare
   script:
     - export PATH="${CI_PROJECT_DIR}/.pixi/envs/ci/bin:${PIXI_HOME}/bin:${PATH}"
-    - bash scripts/ci-seed-schema.sh
-    - export POLICYD_MESON_OPTS="-Dschema_require_sot=true"
     - just publish-lib
   after_script:
     - df -h || true
@@ -145,8 +141,6 @@ coverage:pixi:
   before_script: *pixi_prepare
   script:
     - export PATH="${CI_PROJECT_DIR}/.pixi/envs/ci/bin:${PIXI_HOME}/bin:${PATH}"
-    - bash scripts/ci-seed-schema.sh
-    - export POLICYD_MESON_OPTS="-Dschema_require_sot=true"
     - just coverage
   artifacts:
     when: always

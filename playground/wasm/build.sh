@@ -62,9 +62,6 @@ fi
 # --- schema C (host capnpc-c) ---
 # gen-capnp-c.sh SCHEMA_DIR OUTDIR CAPNPC_C (SoT pin or subproject schemadir)
 SCHEMA_DIR="${GROKOS_SCHEMA_DIR:-$ROOT/schema}"
-if [[ ! -f "$SCHEMA_DIR/policy.capnp" && -f "$ROOT/subprojects/grokos-schema/schema/policy.capnp" ]]; then
-	SCHEMA_DIR="$ROOT/subprojects/grokos-schema/schema"
-fi
 echo "generating Cap'n C schema from $SCHEMA_DIR into $GEN" >&2
 bash "$ROOT/scripts/gen-capnp-c.sh" \
 	"$SCHEMA_DIR" \
