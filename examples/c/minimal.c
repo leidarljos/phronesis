@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: Apache-2.0 */
+/* SPDX-License-Identifier: MIT */
 /*
  * Minimal C consumer of the grok-policyd stable ABI.
  * Build: pixi run example  (links build/libgrok_policyd.a)

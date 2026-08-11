@@ -114,7 +114,7 @@ Root **README.md only**. No `docs/`, no satellite handbooks, no Makefile. mesonâ
 
 ## License
 
-Apache-2.0. See `LICENSE` and `third_party/NOTICE`.
+MIT for first-party code. See `LICENSE`. Import and build-dep notices stay in `third_party/NOTICE`.
 
 ## Deny-all and audio fixture (tests / lockdown)
 

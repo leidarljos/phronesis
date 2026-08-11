@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: Apache-2.0 */
+/* SPDX-License-Identifier: MIT */
 #ifndef GROK_POLICYD_POLICY_JANET_H
 #define GROK_POLICYD_POLICY_JANET_H
 

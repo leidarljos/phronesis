@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: Apache-2.0 */
+/* SPDX-License-Identifier: MIT */
 #ifndef GROK_POLICYD_TEST_HARNESS_H
 #define GROK_POLICYD_TEST_HARNESS_H
 

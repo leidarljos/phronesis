@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: Apache-2.0 */
+/* SPDX-License-Identifier: MIT */
 #include "grok-policyd/supervisor.h"
 
 const char *grok_policyd_version_string(void)

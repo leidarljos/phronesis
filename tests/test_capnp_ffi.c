@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: Apache-2.0 */
+/* SPDX-License-Identifier: MIT */
 /*
  * Policyd Cap'n methods: params root in, PolicyDecision root out (no unions).
  */

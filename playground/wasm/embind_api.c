@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: Apache-2.0 */
+/* SPDX-License-Identifier: MIT */
 /*
  * Playground KEEPALIVE C API for Emscripten MODULARIZE glue.
  * Name is historical (embind); pure C + EMSCRIPTEN_KEEPALIVE is enough.
