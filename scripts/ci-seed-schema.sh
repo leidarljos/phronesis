@@ -1,7 +1,5 @@
 #!/usr/bin/env bash
 # Pre-seed subprojects/grokos-schema for Meson subproject (CI job-token).
-#
-# Clone auth is GIT_ASKPASS + username-only rewrite (meta #135 / tools !38).
 # Never put CI_JOB_TOKEN in the URL: a colon in the token is parsed as a port.
 set -euo pipefail
 
@@ -13,8 +11,6 @@ if grep -RInE --include='*.sh' --include='*.py' \
   exit 2
 fi
 
-# GIT_ASKPASS + https://gitlab-ci-token@$host/ rewrite. Token stays out of
-# the URL and out of git argv. Same contract as shell scripts/ci-fast/git-ci.sh.
 git_ci() {
   local restore_x=0 rc=0 ask="" host
   case $- in *x*) restore_x=1; set +x ;; esac
