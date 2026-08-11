@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: Apache-2.0 */
+/* SPDX-License-Identifier: MIT */
 /*
  * Host helper: emit Cap'n ShellCheck bytes for playground smoke fixtures.
  *

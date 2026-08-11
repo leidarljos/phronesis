@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: Apache-2.0 */
+/* SPDX-License-Identifier: MIT */
 /**
  * @file supervisor.h
  * @brief Stable C ABI for the grok-policyd multi-agent supervisor.

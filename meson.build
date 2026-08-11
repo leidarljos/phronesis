@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: Apache-2.0
+# SPDX-License-Identifier: MIT
 #
 # grok-policyd: Cap'n language in-process (lib) + cmocka.
 # No nng policyd.sock server. Callers FFI with policy.capnp bodies.
@@ -12,7 +12,7 @@ project(
     'tr -d "[:space:]" < VERSION',
     check: true,
   ).stdout().strip(),
-  license: 'Apache-2.0',
+  license: 'MIT',
   # Match grokos-schema subproject (meson_version >=1.3).
   meson_version: '>=1.3.0',
   default_options: [

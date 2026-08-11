@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: Apache-2.0 */
+/* SPDX-License-Identifier: MIT */
 /*
  * TraceEvent ring buffer + JSON export (playground TRACE builds only).
  */

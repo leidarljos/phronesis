@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# SPDX-License-Identifier: Apache-2.0
+# SPDX-License-Identifier: MIT
 #
 # Direct-emcc playground build (v1). Produces:
 #   playground/dist-wasm/policyd-playground.js

@@ -2,7 +2,7 @@
 name = "grok-policyd"
 version = "0.1.0"
 description = "GrokOS multi-agent policy TCB — Cap'n FFI + C ABI"
-authors = ["GrokOS contributors"]
+authors = ["<ENTER-GROUP-NAME-HERE>"]
 channels = ["https://repo.prefix.dev/rg-forge", "conda-forge"]
 platforms = ["linux-64"]
 

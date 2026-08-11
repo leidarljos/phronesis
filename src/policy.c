@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: Apache-2.0 */
+/* SPDX-License-Identifier: MIT */
 /*
  * Domain eval helpers for Policyd methods.
  * Outcomes are Decision values (deny/allow/prompt), not C errno.

@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: Apache-2.0 */
+/* SPDX-License-Identifier: MIT */
 /*
  * interface Policyd: one Cap'n method per entry point.
  * Params message root in, result message root out. Always PolicyDecision for
