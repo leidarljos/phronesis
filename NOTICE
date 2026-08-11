@@ -1,0 +1,16 @@
+grok-policyd — third-party notices
+==================================
+
+First-party code is MIT (`LICENSE`).
+
+This package links or vendors:
+
+- Janet v1.39.1 amalgamation — MIT — `third_party/janet/`
+  https://github.com/janet-lang/janet
+- Cap'n Proto — MIT (Sandstorm)
+- c-capnproto (`libcapnp_c`) — MIT — not vendored; Meson `dependency('c-capnproto')`
+  https://github.com/HaoZeke/c-capnproto
+- capnp-janet — MIT — `subprojects/capnp-janet.wrap`
+  https://github.com/HaoZeke/capnp-janet
+
+See also `third_party/NOTICE` and `third_party/janet/NOTICE`.

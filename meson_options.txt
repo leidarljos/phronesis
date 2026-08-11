@@ -19,10 +19,10 @@ option(
 )
 
 option(
-  'schema_require_sot',
-  type: 'boolean',
-  value: false,
-  description: 'Fail if grokos-schema subproject/pkg-config is missing (CI)',
+  'schema_dir',
+  type: 'string',
+  value: '',
+  description: 'Override path to policy.capnp + util.capnp (empty = schema/)',
 )
 
 # Playground WASM is built by playground/wasm/build.sh (direct emcc), not the

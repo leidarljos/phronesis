@@ -36,3 +36,12 @@ local-ci:
     }
     cd "{{justfile_directory()}}"
     bash "$script"
+
+# Optional: refresh schema/ from a sibling grokos-schema checkout.
+sync-schema src="":
+    #!/usr/bin/env bash
+    if [[ -n "{{src}}" ]]; then
+      bash scripts/sync-schema-from-sibling.sh "{{src}}"
+    else
+      bash scripts/sync-schema-from-sibling.sh
+    fi

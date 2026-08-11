@@ -6,13 +6,13 @@ Policy and multi-agent supervisor (security-critical core) for [GrokOS](https://
 |--|--|
 | **Meta** | https://nova.teachx.ai/trace-analysis/grokos |
 | **Issues** | https://nova.teachx.ai/trace-analysis/grokos/-/issues |
-| **Language** | Cap'n SoT: [grokos-schema](https://nova.teachx.ai/trace-analysis/grokos-packages/grokos-schema) via Meson subproject/wrap; `schema/SCHEMA_PIN` is publish provenance only |
+| **Language** | Cap'n interface: `schema/policy.capnp` + `schema/util.capnp` in this tree |
 | **Product API** | Cap'n methods (`policyd_check_shell`, `policyd_status`, …) |
 | **C helpers** | `include/grok-policyd/supervisor.h` |
 
 ## Cap'n product API (`interface Policyd`)
 
-Schema SoT: `grokos-schema` (`policy.capnp` + `util.capnp`). Cap'n is **always**
+Public interface: `schema/policy.capnp` + `schema/util.capnp`. Cap'n is **always**
 linked. One method per domain (no ok|err unions, no CheckBody union). Params
 message in / result message out — zero-copy mappable segments across agent,
 sessiond, shell.
@@ -128,7 +128,7 @@ Root **README.md only**. No `docs/`, no satellite handbooks, no Makefile. meson�
 
 ## License
 
-Apache-2.0. See `LICENSE` and `third_party/NOTICE`.
+Apache-2.0. See `LICENSE` and `NOTICE`.
 
 ## Deny-all and audio fixture (tests / lockdown)
 
@@ -138,47 +138,29 @@ agent/sessiond fail closed under a hard seat. Unset for normal allowlists.
 
 Set `GROKOS_POLICYD_AUDIO_ALLOW=1` only in CI/dogfood to allow all `AudioAction` on `checkAudio`. Leave unset in production images. `DENY_ALL` still wins when both are set.
 
-### Schema SoT (Meson)
+### Cap'n interface (Meson)
 
-Policyd consumes Cap'n IDL **only** through a resolved `schemadir`. There is
-**no committed** `schema/*.capnp` fork (meta #105). That is the failure #131
-prevented: wrap miss → silent compile of a stale local IDL tree while
-session/agent spoke a newer tag.
+This library compiles `schema/policy.capnp` and `schema/util.capnp`. Those
+files are the public interface. Seat `session.capnp` is not part of this
+package.
 
-1. **Monorepo dogfood** (preferred when packages sit side-by-side):
+```bash
+meson setup build
+meson compile -C build
+meson test -C build
+```
 
-   ```bash
-   ln -sfn ../../grokos-schema subprojects/grokos-schema
-   ```
+Optional: copy newer files from a sibling schema tree with `just sync-schema`.
+Optional: `-Dschema_dir=/path` to point codegen at another directory that
+contains both files.
 
-2. **Wrap** (`subprojects/grokos-schema.wrap`): **schema-v0.3.10** /
-   `65d9669` (meta #126 / #131). CI `publish:lib` / `build:pixi` run
-   `scripts/ci-seed-schema.sh` then `-Dschema_require_sot=true`. The published
-   `.a` is that wrap revision. Wrap clone without credentials is for local
-   meson only (`required: false`).
+`scripts/gen-capnp-c.sh` reads both files from one directory (no mixed
+sources). Staged IDL installs under `$prefix/share/grok-policyd/`.
 
-3. **pkg-config** `grokos-schema` (`schemadir=…`) when the schema package is
-   installed on the system.
-
-4. **Offline dogfood only:** materialize untracked `schema/*.capnp` next to
-   committed `schema/SCHEMA_PIN`:
-
-   ```bash
-   grokos-schema/scripts/vendor-into.sh --dest schema --pin
-   ```
-
-   Without subproject/pkg-config and without that materialize, meson fails
-   closed (no second SoT in git).
-
-`schema/SCHEMA_PIN` is **publish provenance** (uploaded next to
-`libgrok_policyd.a`), lockstep with the wrap SHA — not a hand-edited IDL tree.
-Consumers compare that SHA to the product pin. A missing stamp after the wrap
-moved cannot prove `65d9669` and must not link quietly.
-
-`scripts/gen-capnp-c.sh` always reads `policy.capnp` and `util.capnp` from the
-same schemadir (no mixed sources). Staged IDL installs under
-`$prefix/share/grok-policyd/` from the codegen custom_target (Meson forbids
-`install_data` of nested-subproject files).
+A stranger with `meson`, `ninja`, `capnp`, `capnpc-c`, `c-capnproto`, and
+`cmocka` can build from this tree without private remotes. `pixi install
+--locked` still needs the current channel list (private `c-capnproto`
+package) until that lock is rebuilt on conda-forge.
 
 ## Playground (WASM, multi-pack; not product)
 

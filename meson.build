@@ -96,81 +96,25 @@ if get_option('mutation')
   ))
 endif
 
-# Cap'n SoT resolution (IDL only; policyd still owns capnpc-c for its TCB):
-#   1) subproject grokos-schema (monorepo: ln -sfn ../../grokos-schema
-#      subprojects/grokos-schema; CI/dev: seed wrap then subproject)
-#   2) installed pkg-config grokos-schema (schemadir variable)
-#   3) offline dogfood only: schema/*.capnp materialized next to SCHEMA_PIN
-#      (vendor-into). No committed IDL — meta #105 / #131 silent local-pin drift.
-# Do not install_data() files from a nested subproject (Meson sandbox).
-# Stage IDL via custom_target outputs and install those.
-schema_proj = subproject(
-  'grokos-schema',
-  required: false,
-  default_options: [
-    'with_c=false',
-    'with_rust=false',
-    'with_python_tests=false',
-    'install_idl=false',
-  ],
-)
-grokos_schemadir = ''
-schema_via = ''
-if schema_proj.found()
-  grokos_schemadir = schema_proj.get_variable('schemadir')
-  schema_via = 'subproject'
-endif
-if grokos_schemadir == ''
-  schema_pc = dependency('grokos-schema', required: false)
-  if schema_pc.found()
-    grokos_schemadir = schema_pc.get_variable(
-      'schemadir',
-      pkgconfig_define: ['prefix', get_option('prefix')],
-      default_value: '',
-    )
-    if grokos_schemadir != ''
-      schema_via = 'pkg-config'
-    endif
-  endif
-endif
-if grokos_schemadir == ''
-  # Local materialize only for offline dogfood. CI sets -Dschema_require_sot=true
-  # so wrap/auth miss cannot compile a second IDL tree (meta #131).
-  if get_option('schema_require_sot')
-    error(
-      'grokos-schema SoT missing: CI must clone into subprojects/grokos-schema '
-      + '(job-token) or install pkg-config grokos-schema. Local pin disabled '
-      + '(-Dschema_require_sot=true; meta #131).',
-    )
-  endif
+# Public Cap'n interface for this library is schema/policy.capnp +
+# schema/util.capnp (codegen: scripts/gen-capnp-c.sh). session.capnp is seat,
+# not compiled here. Override with -Dschema_dir= when injecting another tree.
+schema_dir_opt = get_option('schema_dir')
+if schema_dir_opt != ''
+  grokos_schemadir = schema_dir_opt
+else
   grokos_schemadir = meson.current_source_dir() / 'schema'
-  schema_via = 'local-pin'
-  if not fs.is_file(grokos_schemadir / 'policy.capnp') or not fs.is_file(
-    grokos_schemadir / 'util.capnp',
-  )
-    error(
-      'grokos-schema SoT missing and schema/ has no materialized IDL. '
-      + 'Seed subprojects/grokos-schema (wrap) or run: '
-      + 'grokos-schema/scripts/vendor-into.sh --dest schema --pin. '
-      + 'Committed Cap\'n forks were removed (meta #105 / #131).',
-    )
-  endif
-  warning(
-    'grokos-schema subproject/pkg-config missing; using materialized schema/ pin',
-  )
 endif
 if not fs.is_file(grokos_schemadir / 'policy.capnp') or not fs.is_file(
   grokos_schemadir / 'util.capnp',
 )
   error(
-    'Cap\'n SoT incomplete under @0@ (need policy.capnp + util.capnp)'.format(
+    'Cap\'n interface incomplete under @0@ (need policy.capnp + util.capnp)'.format(
       grokos_schemadir,
     ),
   )
 endif
-message(
-  'Cap\'n SoT via @0@: schemadir=@1@'.format(schema_via, grokos_schemadir),
-)
+message('Cap\'n interface: schemadir=@0@'.format(grokos_schemadir))
 
 # policy imports util — gen script stages both .capnp and emits C into OUTDIR.
 # Outputs 4–5 are installable staged IDL (avoids subproject install sandbox).
@@ -326,8 +270,7 @@ install_headers(
 pkg.generate(
   policyd_lib,
   name: 'grok-policyd',
-  description: 'GrokOS multi-agent policy TCB (Cap\'n FFI + C ABI)',
-  url: 'https://nova.teachx.ai/trace-analysis/grokos-packages/grok-policyd',
+  description: 'In-process policy library (Cap\'n FFI + C ABI)',
   filebase: 'grok-policyd',
   subdirs: '.',
   requires: 'c-capnproto, capnp-janet',

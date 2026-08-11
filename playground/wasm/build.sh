@@ -60,19 +60,8 @@ if [[ ! -f "$CAPN_SRC/lib/capn.c" ]]; then
 fi
 
 # --- schema C (host capnpc-c) ---
-# gen-capnp-c.sh SCHEMA_DIR OUTDIR CAPNPC_C (subproject SoT; no committed IDL)
-SCHEMA_DIR="${GROKOS_SCHEMA_DIR:-}"
-if [[ -z "$SCHEMA_DIR" || ! -f "${SCHEMA_DIR}/policy.capnp" ]]; then
-	if [[ -f "$ROOT/subprojects/grokos-schema/schema/policy.capnp" ]]; then
-		SCHEMA_DIR="$ROOT/subprojects/grokos-schema/schema"
-	elif [[ -f "$ROOT/schema/policy.capnp" ]]; then
-		# Offline dogfood only (vendor-into; not in git — meta #105 / #131).
-		SCHEMA_DIR="$ROOT/schema"
-	else
-		echo "missing Cap'n SoT: set GROKOS_SCHEMA_DIR, seed subprojects/grokos-schema, or vendor-into schema/" >&2
-		exit 1
-	fi
-fi
+# gen-capnp-c.sh SCHEMA_DIR OUTDIR CAPNPC_C (repo schema/ is the interface)
+SCHEMA_DIR="${GROKOS_SCHEMA_DIR:-$ROOT/schema}"
 echo "generating Cap'n C schema from $SCHEMA_DIR into $GEN" >&2
 bash "$ROOT/scripts/gen-capnp-c.sh" \
 	"$SCHEMA_DIR" \

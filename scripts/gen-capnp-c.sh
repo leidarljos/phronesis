@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: Apache-2.0
-# Generate c-capnproto C from SoT schemadir (policy + util) into Meson OUTDIR.
-# Both .capnp files must live in SCHEMA_DIR (subproject or local pin); no
-# silent mix of SoT policy with a different util.
+# Generate c-capnproto C from schemadir (policy + util) into Meson OUTDIR.
+# Both .capnp files must live in SCHEMA_DIR (default: repo schema/); no
+# silent mix of policy with a different util.
 # Usage: gen-capnp-c.sh SCHEMA_DIR OUTDIR CAPNPC_C
 set -euo pipefail
 schema_dir=$1
