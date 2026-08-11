@@ -1,7 +1,7 @@
-# GrokOS Cap'n shared vocabulary (Sandstorm util.capnp analog).
-# Source of truth: trace-analysis/grokos-packages/grokos-schema
+# Shared Cap'n vocabulary for this library (Sandstorm util.capnp analog).
+# Source of truth: schema/util.capnp in this repository.
 #
-# Import from session.capnp / policy.capnp:
+# Import from policy.capnp:
 #   using Util = import "util.capnp";
 #
 # No I/O. No platform APIs. Only types every speaker must agree on.

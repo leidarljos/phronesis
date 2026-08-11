@@ -1,5 +1,5 @@
-# GrokOS policyd Cap'n API (TCB language).
-# Source of truth: trace-analysis/grokos-packages/grokos-schema
+# Policyd Cap'n API (this package's public interface).
+# Source of truth: schema/policy.capnp in this repository.
 #
 # Role
 # ----
