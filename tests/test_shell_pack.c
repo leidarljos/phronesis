@@ -114,29 +114,29 @@ static void write_file(const char *path, const char *body)
 }
 
 struct shell_fix {
-	grok_supervisor_t *sup;
-	char st[GROK_PATH_MAX];
-	char rt[GROK_PATH_MAX];
-	char ws[GROK_PATH_MAX];
+	phronesis_supervisor_t *sup;
+	char st[PHRONESIS_PATH_MAX];
+	char rt[PHRONESIS_PATH_MAX];
+	char ws[PHRONESIS_PATH_MAX];
 };
 
 static int shell_setup(void **state)
 {
 	struct shell_fix *f = calloc(1, sizeof(*f));
 	char *argv0[] = { "true", NULL };
-	char pack[GROK_PATH_MAX];
+	char pack[PHRONESIS_PATH_MAX];
 	const char *src;
 
 	assert_non_null(f);
 	assert_int_equal(t_open_pair(&f->sup, f->st, sizeof(f->st), f->rt,
 				     sizeof(f->rt), "shpack"),
-			 GROK_OK);
+			 PHRONESIS_OK);
 	snprintf(f->ws, sizeof(f->ws), "%s/ws", f->rt);
 	assert_int_equal(mkdir(f->ws, 0700), 0);
 	assert_int_equal(
-		grok_supervisor_start(f->sup, "00000000000000010000000000000002",
+		phronesis_supervisor_start(f->sup, "00000000000000010000000000000002",
 				      NULL, f->ws, argv0),
-		GROK_OK);
+		PHRONESIS_OK);
 
 	src = getenv("POLICYD_SOURCE_ROOT");
 	if (!src || !src[0])
@@ -155,7 +155,7 @@ static int shell_teardown(void **state)
 	unsetenv("GROKOS_POLICYD_JANET_PACK");
 	if (f) {
 		if (f->sup)
-			grok_supervisor_close(f->sup);
+			phronesis_supervisor_close(f->sup);
 		t_rm_rf(f->st);
 		t_rm_rf(f->rt);
 		free(f);
@@ -174,7 +174,7 @@ static void test_true_allow(void **state)
 	char reason[128];
 
 	build_shell_check(f->ws, argv, 1, &in, &in_len);
-	grok_policyd_check_shell(f->sup, in, in_len, &out, &out_len);
+	phronesis_check_shell(f->sup, in, in_len, &out, &out_len);
 	free(in);
 	read_decision(out, out_len, &dec, &code, reason, sizeof(reason));
 	assert_int_equal(dec, Decision_allow);
@@ -193,7 +193,7 @@ static void test_bare_python_deny(void **state)
 	char reason[128];
 
 	build_shell_check(f->ws, argv, 2, &in, &in_len);
-	grok_policyd_check_shell(f->sup, in, in_len, &out, &out_len);
+	phronesis_check_shell(f->sup, in, in_len, &out, &out_len);
 	free(in);
 	read_decision(out, out_len, &dec, &code, reason, sizeof(reason));
 	assert_int_equal(dec, Decision_deny);
@@ -213,7 +213,7 @@ static void test_bare_python312_deny(void **state)
 	enum PolicyReason code;
 
 	build_shell_check(f->ws, argv, 2, &in, &in_len);
-	grok_policyd_check_shell(f->sup, in, in_len, &out, &out_len);
+	phronesis_check_shell(f->sup, in, in_len, &out, &out_len);
 	free(in);
 	read_decision(out, out_len, &dec, &code, NULL, 0);
 	assert_int_equal(dec, Decision_deny);
@@ -224,7 +224,7 @@ static void test_bare_python312_deny(void **state)
 static void test_uv_run_pep723_allow(void **state)
 {
 	struct shell_fix *f = *state;
-	char script[GROK_PATH_MAX];
+	char script[PHRONESIS_PATH_MAX];
 	char *argv[8];
 	uint8_t *in = NULL, *out = NULL;
 	size_t in_len = 0, out_len = 0;
@@ -243,7 +243,7 @@ static void test_uv_run_pep723_allow(void **state)
 	argv[2] = script;
 	argv[3] = NULL;
 	build_shell_check(f->ws, argv, 3, &in, &in_len);
-	grok_policyd_check_shell(f->sup, in, in_len, &out, &out_len);
+	phronesis_check_shell(f->sup, in, in_len, &out, &out_len);
 	free(in);
 	read_decision(out, out_len, &dec, &code, reason, sizeof(reason));
 	assert_int_equal(dec, Decision_allow);
@@ -254,7 +254,7 @@ static void test_uv_run_pep723_allow(void **state)
 static void test_uv_run_missing_pep723_deny(void **state)
 {
 	struct shell_fix *f = *state;
-	char script[GROK_PATH_MAX];
+	char script[PHRONESIS_PATH_MAX];
 	char *argv[8];
 	uint8_t *in = NULL, *out = NULL;
 	size_t in_len = 0, out_len = 0;
@@ -268,7 +268,7 @@ static void test_uv_run_missing_pep723_deny(void **state)
 	argv[2] = script;
 	argv[3] = NULL;
 	build_shell_check(f->ws, argv, 3, &in, &in_len);
-	grok_policyd_check_shell(f->sup, in, in_len, &out, &out_len);
+	phronesis_check_shell(f->sup, in, in_len, &out, &out_len);
 	free(in);
 	read_decision(out, out_len, &dec, &code, NULL, 0);
 	assert_int_equal(dec, Decision_deny);
@@ -286,7 +286,7 @@ static void test_python_dash_c_deny(void **state)
 	enum PolicyReason code;
 
 	build_shell_check(f->ws, argv, 5, &in, &in_len);
-	grok_policyd_check_shell(f->sup, in, in_len, &out, &out_len);
+	phronesis_check_shell(f->sup, in, in_len, &out, &out_len);
 	free(in);
 	read_decision(out, out_len, &dec, &code, NULL, 0);
 	assert_int_equal(dec, Decision_deny);
@@ -311,7 +311,7 @@ uint8_t *in = NULL, *out = NULL;
 	enum PolicyReason code;
 
 	build_shell_check(f->ws, argv, 3, &in, &in_len);
-	grok_policyd_check_shell(f->sup, in, in_len, &out, &out_len);
+	phronesis_check_shell(f->sup, in, in_len, &out, &out_len);
 	free(in);
 	read_decision(out, out_len, &dec, &code, NULL, 0);
 	assert_int_equal(dec, Decision_deny);
@@ -322,7 +322,7 @@ uint8_t *in = NULL, *out = NULL;
 static void test_reload_shell_pack_hot_load(void **state)
 {
 	struct shell_fix *f = *state;
-	char pack_a[GROK_PATH_MAX], pack_b[GROK_PATH_MAX];
+	char pack_a[PHRONESIS_PATH_MAX], pack_b[PHRONESIS_PATH_MAX];
 	char *argv[] = { "python3", "x.py", NULL };
 	uint8_t *in = NULL, *out = NULL;
 	size_t in_len = 0, out_len = 0;
@@ -351,10 +351,10 @@ static void test_reload_shell_pack_hot_load(void **state)
 	}
 
 	/* Reload to product UV pack → bare python deny */
-	rc = grok_policy_shell_pack_reload(pack_a);
-	assert_int_equal(rc, GROK_OK);
+	rc = phronesis_shell_pack_reload(pack_a);
+	assert_int_equal(rc, PHRONESIS_OK);
 	build_shell_check(f->ws, argv, 2, &in, &in_len);
-	grok_policyd_check_shell(f->sup, in, in_len, &out, &out_len);
+	phronesis_check_shell(f->sup, in, in_len, &out, &out_len);
 	free(in);
 	read_decision(out, out_len, &dec, &code, NULL, 0);
 	free(out);
@@ -362,10 +362,10 @@ static void test_reload_shell_pack_hot_load(void **state)
 	assert_int_equal(code, PolicyReason_pythonRequiresUvRun);
 
 	/* Hot-load allow-all pack → same argv allows */
-	rc = grok_policy_shell_pack_reload(pack_b);
-	assert_int_equal(rc, GROK_OK);
+	rc = phronesis_shell_pack_reload(pack_b);
+	assert_int_equal(rc, PHRONESIS_OK);
 	build_shell_check(f->ws, argv, 2, &in, &in_len);
-	grok_policyd_check_shell(f->sup, in, in_len, &out, &out_len);
+	phronesis_check_shell(f->sup, in, in_len, &out, &out_len);
 	free(in);
 	read_decision(out, out_len, &dec, &code, NULL, 0);
 	free(out);
@@ -382,7 +382,7 @@ static void test_reload_shell_pack_hot_load(void **state)
 	assert_int_equal(capn_setp(capn_root(&c), 0, root.p), 0);
 	assert_int_equal(write_msg(&c, &in, &in_len), 0);
 	capn_free(&c);
-	grok_policyd_reload_shell_pack(f->sup, in, in_len, &out, &out_len);
+	phronesis_reload_shell_pack(f->sup, in, in_len, &out, &out_len);
 	free(in);
 	read_decision(out, out_len, &dec, &code, NULL, 0);
 	free(out);
@@ -390,18 +390,18 @@ static void test_reload_shell_pack_hot_load(void **state)
 	assert_int_equal(code, PolicyReason_packReloaded);
 
 	/* Invalid path */
-	rc = grok_policy_shell_pack_reload("/no/such/pack.janet");
-	assert_int_equal(rc, GROK_ERR_INVAL);
-	rc = grok_policy_shell_pack_reload("relative.janet");
-	assert_int_equal(rc, GROK_ERR_INVAL);
+	rc = phronesis_shell_pack_reload("/no/such/pack.janet");
+	assert_int_equal(rc, PHRONESIS_ERR_INVAL);
+	rc = phronesis_shell_pack_reload("relative.janet");
+	assert_int_equal(rc, PHRONESIS_ERR_INVAL);
 }
 
 /* Multi-pack: allow-all + deny-true compose to deny (fail-closed). */
 static void test_multi_pack_compose_deny(void **state)
 {
 	struct shell_fix *f = *state;
-	char pack_allow[GROK_PATH_MAX], pack_deny[GROK_PATH_MAX],
-		spec[GROK_PATH_MAX * 2];
+	char pack_allow[PHRONESIS_PATH_MAX], pack_deny[PHRONESIS_PATH_MAX],
+		spec[PHRONESIS_PATH_MAX * 2];
 	char *argv[] = { "true", NULL };
 	uint8_t *in = NULL, *out = NULL;
 	size_t in_len = 0, out_len = 0;
@@ -422,11 +422,11 @@ static void test_multi_pack_compose_deny(void **state)
 		   "    @[[:u16 0 0] [:u16 2 25] [:text 0 \"deny pack\"]]))\n");
 
 	snprintf(spec, sizeof(spec), "%s:%s", pack_allow, pack_deny);
-	rc = grok_policy_shell_pack_reload(spec);
-	assert_int_equal(rc, GROK_OK);
+	rc = phronesis_shell_pack_reload(spec);
+	assert_int_equal(rc, PHRONESIS_OK);
 
 	build_shell_check(f->ws, argv, 1, &in, &in_len);
-	grok_policyd_check_shell(f->sup, in, in_len, &out, &out_len);
+	phronesis_check_shell(f->sup, in, in_len, &out, &out_len);
 	free(in);
 	read_decision(out, out_len, &dec, &code, NULL, 0);
 	free(out);
@@ -435,10 +435,10 @@ static void test_multi_pack_compose_deny(void **state)
 
 	/* Reverse order: deny still wins. */
 	snprintf(spec, sizeof(spec), "%s:%s", pack_deny, pack_allow);
-	rc = grok_policy_shell_pack_reload(spec);
-	assert_int_equal(rc, GROK_OK);
+	rc = phronesis_shell_pack_reload(spec);
+	assert_int_equal(rc, PHRONESIS_OK);
 	build_shell_check(f->ws, argv, 1, &in, &in_len);
-	grok_policyd_check_shell(f->sup, in, in_len, &out, &out_len);
+	phronesis_check_shell(f->sup, in, in_len, &out, &out_len);
 	free(in);
 	read_decision(out, out_len, &dec, &code, NULL, 0);
 	free(out);
@@ -449,14 +449,14 @@ static void test_multi_pack_compose_deny(void **state)
 static void test_multi_pack_dir(void **state)
 {
 	struct shell_fix *f = *state;
-	char dir[GROK_PATH_MAX];
+	char dir[PHRONESIS_PATH_MAX];
 	char *argv[] = { "true", NULL };
 	uint8_t *in = NULL, *out = NULL;
 	size_t in_len = 0, out_len = 0;
 	enum Decision dec;
 	enum PolicyReason code;
 	int rc;
-	char p1[GROK_PATH_MAX], p2[GROK_PATH_MAX], pdoc[GROK_PATH_MAX];
+	char p1[PHRONESIS_PATH_MAX], p2[PHRONESIS_PATH_MAX], pdoc[PHRONESIS_PATH_MAX];
 
 	snprintf(dir, sizeof(dir), "%s/packs.d", f->ws);
 	assert_int_equal(mkdir(dir, 0700), 0);
@@ -473,10 +473,10 @@ static void test_multi_pack_dir(void **state)
 		   "  (capnp/build-message 1 2\n"
 		   "    @[[:u16 0 0] [:u16 2 25] [:text 0 \"deny all\"]]))\n");
 
-	rc = grok_policy_shell_pack_reload(dir);
-	assert_int_equal(rc, GROK_OK);
+	rc = phronesis_shell_pack_reload(dir);
+	assert_int_equal(rc, PHRONESIS_OK);
 	build_shell_check(f->ws, argv, 1, &in, &in_len);
-	grok_policyd_check_shell(f->sup, in, in_len, &out, &out_len);
+	phronesis_check_shell(f->sup, in, in_len, &out, &out_len);
 	free(in);
 	read_decision(out, out_len, &dec, &code, NULL, 0);
 	free(out);

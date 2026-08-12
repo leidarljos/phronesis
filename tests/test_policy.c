@@ -9,14 +9,14 @@
 #include <string.h>
 #include <unistd.h>
 
-static void wait_stopped(grok_supervisor_t *s, const char *id)
+static void wait_stopped(phronesis_supervisor_t *s, const char *id)
 {
-	grok_agent_status_t stt;
+	phronesis_agent_status_t stt;
 	int i;
 
 	for (i = 0; i < 50; i++) {
-		grok_supervisor_status(s, id, &stt);
-		if (stt.state != GROK_AGENT_RUNNING)
+		phronesis_supervisor_status(s, id, &stt);
+		if (stt.state != PHRONESIS_AGENT_RUNNING)
 			return;
 		usleep(10 * 1000);
 	}
@@ -25,8 +25,8 @@ static void wait_stopped(grok_supervisor_t *s, const char *id)
 
 static void test_deny_all_env(void **state)
 {
-	grok_supervisor_t *s = NULL;
-	grok_policy_result_t pr;
+	phronesis_supervisor_t *s = NULL;
+	phronesis_policy_result_t pr;
 	char tmpl_s[] = "/tmp/gpd-denys-XXXXXX";
 	char tmpl_r[] = "/tmp/gpd-denyr-XXXXXX";
 	char *state_dir;
@@ -37,198 +37,198 @@ static void test_deny_all_env(void **state)
 	run_dir = mkdtemp(tmpl_r);
 	assert_non_null(state_dir);
 	assert_non_null(run_dir);
-	assert_int_equal(grok_supervisor_open(&s, state_dir, run_dir), GROK_OK);
+	assert_int_equal(phronesis_supervisor_open(&s, state_dir, run_dir), PHRONESIS_OK);
 	assert_non_null(s);
 
 	setenv("GROKOS_POLICYD_DENY_ALL", "1", 1);
 	assert_int_equal(
-		grok_policy_check(s, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "model", "start",
+		phronesis_policy_check(s, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "model", "start",
 				  "/bin/true", &pr),
-		GROK_OK);
-	assert_int_equal(pr.decision, GROK_DECISION_DENY);
-	assert_int_equal(pr.code, GROK_REASON_DENY_ALL);
+		PHRONESIS_OK);
+	assert_int_equal(pr.decision, PHRONESIS_DECISION_DENY);
+	assert_int_equal(pr.code, PHRONESIS_REASON_DENY_ALL);
 
 	assert_int_equal(
-		grok_policy_check(s, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "seat", "publish_run",
+		phronesis_policy_check(s, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "seat", "publish_run",
 				  "x", &pr),
-		GROK_OK);
-	assert_int_equal(pr.decision, GROK_DECISION_DENY);
+		PHRONESIS_OK);
+	assert_int_equal(pr.decision, PHRONESIS_DECISION_DENY);
 
 	unsetenv("GROKOS_POLICYD_DENY_ALL");
 	assert_int_equal(
-		grok_policy_check(s, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "model", "start",
+		phronesis_policy_check(s, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "model", "start",
 				  "/bin/true", &pr),
-		GROK_OK);
-	assert_int_equal(pr.decision, GROK_DECISION_ALLOW);
+		PHRONESIS_OK);
+	assert_int_equal(pr.decision, PHRONESIS_DECISION_ALLOW);
 
-	grok_supervisor_close(s);
+	phronesis_supervisor_close(s);
 }
 
 static void test_tools_default_deny(void **state)
 {
-	grok_supervisor_t *s = NULL;
-	char st[GROK_PATH_MAX], rt[GROK_PATH_MAX];
-	grok_policy_result_t pr;
+	phronesis_supervisor_t *s = NULL;
+	char st[PHRONESIS_PATH_MAX], rt[PHRONESIS_PATH_MAX];
+	phronesis_policy_result_t pr;
 	char *argv[] = { "sleep", "30", NULL };
 
 	(void)state;
-	assert_int_equal(t_open_pair(&s, st, sizeof(st), rt, sizeof(rt), "pol"), GROK_OK);
-	assert_int_equal(grok_supervisor_start(s, "agent-a", NULL, "/ws/proj", argv), GROK_OK);
+	assert_int_equal(t_open_pair(&s, st, sizeof(st), rt, sizeof(rt), "pol"), PHRONESIS_OK);
+	assert_int_equal(phronesis_supervisor_start(s, "agent-a", NULL, "/ws/proj", argv), PHRONESIS_OK);
 	/* shell/exec with empty path or outside workspace stays deny */
-	assert_int_equal(grok_policy_check(s, "agent-a", "shell", "exec", NULL, &pr), GROK_OK);
-	assert_int_equal(pr.decision, GROK_DECISION_DENY);
-	assert_int_equal(grok_policy_check(s, "agent-a", "shell", "exec", "/etc/passwd", &pr), GROK_OK);
-	assert_int_equal(pr.decision, GROK_DECISION_DENY);
-	assert_int_equal(grok_policy_check(s, "agent-a", "", "read", "/ws/proj/a", &pr), GROK_OK);
-	assert_int_equal(pr.decision, GROK_DECISION_DENY);
-	assert_int_equal(grok_supervisor_stop(s, "agent-a"), GROK_OK);
-	grok_supervisor_close(s);
+	assert_int_equal(phronesis_policy_check(s, "agent-a", "shell", "exec", NULL, &pr), PHRONESIS_OK);
+	assert_int_equal(pr.decision, PHRONESIS_DECISION_DENY);
+	assert_int_equal(phronesis_policy_check(s, "agent-a", "shell", "exec", "/etc/passwd", &pr), PHRONESIS_OK);
+	assert_int_equal(pr.decision, PHRONESIS_DECISION_DENY);
+	assert_int_equal(phronesis_policy_check(s, "agent-a", "", "read", "/ws/proj/a", &pr), PHRONESIS_OK);
+	assert_int_equal(pr.decision, PHRONESIS_DECISION_DENY);
+	assert_int_equal(phronesis_supervisor_stop(s, "agent-a"), PHRONESIS_OK);
+	phronesis_supervisor_close(s);
 	t_rm_rf(st);
 	t_rm_rf(rt);
 }
 
 static void test_shell_exec_workspace_allow(void **state)
 {
-	grok_supervisor_t *s = NULL;
-	char st[GROK_PATH_MAX], rt[GROK_PATH_MAX];
-	grok_policy_result_t pr;
+	phronesis_supervisor_t *s = NULL;
+	char st[PHRONESIS_PATH_MAX], rt[PHRONESIS_PATH_MAX];
+	phronesis_policy_result_t pr;
 	char *argv[] = { "true", NULL };
 
 	(void)state;
-	assert_int_equal(t_open_pair(&s, st, sizeof(st), rt, sizeof(rt), "shx"), GROK_OK);
-	assert_int_equal(grok_supervisor_start(s, "agent-a", NULL, "/ws/proj", argv), GROK_OK);
+	assert_int_equal(t_open_pair(&s, st, sizeof(st), rt, sizeof(rt), "shx"), PHRONESIS_OK);
+	assert_int_equal(phronesis_supervisor_start(s, "agent-a", NULL, "/ws/proj", argv), PHRONESIS_OK);
 
 	/* path = absolute cwd / target root under workspace → allow */
-	assert_int_equal(grok_policy_check(s, "agent-a", "shell", "exec", "/ws/proj", &pr),
-			 GROK_OK);
-	assert_int_equal(pr.decision, GROK_DECISION_ALLOW);
-	assert_int_equal(pr.code, GROK_REASON_SHELL_EXEC_ALLOW);
-	assert_int_equal(grok_policy_check(s, "agent-a", "shell", "exec", "/ws/proj/sub", &pr),
-			 GROK_OK);
-	assert_int_equal(pr.decision, GROK_DECISION_ALLOW);
+	assert_int_equal(phronesis_policy_check(s, "agent-a", "shell", "exec", "/ws/proj", &pr),
+			 PHRONESIS_OK);
+	assert_int_equal(pr.decision, PHRONESIS_DECISION_ALLOW);
+	assert_int_equal(pr.code, PHRONESIS_REASON_SHELL_EXEC_ALLOW);
+	assert_int_equal(phronesis_policy_check(s, "agent-a", "shell", "exec", "/ws/proj/sub", &pr),
+			 PHRONESIS_OK);
+	assert_int_equal(pr.decision, PHRONESIS_DECISION_ALLOW);
 
 	/* empty path, outside workspace, unclean → deny */
-	assert_int_equal(grok_policy_check(s, "agent-a", "shell", "exec", NULL, &pr), GROK_OK);
-	assert_int_equal(pr.decision, GROK_DECISION_DENY);
-	assert_int_equal(grok_policy_check(s, "agent-a", "shell", "exec", "/ws/other", &pr),
-			 GROK_OK);
-	assert_int_equal(pr.decision, GROK_DECISION_DENY);
-	assert_int_equal(grok_policy_check(s, "agent-a", "shell", "exec",
+	assert_int_equal(phronesis_policy_check(s, "agent-a", "shell", "exec", NULL, &pr), PHRONESIS_OK);
+	assert_int_equal(pr.decision, PHRONESIS_DECISION_DENY);
+	assert_int_equal(phronesis_policy_check(s, "agent-a", "shell", "exec", "/ws/other", &pr),
+			 PHRONESIS_OK);
+	assert_int_equal(pr.decision, PHRONESIS_DECISION_DENY);
+	assert_int_equal(phronesis_policy_check(s, "agent-a", "shell", "exec",
 					   "/ws/proj/../etc", &pr),
-			 GROK_OK);
-	assert_int_equal(pr.decision, GROK_DECISION_DENY);
+			 PHRONESIS_OK);
+	assert_int_equal(pr.decision, PHRONESIS_DECISION_DENY);
 
 	/* high-risk action still prompts (precedence over shell allow) */
-	assert_int_equal(grok_policy_check(s, "agent-a", "shell", "sudo", "/ws/proj", &pr),
-			 GROK_OK);
-	assert_int_equal(pr.decision, GROK_DECISION_PROMPT);
+	assert_int_equal(phronesis_policy_check(s, "agent-a", "shell", "sudo", "/ws/proj", &pr),
+			 PHRONESIS_OK);
+	assert_int_equal(pr.decision, PHRONESIS_DECISION_PROMPT);
 
 	/* no workspace on agent → deny even under a path that looks absolute */
-	assert_int_equal(grok_supervisor_start(s, "agent-b", NULL, NULL, argv), GROK_OK);
-	assert_int_equal(grok_policy_check(s, "agent-b", "shell", "exec", "/ws/proj", &pr),
-			 GROK_OK);
-	assert_int_equal(pr.decision, GROK_DECISION_DENY);
+	assert_int_equal(phronesis_supervisor_start(s, "agent-b", NULL, NULL, argv), PHRONESIS_OK);
+	assert_int_equal(phronesis_policy_check(s, "agent-b", "shell", "exec", "/ws/proj", &pr),
+			 PHRONESIS_OK);
+	assert_int_equal(pr.decision, PHRONESIS_DECISION_DENY);
 
 	/* unknown agent → empty workspace → deny */
-	assert_int_equal(grok_policy_check(s, "agent-missing", "shell", "exec", "/ws/proj",
+	assert_int_equal(phronesis_policy_check(s, "agent-missing", "shell", "exec", "/ws/proj",
 					   &pr),
-			 GROK_OK);
-	assert_int_equal(pr.decision, GROK_DECISION_DENY);
+			 PHRONESIS_OK);
+	assert_int_equal(pr.decision, PHRONESIS_DECISION_DENY);
 
 	wait_stopped(s, "agent-a");
 	wait_stopped(s, "agent-b");
-	grok_supervisor_close(s);
+	phronesis_supervisor_close(s);
 	t_rm_rf(st);
 	t_rm_rf(rt);
 }
 
 static void test_workspace_allowlist(void **state)
 {
-	grok_supervisor_t *s = NULL;
-	char st[GROK_PATH_MAX], rt[GROK_PATH_MAX];
-	grok_policy_result_t pr;
+	phronesis_supervisor_t *s = NULL;
+	char st[PHRONESIS_PATH_MAX], rt[PHRONESIS_PATH_MAX];
+	phronesis_policy_result_t pr;
 	char *argv[] = { "true", NULL };
 
 	(void)state;
-	assert_int_equal(t_open_pair(&s, st, sizeof(st), rt, sizeof(rt), "ws"), GROK_OK);
-	assert_int_equal(grok_supervisor_start(s, "agent-a", NULL, "/ws/proj", argv), GROK_OK);
-	assert_int_equal(grok_policy_check(s, "agent-a", "fs", "read", "/ws/proj/file", &pr), GROK_OK);
-	assert_int_equal(pr.decision, GROK_DECISION_ALLOW);
-	assert_int_equal(grok_policy_check(s, "agent-a", "fs", "write", "/ws/proj/out", &pr), GROK_OK);
-	assert_int_equal(pr.decision, GROK_DECISION_ALLOW);
-	assert_int_equal(grok_policy_check(s, "agent-a", "fs", "read", "/ws/other/x", &pr), GROK_OK);
-	assert_int_equal(pr.decision, GROK_DECISION_DENY);
-	assert_int_equal(grok_policy_check(s, "agent-a", "fs", "read", "/ws/projevil", &pr), GROK_OK);
-	assert_int_equal(pr.decision, GROK_DECISION_DENY);
-	assert_int_equal(grok_policy_check(s, "agent-a", "fs", "read", "/ws/proj/../etc/passwd", &pr),
-			 GROK_OK);
-	assert_int_equal(pr.decision, GROK_DECISION_DENY);
+	assert_int_equal(t_open_pair(&s, st, sizeof(st), rt, sizeof(rt), "ws"), PHRONESIS_OK);
+	assert_int_equal(phronesis_supervisor_start(s, "agent-a", NULL, "/ws/proj", argv), PHRONESIS_OK);
+	assert_int_equal(phronesis_policy_check(s, "agent-a", "fs", "read", "/ws/proj/file", &pr), PHRONESIS_OK);
+	assert_int_equal(pr.decision, PHRONESIS_DECISION_ALLOW);
+	assert_int_equal(phronesis_policy_check(s, "agent-a", "fs", "write", "/ws/proj/out", &pr), PHRONESIS_OK);
+	assert_int_equal(pr.decision, PHRONESIS_DECISION_ALLOW);
+	assert_int_equal(phronesis_policy_check(s, "agent-a", "fs", "read", "/ws/other/x", &pr), PHRONESIS_OK);
+	assert_int_equal(pr.decision, PHRONESIS_DECISION_DENY);
+	assert_int_equal(phronesis_policy_check(s, "agent-a", "fs", "read", "/ws/projevil", &pr), PHRONESIS_OK);
+	assert_int_equal(pr.decision, PHRONESIS_DECISION_DENY);
+	assert_int_equal(phronesis_policy_check(s, "agent-a", "fs", "read", "/ws/proj/../etc/passwd", &pr),
+			 PHRONESIS_OK);
+	assert_int_equal(pr.decision, PHRONESIS_DECISION_DENY);
 	wait_stopped(s, "agent-a");
-	grok_supervisor_close(s);
+	phronesis_supervisor_close(s);
 	t_rm_rf(st);
 	t_rm_rf(rt);
 }
 
 static void test_high_risk_prompt(void **state)
 {
-	grok_supervisor_t *s = NULL;
-	char st[GROK_PATH_MAX], rt[GROK_PATH_MAX];
-	grok_policy_result_t pr;
+	phronesis_supervisor_t *s = NULL;
+	char st[PHRONESIS_PATH_MAX], rt[PHRONESIS_PATH_MAX];
+	phronesis_policy_result_t pr;
 	char *argv[] = { "true", NULL };
 
 	(void)state;
-	assert_int_equal(t_open_pair(&s, st, sizeof(st), rt, sizeof(rt), "risk"), GROK_OK);
-	assert_int_equal(grok_supervisor_start(s, "agent-a", NULL, "/ws", argv), GROK_OK);
-	assert_int_equal(grok_policy_check(s, "agent-a", "fs", "delete", "/ws/x", &pr), GROK_OK);
-	assert_int_equal(pr.decision, GROK_DECISION_PROMPT);
-	assert_int_equal(grok_policy_check(s, "agent-a", "net", "network", NULL, &pr), GROK_OK);
-	assert_int_equal(pr.decision, GROK_DECISION_PROMPT);
+	assert_int_equal(t_open_pair(&s, st, sizeof(st), rt, sizeof(rt), "risk"), PHRONESIS_OK);
+	assert_int_equal(phronesis_supervisor_start(s, "agent-a", NULL, "/ws", argv), PHRONESIS_OK);
+	assert_int_equal(phronesis_policy_check(s, "agent-a", "fs", "delete", "/ws/x", &pr), PHRONESIS_OK);
+	assert_int_equal(pr.decision, PHRONESIS_DECISION_PROMPT);
+	assert_int_equal(phronesis_policy_check(s, "agent-a", "net", "network", NULL, &pr), PHRONESIS_OK);
+	assert_int_equal(pr.decision, PHRONESIS_DECISION_PROMPT);
 	/* secret_export: fail closed (never leave seat / enter traces). */
-	assert_int_equal(grok_policy_check(s, "agent-a", "vault", "secret_export", NULL, &pr), GROK_OK);
-	assert_int_equal(pr.decision, GROK_DECISION_DENY);
-	assert_int_equal(pr.code, GROK_REASON_SECRET_EXPORT_DENIED);
+	assert_int_equal(phronesis_policy_check(s, "agent-a", "vault", "secret_export", NULL, &pr), PHRONESIS_OK);
+	assert_int_equal(pr.decision, PHRONESIS_DECISION_DENY);
+	assert_int_equal(pr.code, PHRONESIS_REASON_SECRET_EXPORT_DENIED);
 	wait_stopped(s, "agent-a");
-	grok_supervisor_close(s);
+	phronesis_supervisor_close(s);
 	t_rm_rf(st);
 	t_rm_rf(rt);
 }
 
 static void test_policy_logged(void **state)
 {
-	grok_supervisor_t *s = NULL;
-	char st[GROK_PATH_MAX], rt[GROK_PATH_MAX];
-	grok_policy_result_t pr;
+	phronesis_supervisor_t *s = NULL;
+	char st[PHRONESIS_PATH_MAX], rt[PHRONESIS_PATH_MAX];
+	phronesis_policy_result_t pr;
 	char line[1024];
 
 	(void)state;
-	assert_int_equal(t_open_pair(&s, st, sizeof(st), rt, sizeof(rt), "plog"), GROK_OK);
-	assert_int_equal(grok_policy_check(s, "agent-x", "shell", "exec", NULL, &pr), GROK_OK);
-	assert_int_equal(grok_supervisor_log_last(s, line, sizeof(line)), GROK_OK);
+	assert_int_equal(t_open_pair(&s, st, sizeof(st), rt, sizeof(rt), "plog"), PHRONESIS_OK);
+	assert_int_equal(phronesis_policy_check(s, "agent-x", "shell", "exec", NULL, &pr), PHRONESIS_OK);
+	assert_int_equal(phronesis_supervisor_log_last(s, line, sizeof(line)), PHRONESIS_OK);
 	assert_non_null(strstr(line, "\"kind\":\"policy\""));
 	assert_true(strstr(line, "decision=0") != NULL || strstr(line, "deny") != NULL);
-	grok_supervisor_close(s);
+	phronesis_supervisor_close(s);
 	t_rm_rf(st);
 	t_rm_rf(rt);
 }
 
 static void test_lexical_rejects_dot_and_slashslash(void **state)
 {
-	grok_supervisor_t *s = NULL;
-	char st[GROK_PATH_MAX], rt[GROK_PATH_MAX];
-	grok_policy_result_t pr;
+	phronesis_supervisor_t *s = NULL;
+	char st[PHRONESIS_PATH_MAX], rt[PHRONESIS_PATH_MAX];
+	phronesis_policy_result_t pr;
 	char *argv[] = { "true", NULL };
 
 	(void)state;
-	assert_int_equal(t_open_pair(&s, st, sizeof(st), rt, sizeof(rt), "lex"), GROK_OK);
-	assert_int_equal(grok_supervisor_start(s, "agent-a", NULL, "/ws/proj", argv), GROK_OK);
-	assert_int_equal(grok_policy_check(s, "agent-a", "fs", "read", "/ws/proj//file", &pr), GROK_OK);
-	assert_int_equal(pr.decision, GROK_DECISION_DENY);
-	assert_int_equal(grok_policy_check(s, "agent-a", "fs", "read", "/ws/proj/./file", &pr), GROK_OK);
-	assert_int_equal(pr.decision, GROK_DECISION_DENY);
-	assert_int_equal(grok_policy_check(s, "agent-a", "fs", "read", "ws/proj/file", &pr), GROK_OK);
-	assert_int_equal(pr.decision, GROK_DECISION_DENY);
+	assert_int_equal(t_open_pair(&s, st, sizeof(st), rt, sizeof(rt), "lex"), PHRONESIS_OK);
+	assert_int_equal(phronesis_supervisor_start(s, "agent-a", NULL, "/ws/proj", argv), PHRONESIS_OK);
+	assert_int_equal(phronesis_policy_check(s, "agent-a", "fs", "read", "/ws/proj//file", &pr), PHRONESIS_OK);
+	assert_int_equal(pr.decision, PHRONESIS_DECISION_DENY);
+	assert_int_equal(phronesis_policy_check(s, "agent-a", "fs", "read", "/ws/proj/./file", &pr), PHRONESIS_OK);
+	assert_int_equal(pr.decision, PHRONESIS_DECISION_DENY);
+	assert_int_equal(phronesis_policy_check(s, "agent-a", "fs", "read", "ws/proj/file", &pr), PHRONESIS_OK);
+	assert_int_equal(pr.decision, PHRONESIS_DECISION_DENY);
 	wait_stopped(s, "agent-a");
-	grok_supervisor_close(s);
+	phronesis_supervisor_close(s);
 	t_rm_rf(st);
 	t_rm_rf(rt);
 }

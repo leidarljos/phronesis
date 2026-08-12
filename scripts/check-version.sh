@@ -16,11 +16,11 @@ check() {
     fail=1
   fi
 }
-check "#define GROK_POLICYD_VERSION \"$ver\"" "$hdr" "VERSION string"
-check "#define GROK_POLICYD_VERSION_MAJOR $major" "$hdr" "VERSION_MAJOR"
-check "#define GROK_POLICYD_VERSION_MINOR $minor" "$hdr" "VERSION_MINOR"
-check "#define GROK_POLICYD_VERSION_PATCH $patch" "$hdr" "VERSION_PATCH"
-check "#define GROK_POLICYD_API_VERSION $api" "$hdr" "API_VERSION"
+check "#define PHRONESIS_VERSION \"$ver\"" "$hdr" "VERSION string"
+check "#define PHRONESIS_VERSION_MAJOR $major" "$hdr" "VERSION_MAJOR"
+check "#define PHRONESIS_VERSION_MINOR $minor" "$hdr" "VERSION_MINOR"
+check "#define PHRONESIS_VERSION_PATCH $patch" "$hdr" "VERSION_PATCH"
+check "#define PHRONESIS_API_VERSION $api" "$hdr" "API_VERSION"
 if [[ -f docs/source/conf.py ]]; then
   check "^release = \"$ver\"" docs/source/conf.py "sphinx release"
 fi

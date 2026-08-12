@@ -1,12 +1,12 @@
 /* SPDX-License-Identifier: MIT */
 #include "phronesis/supervisor.h"
 
-const char *grok_policyd_version_string(void)
+const char *phronesis_version_string(void)
 {
-	return GROK_POLICYD_VERSION;
+	return PHRONESIS_VERSION;
 }
 
-int grok_policyd_api_version(void)
+int phronesis_api_version(void)
 {
-	return GROK_POLICYD_API_VERSION;
+	return PHRONESIS_API_VERSION;
 }

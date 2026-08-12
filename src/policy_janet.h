@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: MIT */
-#ifndef GROK_POLICYD_POLICY_JANET_H
-#define GROK_POLICYD_POLICY_JANET_H
+#ifndef PHRONESIS_POLICY_JANET_H
+#define PHRONESIS_POLICY_JANET_H
 
 #include <capnp_c.h>
 #include <stddef.h>
@@ -12,7 +12,7 @@
  * (malloc). Failures are still Cap'n PolicyDecision deny + PolicyReason code.
  * Callers free *out. Prefer passthrough of pack output as method result.
  */
-void grok_policy_shell_pack(const char *workspace, const char *cwd,
+void phronesis_shell_pack(const char *workspace, const char *cwd,
 			    capn_ptr argv, uint8_t **out, size_t *out_len);
 
 /**
@@ -22,7 +22,7 @@ void grok_policy_shell_pack(const char *workspace, const char *cwd,
  * Callers free *out. Product table lives in the pack (voice-law); host may
  * re-stamp agentId and apply DENY_ALL / AUDIO_ALLOW before calling.
  */
-void grok_policy_audio_pack(const uint8_t *in, size_t in_len, uint8_t **out,
+void phronesis_audio_pack(const uint8_t *in, size_t in_len, uint8_t **out,
 			    size_t *out_len);
 
 /**
@@ -30,6 +30,6 @@ void grok_policy_audio_pack(const uint8_t *in, size_t in_len, uint8_t **out,
  * .janet files and/or directories of top-level *.janet packs).
  * Returns 0 on success, -1 path invalid, -2 load failed.
  */
-int grok_policy_shell_pack_reload_internal(const char *path);
+int phronesis_shell_pack_reload_internal(const char *path);
 
 #endif

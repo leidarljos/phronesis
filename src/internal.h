@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: MIT */
-#ifndef GROK_POLICYD_INTERNAL_H
-#define GROK_POLICYD_INTERNAL_H
+#ifndef PHRONESIS_INTERNAL_H
+#define PHRONESIS_INTERNAL_H
 
 #include "phronesis/supervisor.h"
 
@@ -26,26 +26,26 @@ int grok_cgroup_kill(const char *cgroup_path);
 void grok_cgroup_remove(const char *cgroup_path);
 
 /** Off-wire slot key: 32 hex or empty for zero id. */
-void grok_agent_id_to_hex(uint64_t hi, uint64_t lo, char out[GROK_ID_MAX]);
+void phronesis_agent_id_to_hex(uint64_t hi, uint64_t lo, char out[PHRONESIS_ID_MAX]);
 
 /** CLI: map admit kind string → tool/action (legacy bridge). */
-int grok_policyd_map_admit_kind(const char *kind, const char **tool,
+int phronesis_map_admit_kind(const char *kind, const char **tool,
 				const char **action);
 
 /**
  * CLI/string bridge only. Product path is Cap'n CallEnvelope → CheckResults.
  * Maps legacy tool/action/path strings into domain checks.
  */
-int grok_policy_eval(const char *workspace,
+int phronesis_policy_eval(const char *workspace,
 		     const char *tool,
 		     const char *action,
 		     const char *path,
-		     grok_policy_result_t *out);
+		     phronesis_policy_result_t *out);
 
 #include <capnp_c.h>
 
 /** Resolve script path against cwd (workspace-bound callers only). */
-int grok_policy_resolve_script(const char *cwd, const char *script, char *out,
+int phronesis_resolve_script(const char *cwd, const char *script, char *out,
 			       size_t out_n);
 
 #endif

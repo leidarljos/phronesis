@@ -19,28 +19,28 @@
 #include <cmocka.h>
 
 struct capn_fix {
-	grok_supervisor_t *sup;
-	char st[GROK_PATH_MAX];
-	char rt[GROK_PATH_MAX];
+	phronesis_supervisor_t *sup;
+	char st[PHRONESIS_PATH_MAX];
+	char rt[PHRONESIS_PATH_MAX];
 };
 
 static int capn_setup(void **state)
 {
 	struct capn_fix *f = calloc(1, sizeof(*f));
-	char pack[GROK_PATH_MAX];
+	char pack[PHRONESIS_PATH_MAX];
 	const char *src;
 
 	assert_non_null(f);
 	assert_int_equal(t_open_pair(&f->sup, f->st, sizeof(f->st), f->rt,
 				     sizeof(f->rt), "capn"),
-			 GROK_OK);
+			 PHRONESIS_OK);
 	/* Product pack: shell-check + audio-check (absolute; reload after shell suite). */
 	src = getenv("POLICYD_SOURCE_ROOT");
 	if (!src || !src[0])
 		src = ".";
 	snprintf(pack, sizeof(pack), "%s/policy/shell.janet", src);
 	setenv("GROKOS_POLICYD_JANET_PACK", pack, 1);
-	assert_int_equal(grok_policy_shell_pack_reload(pack), GROK_OK);
+	assert_int_equal(phronesis_shell_pack_reload(pack), PHRONESIS_OK);
 	*state = f;
 	return 0;
 }
@@ -52,7 +52,7 @@ static int capn_teardown(void **state)
 	unsetenv("GROKOS_POLICYD_JANET_PACK");
 	if (f) {
 		if (f->sup)
-			grok_supervisor_close(f->sup);
+			phronesis_supervisor_close(f->sup);
 		t_rm_rf(f->st);
 		t_rm_rf(f->rt);
 		free(f);
@@ -117,7 +117,7 @@ static void test_status(void **state)
 	PolicydStatus_ptr root;
 	struct PolicydStatus st;
 
-	grok_policyd_status(f->sup, &out, &out_len);
+	phronesis_status(f->sup, &out, &out_len);
 	assert_non_null(out);
 	memset(&c, 0, sizeof(c));
 	assert_int_equal(capn_init_mem(&c, out, out_len, 0), 0);
@@ -148,7 +148,7 @@ static void test_check_seat_allow(void **state)
 	assert_int_equal(write_msg(&c, &in, &in_len), 0);
 	capn_free(&c);
 
-	grok_policyd_check_seat(f->sup, in, in_len, &out, &out_len);
+	phronesis_check_seat(f->sup, in, in_len, &out, &out_len);
 	free(in);
 	expect_decision(out, out_len, Decision_allow);
 	free(out);
@@ -176,7 +176,7 @@ static void test_admit_model_allow(void **state)
 	assert_int_equal(write_msg(&c, &in, &in_len), 0);
 	capn_free(&c);
 
-	grok_policyd_admit_model(f->sup, in, in_len, &out, &out_len);
+	phronesis_admit_model(f->sup, in, in_len, &out, &out_len);
 	free(in);
 	expect_decision(out, out_len, Decision_allow);
 	free(out);
@@ -206,7 +206,7 @@ static void expect_decision_code(const uint8_t *msg, size_t len,
 	capn_free(&c);
 }
 
-static void check_audio_action(grok_supervisor_t *sup, enum AudioAction action,
+static void check_audio_action(phronesis_supervisor_t *sup, enum AudioAction action,
 			       enum Decision want_dec, enum PolicyReason want_code)
 {
 	struct capn c;
@@ -226,7 +226,7 @@ static void check_audio_action(grok_supervisor_t *sup, enum AudioAction action,
 	assert_int_equal(write_msg(&c, &in, &in_len), 0);
 	capn_free(&c);
 
-	grok_policyd_check_audio(sup, in, in_len, &out, &out_len);
+	phronesis_check_audio(sup, in, in_len, &out, &out_len);
 	free(in);
 	expect_decision_code(out, out_len, want_dec, want_code, 9, 10);
 	free(out);
@@ -308,7 +308,7 @@ static void test_check_audio_bad_message(void **state)
 	unsetenv("GROKOS_POLICYD_AUDIO_ALLOW");
 	unsetenv("GROKOS_POLICYD_DENY_ALL");
 
-	grok_policyd_check_audio(f->sup, NULL, 0, &out, &out_len);
+	phronesis_check_audio(f->sup, NULL, 0, &out, &out_len);
 	/* Bad input: zero agent echo + invalidMessage. */
 	expect_decision_code(out, out_len, Decision_deny,
 			     PolicyReason_invalidMessage, 0, 0);

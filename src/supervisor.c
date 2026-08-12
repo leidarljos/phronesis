@@ -13,21 +13,21 @@
 
 typedef struct {
 	int in_use;
-	char id[GROK_ID_MAX];
-	grok_agent_state_t state;
+	char id[PHRONESIS_ID_MAX];
+	phronesis_agent_state_t state;
 	pid_t pid;
 	pid_t pgid;
 	int exit_status;
-	char mode[GROK_MODE_MAX];
-	char workspace[GROK_PATH_MAX];
-	char cgroup_path[GROK_PATH_MAX];
+	char mode[PHRONESIS_MODE_MAX];
+	char workspace[PHRONESIS_PATH_MAX];
+	char cgroup_path[PHRONESIS_PATH_MAX];
 } agent_slot_t;
 
-struct grok_supervisor {
-	char state_dir[GROK_PATH_MAX];
-	char runtime_dir[GROK_PATH_MAX];
-	char action_log[GROK_PATH_MAX];
-	char agents_dir[GROK_PATH_MAX];
+struct phronesis_supervisor {
+	char state_dir[PHRONESIS_PATH_MAX];
+	char runtime_dir[PHRONESIS_PATH_MAX];
+	char action_log[PHRONESIS_PATH_MAX];
+	char agents_dir[PHRONESIS_PATH_MAX];
 	agent_slot_t agents[GROK_MAX_AGENTS];
 };
 
@@ -35,7 +35,7 @@ static int valid_id(const char *id)
 {
 	size_t i;
 
-	if (!id || !id[0] || strlen(id) >= GROK_ID_MAX)
+	if (!id || !id[0] || strlen(id) >= PHRONESIS_ID_MAX)
 		return 0;
 	for (i = 0; id[i]; i++) {
 		char c = id[i];
@@ -61,73 +61,73 @@ static int valid_token(const char *s, size_t maxlen)
 	return 1;
 }
 
-static int slot_path(const grok_supervisor_t *s, const char *id, char *out, size_t n)
+static int slot_path(const phronesis_supervisor_t *s, const char *id, char *out, size_t n)
 {
 	int r = snprintf(out, n, "%s/%s.slot", s->agents_dir, id);
 
 	if (r < 0 || (size_t)r >= n)
-		return GROK_ERR_INVAL;
-	return GROK_OK;
+		return PHRONESIS_ERR_INVAL;
+	return PHRONESIS_OK;
 }
 
-static int write_slot(const grok_supervisor_t *s, const agent_slot_t *a)
+static int write_slot(const phronesis_supervisor_t *s, const agent_slot_t *a)
 {
-	char path[GROK_PATH_MAX];
-	char tmp[GROK_PATH_MAX];
+	char path[PHRONESIS_PATH_MAX];
+	char tmp[PHRONESIS_PATH_MAX];
 	FILE *f;
 
-	if (slot_path(s, a->id, path, sizeof(path)) != GROK_OK)
-		return GROK_ERR_INVAL;
+	if (slot_path(s, a->id, path, sizeof(path)) != PHRONESIS_OK)
+		return PHRONESIS_ERR_INVAL;
 	if (snprintf(tmp, sizeof(tmp), "%s.tmp", path) >= (int)sizeof(tmp))
-		return GROK_ERR_INVAL;
+		return PHRONESIS_ERR_INVAL;
 	f = fopen(tmp, "w");
 	if (!f)
-		return GROK_ERR_IO;
+		return PHRONESIS_ERR_IO;
 	if (fprintf(f, "%s %d %d %d %d %s %s\n",
 		    a->id, (int)a->state, (int)a->pid, (int)a->pgid, a->exit_status,
 		    a->mode[0] ? a->mode : "-",
 		    a->workspace[0] ? a->workspace : "-") < 0) {
 		fclose(f);
 		unlink(tmp);
-		return GROK_ERR_IO;
+		return PHRONESIS_ERR_IO;
 	}
 	if (fclose(f) != 0) {
 		unlink(tmp);
-		return GROK_ERR_IO;
+		return PHRONESIS_ERR_IO;
 	}
 	if (rename(tmp, path) != 0) {
 		unlink(tmp);
-		return GROK_ERR_IO;
+		return PHRONESIS_ERR_IO;
 	}
-	return GROK_OK;
+	return PHRONESIS_OK;
 }
 
-static int read_slot_file(const grok_supervisor_t *s, const char *id, agent_slot_t *a)
+static int read_slot_file(const phronesis_supervisor_t *s, const char *id, agent_slot_t *a)
 {
-	char path[GROK_PATH_MAX];
+	char path[PHRONESIS_PATH_MAX];
 	FILE *f;
 	int state, pid, pgid, exit_status;
-	char mode[GROK_MODE_MAX];
-	char workspace[GROK_PATH_MAX];
-	char got_id[GROK_ID_MAX];
+	char mode[PHRONESIS_MODE_MAX];
+	char workspace[PHRONESIS_PATH_MAX];
+	char got_id[PHRONESIS_ID_MAX];
 
-	if (slot_path(s, id, path, sizeof(path)) != GROK_OK)
-		return GROK_ERR_INVAL;
+	if (slot_path(s, id, path, sizeof(path)) != PHRONESIS_OK)
+		return PHRONESIS_ERR_INVAL;
 	f = fopen(path, "r");
 	if (!f)
-		return GROK_ERR_NOTFOUND;
+		return PHRONESIS_ERR_NOTFOUND;
 	memset(a, 0, sizeof(*a));
 	if (fscanf(f, "%63s %d %d %d %d %31s %511s",
 		   got_id, &state, &pid, &pgid, &exit_status, mode, workspace) != 7) {
 		fclose(f);
-		return GROK_ERR_IO;
+		return PHRONESIS_ERR_IO;
 	}
 	fclose(f);
 	if (strcmp(got_id, id) != 0)
-		return GROK_ERR_IO;
+		return PHRONESIS_ERR_IO;
 	a->in_use = 1;
 	snprintf(a->id, sizeof(a->id), "%s", got_id);
-	a->state = (grok_agent_state_t)state;
+	a->state = (phronesis_agent_state_t)state;
 	a->pid = (pid_t)pid;
 	a->pgid = (pid_t)pgid;
 	a->exit_status = exit_status;
@@ -135,10 +135,10 @@ static int read_slot_file(const grok_supervisor_t *s, const char *id, agent_slot
 		snprintf(a->mode, sizeof(a->mode), "%s", mode);
 	if (strcmp(workspace, "-") != 0)
 		snprintf(a->workspace, sizeof(a->workspace), "%s", workspace);
-	return GROK_OK;
+	return PHRONESIS_OK;
 }
 
-static agent_slot_t *find_mem(grok_supervisor_t *s, const char *id)
+static agent_slot_t *find_mem(phronesis_supervisor_t *s, const char *id)
 {
 	int i;
 
@@ -149,7 +149,7 @@ static agent_slot_t *find_mem(grok_supervisor_t *s, const char *id)
 	return NULL;
 }
 
-static agent_slot_t *alloc_mem(grok_supervisor_t *s)
+static agent_slot_t *alloc_mem(phronesis_supervisor_t *s)
 {
 	int i;
 
@@ -164,7 +164,7 @@ static agent_slot_t *alloc_mem(grok_supervisor_t *s)
 	return NULL;
 }
 
-static int load_agent(grok_supervisor_t *s, const char *id, agent_slot_t **out)
+static int load_agent(phronesis_supervisor_t *s, const char *id, agent_slot_t **out)
 {
 	agent_slot_t *a = find_mem(s, id);
 	agent_slot_t disk;
@@ -172,17 +172,17 @@ static int load_agent(grok_supervisor_t *s, const char *id, agent_slot_t **out)
 
 	if (a) {
 		*out = a;
-		return GROK_OK;
+		return PHRONESIS_OK;
 	}
 	rc = read_slot_file(s, id, &disk);
-	if (rc != GROK_OK)
+	if (rc != PHRONESIS_OK)
 		return rc;
 	a = alloc_mem(s);
 	if (!a)
-		return GROK_ERR_STATE;
+		return PHRONESIS_ERR_STATE;
 	*a = disk;
 	*out = a;
-	return GROK_OK;
+	return PHRONESIS_OK;
 }
 
 static void reap_slot(agent_slot_t *a)
@@ -190,19 +190,19 @@ static void reap_slot(agent_slot_t *a)
 	int st;
 	pid_t r;
 
-	if (!a || a->state != GROK_AGENT_RUNNING || a->pid <= 0)
+	if (!a || a->state != PHRONESIS_AGENT_RUNNING || a->pid <= 0)
 		return;
 	if (kill(a->pid, 0) != 0 && errno == ESRCH) {
 		r = waitpid(a->pid, &st, WNOHANG);
 		a->exit_status = (r == a->pid) ? st : -1;
-		a->state = GROK_AGENT_STOPPED;
+		a->state = PHRONESIS_AGENT_STOPPED;
 		a->pid = 0;
 		return;
 	}
 	r = waitpid(a->pid, &st, WNOHANG);
 	if (r == a->pid) {
 		a->exit_status = st;
-		a->state = GROK_AGENT_STOPPED;
+		a->state = PHRONESIS_AGENT_STOPPED;
 		a->pid = 0;
 	}
 }
@@ -213,7 +213,7 @@ static int kill_tree(pid_t pgid)
 	int tries;
 
 	if (pgid <= 1)
-		return GROK_ERR_INVAL;
+		return PHRONESIS_ERR_INVAL;
 
 	(void)kill(-pgid, SIGTERM);
 	for (tries = 0; tries < 50; tries++) {
@@ -233,64 +233,64 @@ static int kill_tree(pid_t pgid)
 	}
 	while (waitpid(-pgid, &st, WNOHANG) > 0) {
 	}
-	return GROK_OK;
+	return PHRONESIS_OK;
 }
 
-int grok_supervisor_open(grok_supervisor_t **out,
+int phronesis_supervisor_open(phronesis_supervisor_t **out,
 			 const char *state_dir,
 			 const char *runtime_dir)
 {
-	grok_supervisor_t *s;
+	phronesis_supervisor_t *s;
 	int rc;
 
 	if (!out)
-		return GROK_ERR_INVAL;
+		return PHRONESIS_ERR_INVAL;
 	*out = NULL;
 	s = calloc(1, sizeof(*s));
 	if (!s)
-		return GROK_ERR_IO;
+		return PHRONESIS_ERR_IO;
 	rc = grok_paths_resolve(s->state_dir, sizeof(s->state_dir),
 				s->runtime_dir, sizeof(s->runtime_dir),
 				s->action_log, sizeof(s->action_log),
 				state_dir, runtime_dir);
-	if (rc != GROK_OK) {
+	if (rc != PHRONESIS_OK) {
 		free(s);
 		return rc;
 	}
 	if (snprintf(s->agents_dir, sizeof(s->agents_dir), "%s/agents",
 		     s->runtime_dir) >= (int)sizeof(s->agents_dir)) {
 		free(s);
-		return GROK_ERR_INVAL;
+		return PHRONESIS_ERR_INVAL;
 	}
-	if (grok_paths_ensure_dir(s->agents_dir, 0700) != GROK_OK) {
+	if (grok_paths_ensure_dir(s->agents_dir, 0700) != PHRONESIS_OK) {
 		free(s);
-		return GROK_ERR_IO;
+		return PHRONESIS_ERR_IO;
 	}
 	*out = s;
-	return GROK_OK;
+	return PHRONESIS_OK;
 }
 
-void grok_supervisor_close(grok_supervisor_t *s)
+void phronesis_supervisor_close(phronesis_supervisor_t *s)
 {
 	free(s);
 }
 
-const char *grok_supervisor_action_log_path(const grok_supervisor_t *s)
+const char *phronesis_supervisor_action_log_path(const phronesis_supervisor_t *s)
 {
 	return s ? s->action_log : NULL;
 }
 
-const char *grok_supervisor_state_dir(const grok_supervisor_t *s)
+const char *phronesis_supervisor_state_dir(const phronesis_supervisor_t *s)
 {
 	return s ? s->state_dir : NULL;
 }
 
-const char *grok_supervisor_runtime_dir(const grok_supervisor_t *s)
+const char *phronesis_supervisor_runtime_dir(const phronesis_supervisor_t *s)
 {
 	return s ? s->runtime_dir : NULL;
 }
 
-int grok_supervisor_start(grok_supervisor_t *s,
+int phronesis_supervisor_start(phronesis_supervisor_t *s,
 			  const char *agent_id,
 			  const char *mode,
 			  const char *workspace,
@@ -298,25 +298,25 @@ int grok_supervisor_start(grok_supervisor_t *s,
 {
 	agent_slot_t *a;
 	pid_t pid;
-	char detail[GROK_DETAIL_MAX];
+	char detail[PHRONESIS_DETAIL_MAX];
 	int rc;
 
 	if (!s || !argv || !argv[0] || !valid_id(agent_id))
-		return GROK_ERR_INVAL;
-	if (mode && mode[0] && !valid_token(mode, GROK_MODE_MAX))
-		return GROK_ERR_INVAL;
-	if (workspace && workspace[0] && !valid_token(workspace, GROK_PATH_MAX))
-		return GROK_ERR_INVAL;
+		return PHRONESIS_ERR_INVAL;
+	if (mode && mode[0] && !valid_token(mode, PHRONESIS_MODE_MAX))
+		return PHRONESIS_ERR_INVAL;
+	if (workspace && workspace[0] && !valid_token(workspace, PHRONESIS_PATH_MAX))
+		return PHRONESIS_ERR_INVAL;
 
 	rc = load_agent(s, agent_id, &a);
-	if (rc == GROK_OK) {
+	if (rc == PHRONESIS_OK) {
 		reap_slot(a);
-		if (a->state == GROK_AGENT_RUNNING)
-			return GROK_ERR_EXISTS;
-	} else if (rc == GROK_ERR_NOTFOUND) {
+		if (a->state == PHRONESIS_AGENT_RUNNING)
+			return PHRONESIS_ERR_EXISTS;
+	} else if (rc == PHRONESIS_ERR_NOTFOUND) {
 		a = alloc_mem(s);
 		if (!a)
-			return GROK_ERR_STATE;
+			return PHRONESIS_ERR_STATE;
 		snprintf(a->id, sizeof(a->id), "%s", agent_id);
 	} else {
 		return rc;
@@ -324,7 +324,7 @@ int grok_supervisor_start(grok_supervisor_t *s,
 
 	pid = fork();
 	if (pid < 0)
-		return GROK_ERR_SPAWN;
+		return PHRONESIS_ERR_SPAWN;
 	if (pid == 0) {
 		if (setpgid(0, 0) != 0)
 			_exit(127);
@@ -335,7 +335,7 @@ int grok_supervisor_start(grok_supervisor_t *s,
 
 	a->pid = pid;
 	a->pgid = pid;
-	a->state = GROK_AGENT_RUNNING;
+	a->state = PHRONESIS_AGENT_RUNNING;
 	a->exit_status = -1;
 	a->cgroup_path[0] = '\0';
 	if (mode && mode[0])
@@ -349,21 +349,21 @@ int grok_supervisor_start(grok_supervisor_t *s,
 
 	/* Best-effort cgroup placement; process-group kill remains the baseline. */
 	if (grok_cgroup_create(s->runtime_dir, agent_id, a->cgroup_path,
-			       sizeof(a->cgroup_path)) == GROK_OK &&
+			       sizeof(a->cgroup_path)) == PHRONESIS_OK &&
 	    a->cgroup_path[0]) {
-		if (grok_cgroup_attach(a->cgroup_path, pid) != GROK_OK)
+		if (grok_cgroup_attach(a->cgroup_path, pid) != PHRONESIS_OK)
 			a->cgroup_path[0] = '\0';
 	}
 
-	if (write_slot(s, a) != GROK_OK) {
+	if (write_slot(s, a) != PHRONESIS_OK) {
 		(void)kill_tree(pid);
 		if (a->cgroup_path[0])
 			grok_cgroup_remove(a->cgroup_path);
-		a->state = GROK_AGENT_FAILED;
+		a->state = PHRONESIS_AGENT_FAILED;
 		a->pid = 0;
 		a->cgroup_path[0] = '\0';
 		(void)write_slot(s, a);
-		return GROK_ERR_IO;
+		return PHRONESIS_ERR_IO;
 	}
 
 	{
@@ -374,20 +374,20 @@ int grok_supervisor_start(grok_supervisor_t *s,
 			 (int)pid, (int)pid, cmd, cg);
 	}
 	(void)grok_action_log_append(s->action_log, agent_id, "start", detail);
-	return GROK_OK;
+	return PHRONESIS_OK;
 }
 
-int grok_supervisor_status(grok_supervisor_t *s,
+int phronesis_supervisor_status(phronesis_supervisor_t *s,
 			   const char *agent_id,
-			   grok_agent_status_t *out)
+			   phronesis_agent_status_t *out)
 {
 	agent_slot_t *a;
 	int rc;
 
 	if (!s || !out || !valid_id(agent_id))
-		return GROK_ERR_INVAL;
+		return PHRONESIS_ERR_INVAL;
 	rc = load_agent(s, agent_id, &a);
-	if (rc != GROK_OK)
+	if (rc != PHRONESIS_OK)
 		return rc;
 	reap_slot(a);
 	(void)write_slot(s, a);
@@ -400,31 +400,31 @@ int grok_supervisor_status(grok_supervisor_t *s,
 	snprintf(out->mode, sizeof(out->mode), "%s", a->mode);
 	snprintf(out->workspace, sizeof(out->workspace), "%s", a->workspace);
 	out->has_cgroup = a->cgroup_path[0] ? 1 : 0;
-	return GROK_OK;
+	return PHRONESIS_OK;
 }
 
-int grok_supervisor_stop(grok_supervisor_t *s, const char *agent_id)
+int phronesis_supervisor_stop(phronesis_supervisor_t *s, const char *agent_id)
 {
 	agent_slot_t *a;
-	char detail[GROK_DETAIL_MAX];
+	char detail[PHRONESIS_DETAIL_MAX];
 	pid_t pgid;
 	int rc;
 
 	if (!s || !valid_id(agent_id))
-		return GROK_ERR_INVAL;
+		return PHRONESIS_ERR_INVAL;
 	rc = load_agent(s, agent_id, &a);
-	if (rc != GROK_OK)
+	if (rc != PHRONESIS_OK)
 		return rc;
 
 	reap_slot(a);
-	if (a->state != GROK_AGENT_RUNNING) {
+	if (a->state != PHRONESIS_AGENT_RUNNING) {
 		(void)write_slot(s, a);
 		(void)grok_action_log_append(s->action_log, agent_id, "stop", "idempotent");
-		return GROK_OK;
+		return PHRONESIS_OK;
 	}
 
 	pgid = a->pgid > 0 ? a->pgid : a->pid;
-	if (a->cgroup_path[0] && grok_cgroup_kill(a->cgroup_path) == GROK_OK) {
+	if (a->cgroup_path[0] && grok_cgroup_kill(a->cgroup_path) == PHRONESIS_OK) {
 		snprintf(detail, sizeof(detail), "cgroup.kill path=%.200s pgid=%d",
 			 a->cgroup_path, (int)pgid);
 	} else {
@@ -436,63 +436,63 @@ int grok_supervisor_stop(grok_supervisor_t *s, const char *agent_id)
 		grok_cgroup_remove(a->cgroup_path);
 		a->cgroup_path[0] = '\0';
 	}
-	a->state = GROK_AGENT_STOPPED;
+	a->state = PHRONESIS_AGENT_STOPPED;
 	a->pid = 0;
 	a->exit_status = -1;
 	(void)write_slot(s, a);
 	(void)grok_action_log_append(s->action_log, agent_id, "stop", detail);
-	return GROK_OK;
+	return PHRONESIS_OK;
 }
 
-int grok_supervisor_log(grok_supervisor_t *s,
+int phronesis_supervisor_log(phronesis_supervisor_t *s,
 			const char *agent_id,
 			const char *kind,
 			const char *detail)
 {
 	if (!s)
-		return GROK_ERR_INVAL;
+		return PHRONESIS_ERR_INVAL;
 	if (agent_id && agent_id[0] && !valid_id(agent_id))
-		return GROK_ERR_INVAL;
+		return PHRONESIS_ERR_INVAL;
 	return grok_action_log_append(s->action_log, agent_id, kind, detail);
 }
 
-int grok_supervisor_log_last(const grok_supervisor_t *s, char *buf, size_t buflen)
+int phronesis_supervisor_log_last(const phronesis_supervisor_t *s, char *buf, size_t buflen)
 {
 	if (!s)
-		return GROK_ERR_INVAL;
+		return PHRONESIS_ERR_INVAL;
 	return grok_action_log_last(s->action_log, buf, buflen);
 }
 
-int grok_policy_check(grok_supervisor_t *s,
+int phronesis_policy_check(phronesis_supervisor_t *s,
 		      const char *agent_id,
 		      const char *tool,
 		      const char *action,
 		      const char *path,
-		      grok_policy_result_t *out)
+		      phronesis_policy_result_t *out)
 {
 	agent_slot_t *a = NULL;
 	const char *ws = NULL;
-	char detail[GROK_DETAIL_MAX];
+	char detail[PHRONESIS_DETAIL_MAX];
 	int rc;
 
 	if (!s || !out)
-		return GROK_ERR_INVAL;
+		return PHRONESIS_ERR_INVAL;
 	if (agent_id && agent_id[0]) {
 		if (!valid_id(agent_id))
-			return GROK_ERR_INVAL;
+			return PHRONESIS_ERR_INVAL;
 		rc = load_agent(s, agent_id, &a);
-		if (rc == GROK_OK)
+		if (rc == PHRONESIS_OK)
 			ws = a->workspace[0] ? a->workspace : NULL;
-		else if (rc != GROK_ERR_NOTFOUND)
+		else if (rc != PHRONESIS_ERR_NOTFOUND)
 			return rc;
 		/* unknown agent still evaluates with empty workspace (deny paths) */
 	}
-	rc = grok_policy_eval(ws, tool, action, path, out);
-	if (rc != GROK_OK)
+	rc = phronesis_policy_eval(ws, tool, action, path, out);
+	if (rc != PHRONESIS_OK)
 		return rc;
 	snprintf(detail, sizeof(detail), "tool=%s action=%s decision=%d %s",
 		 tool ? tool : "", action ? action : "",
 		 (int)out->decision, out->reason);
 	(void)grok_action_log_append(s->action_log, agent_id, "policy", detail);
-	return GROK_OK;
+	return PHRONESIS_OK;
 }

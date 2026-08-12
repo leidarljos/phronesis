@@ -3,8 +3,8 @@
 
 #include <string.h>
 
-void grok_policy_result_set(grok_policy_result_t *out, grok_decision_t decision,
-			    grok_policy_reason_t code)
+void phronesis_policy_result_set(phronesis_policy_result_t *out, phronesis_decision_t decision,
+			    phronesis_policy_reason_t code)
 {
 	if (!out)
 		return;

@@ -30,7 +30,7 @@ export const ENCYCLOPEDIA_NOTES: Record<number, EncyclopediaNote> = {
       "Deny when the shell cwd (or path-plane path) is outside the seat workspace.",
     body: [
       "Shell content pack: Cap'n ShellView carries underWorkspace. When that bit is false, policy/shell.janet short-circuits with Decision.deny and code pathOutsideWorkspace before danger/secret/python law runs.",
-      "Path-plane TCB (checkPath / grok_policy_eval): read/write outside the workspace also fail closed on this plane; under-workspace allow is pathUnderWorkspaceAllow (3).",
+      "Path-plane TCB (checkPath / phronesis_policy_eval): read/write outside the workspace also fail closed on this plane; under-workspace allow is pathUnderWorkspaceAllow (3).",
       "Typical playground fixture: cwd_outside_deny (cwd not under /ws).",
     ],
     sources: [
@@ -60,7 +60,7 @@ export const ENCYCLOPEDIA_NOTES: Record<number, EncyclopediaNote> = {
       {
         path: "src/capnp_api.c",
         symbol: "reloadShellPack",
-        note: "rc from grok_policy_shell_pack_reload_internal → packLoadFailed",
+        note: "rc from phronesis_shell_pack_reload_internal → packLoadFailed",
       },
       {
         path: "src/policy_janet.c",
@@ -160,7 +160,7 @@ export const ENCYCLOPEDIA_NOTES: Record<number, EncyclopediaNote> = {
       },
       {
         path: "src/policy.c",
-        symbol: "grok_policy_eval",
+        symbol: "phronesis_policy_eval",
         note: "read|write + sensitive → PATH_SENSITIVE_DENY",
       },
     ],
