@@ -14,7 +14,7 @@ static int join3(char *out, size_t n, const char *a, const char *b, const char *
 	int r;
 
 	if (!out || n == 0 || !a)
-		return POLICYD_ERR_INVAL;
+		return PHRONESIS_ERR_INVAL;
 	if (c && c[0])
 		r = snprintf(out, n, "%s/%s/%s", a, b ? b : "", c);
 	else if (b && b[0])
@@ -22,8 +22,8 @@ static int join3(char *out, size_t n, const char *a, const char *b, const char *
 	else
 		r = snprintf(out, n, "%s", a);
 	if (r < 0 || (size_t)r >= n)
-		return POLICYD_ERR_INVAL;
-	return POLICYD_OK;
+		return PHRONESIS_ERR_INVAL;
+	return PHRONESIS_OK;
 }
 
 /*
@@ -37,42 +37,42 @@ static int mkdir_one(const char *path, int mode)
 	int rc;
 
 	if (!path || !path[0])
-		return POLICYD_ERR_INVAL;
+		return PHRONESIS_ERR_INVAL;
 	if (stat(path, &st) == 0) {
 		if (!S_ISDIR(st.st_mode))
-			return POLICYD_ERR_IO;
-		return POLICYD_OK;
+			return PHRONESIS_ERR_IO;
+		return PHRONESIS_OK;
 	}
 	if (errno != ENOENT)
-		return POLICYD_ERR_IO;
+		return PHRONESIS_ERR_IO;
 	old = umask(0);
 	rc = mkdir(path, (mode_t)mode & 0777);
 	(void)umask(old);
 	if (rc == 0)
-		return POLICYD_OK;
+		return PHRONESIS_OK;
 	if (errno == EEXIST) {
 		if (stat(path, &st) != 0 || !S_ISDIR(st.st_mode))
-			return POLICYD_ERR_IO;
-		return POLICYD_OK;
+			return PHRONESIS_ERR_IO;
+		return PHRONESIS_OK;
 	}
-	return POLICYD_ERR_IO;
+	return PHRONESIS_ERR_IO;
 }
 
 /*
  * Create `path` and any missing parents. New levels get `mode`. Existing
  * parents are not chmod'd (shared ~/.local stays as the host left it).
  */
-int policyd_paths_ensure_dir(const char *path, int mode)
+int phronesis_paths_ensure_dir(const char *path, int mode)
 {
-	char buf[POLICYD_PATH_MAX];
+	char buf[PHRONESIS_PATH_MAX];
 	size_t i, n;
 	int rc;
 
 	if (!path || !path[0])
-		return POLICYD_ERR_INVAL;
+		return PHRONESIS_ERR_INVAL;
 	n = strlen(path);
 	if (n >= sizeof(buf))
-		return POLICYD_ERR_INVAL;
+		return PHRONESIS_ERR_INVAL;
 	memcpy(buf, path, n + 1);
 	for (i = 1; i < n; i++) {
 		if (buf[i] != '/')
@@ -80,7 +80,7 @@ int policyd_paths_ensure_dir(const char *path, int mode)
 		buf[i] = '\0';
 		rc = mkdir_one(buf, mode);
 		buf[i] = '/';
-		if (rc != POLICYD_OK)
+		if (rc != PHRONESIS_OK)
 			return rc;
 		while (i + 1 < n && buf[i + 1] == '/')
 			i++;
@@ -90,22 +90,22 @@ int policyd_paths_ensure_dir(const char *path, int mode)
 
 static int ensure_state_tree(const char *state)
 {
-	char buf[POLICYD_PATH_MAX];
+	char buf[PHRONESIS_PATH_MAX];
 
-	if (policyd_paths_ensure_dir(state, 0700) != POLICYD_OK)
-		return POLICYD_ERR_IO;
-	if (join3(buf, sizeof(buf), state, "log", NULL) != POLICYD_OK)
-		return POLICYD_ERR_INVAL;
-	if (policyd_paths_ensure_dir(buf, 0700) != POLICYD_OK)
-		return POLICYD_ERR_IO;
-	if (join3(buf, sizeof(buf), state, "phronesis", NULL) != POLICYD_OK)
-		return POLICYD_ERR_INVAL;
-	if (policyd_paths_ensure_dir(buf, 0700) != POLICYD_OK)
-		return POLICYD_ERR_IO;
-	return POLICYD_OK;
+	if (phronesis_paths_ensure_dir(state, 0700) != PHRONESIS_OK)
+		return PHRONESIS_ERR_IO;
+	if (join3(buf, sizeof(buf), state, "log", NULL) != PHRONESIS_OK)
+		return PHRONESIS_ERR_INVAL;
+	if (phronesis_paths_ensure_dir(buf, 0700) != PHRONESIS_OK)
+		return PHRONESIS_ERR_IO;
+	if (join3(buf, sizeof(buf), state, "phronesis", NULL) != PHRONESIS_OK)
+		return PHRONESIS_ERR_INVAL;
+	if (phronesis_paths_ensure_dir(buf, 0700) != PHRONESIS_OK)
+		return PHRONESIS_ERR_IO;
+	return PHRONESIS_OK;
 }
 
-int policyd_paths_resolve(char *state_dir, size_t state_len,
+int phronesis_paths_resolve(char *state_dir, size_t state_len,
 		       char *runtime_dir, size_t runtime_len,
 		       char *action_log, size_t log_len,
 		       const char *state_override,
@@ -117,54 +117,54 @@ int policyd_paths_resolve(char *state_dir, size_t state_len,
 	const char *xdg_state = getenv("XDG_STATE_HOME");
 	const char *xdg_runtime = getenv("XDG_RUNTIME_DIR");
 	const char *home = getenv("HOME");
-	char tmp[POLICYD_PATH_MAX];
+	char tmp[PHRONESIS_PATH_MAX];
 
 	if (state_override && state_override[0]) {
 		if (snprintf(state_dir, state_len, "%s", state_override) >= (int)state_len)
-			return POLICYD_ERR_INVAL;
+			return PHRONESIS_ERR_INVAL;
 	} else if (env_state && env_state[0]) {
 		if (snprintf(state_dir, state_len, "%s", env_state) >= (int)state_len)
-			return POLICYD_ERR_INVAL;
+			return PHRONESIS_ERR_INVAL;
 	} else if (xdg_state && xdg_state[0]) {
-		if (join3(state_dir, state_len, xdg_state, "grokos", NULL) != POLICYD_OK)
-			return POLICYD_ERR_INVAL;
+		if (join3(state_dir, state_len, xdg_state, "grokos", NULL) != PHRONESIS_OK)
+			return PHRONESIS_ERR_INVAL;
 	} else if (home && home[0]) {
-		if (join3(tmp, sizeof(tmp), home, ".local/state", NULL) != POLICYD_OK)
-			return POLICYD_ERR_INVAL;
-		if (join3(state_dir, state_len, tmp, "grokos", NULL) != POLICYD_OK)
-			return POLICYD_ERR_INVAL;
+		if (join3(tmp, sizeof(tmp), home, ".local/state", NULL) != PHRONESIS_OK)
+			return PHRONESIS_ERR_INVAL;
+		if (join3(state_dir, state_len, tmp, "grokos", NULL) != PHRONESIS_OK)
+			return PHRONESIS_ERR_INVAL;
 	} else {
-		return POLICYD_ERR_STATE;
+		return PHRONESIS_ERR_STATE;
 	}
 
 	if (runtime_override && runtime_override[0]) {
 		if (snprintf(runtime_dir, runtime_len, "%s", runtime_override) >= (int)runtime_len)
-			return POLICYD_ERR_INVAL;
+			return PHRONESIS_ERR_INVAL;
 	} else if (env_runtime && env_runtime[0]) {
 		if (snprintf(runtime_dir, runtime_len, "%s", env_runtime) >= (int)runtime_len)
-			return POLICYD_ERR_INVAL;
+			return PHRONESIS_ERR_INVAL;
 	} else if (xdg_runtime && xdg_runtime[0]) {
-		if (join3(runtime_dir, runtime_len, xdg_runtime, "grokos", NULL) != POLICYD_OK)
-			return POLICYD_ERR_INVAL;
+		if (join3(runtime_dir, runtime_len, xdg_runtime, "grokos", NULL) != PHRONESIS_OK)
+			return PHRONESIS_ERR_INVAL;
 	} else {
-		if (join3(runtime_dir, runtime_len, state_dir, "run", NULL) != POLICYD_OK)
-			return POLICYD_ERR_INVAL;
+		if (join3(runtime_dir, runtime_len, state_dir, "run", NULL) != PHRONESIS_OK)
+			return PHRONESIS_ERR_INVAL;
 	}
 
 	if (strcmp(runtime_dir, "/tmp") == 0 || strcmp(runtime_dir, "/tmp/") == 0)
-		return POLICYD_ERR_STATE;
+		return PHRONESIS_ERR_STATE;
 
 	if (env_log && env_log[0]) {
 		if (snprintf(action_log, log_len, "%s", env_log) >= (int)log_len)
-			return POLICYD_ERR_INVAL;
+			return PHRONESIS_ERR_INVAL;
 	} else {
-		if (join3(action_log, log_len, state_dir, "log", "actions.jsonl") != POLICYD_OK)
-			return POLICYD_ERR_INVAL;
+		if (join3(action_log, log_len, state_dir, "log", "actions.jsonl") != PHRONESIS_OK)
+			return PHRONESIS_ERR_INVAL;
 	}
 
-	if (ensure_state_tree(state_dir) != POLICYD_OK)
-		return POLICYD_ERR_IO;
-	if (policyd_paths_ensure_dir(runtime_dir, 0700) != POLICYD_OK)
-		return POLICYD_ERR_IO;
-	return POLICYD_OK;
+	if (ensure_state_tree(state_dir) != PHRONESIS_OK)
+		return PHRONESIS_ERR_IO;
+	if (phronesis_paths_ensure_dir(runtime_dir, 0700) != PHRONESIS_OK)
+		return PHRONESIS_ERR_IO;
+	return PHRONESIS_OK;
 }

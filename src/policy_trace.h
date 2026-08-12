@@ -5,8 +5,8 @@
  * Product builds leave GROKOS_POLICYD_TRACE undefined: all macros are no-ops
  * and pd_trace_to_json returns NULL. Playground emcc sets -DGROKOS_POLICYD_TRACE=1.
  */
-#ifndef POLICYD_POLICY_TRACE_H
-#define POLICYD_POLICY_TRACE_H
+#ifndef PHRONESIS_POLICY_TRACE_H
+#define PHRONESIS_POLICY_TRACE_H
 
 #include <stddef.h>
 
@@ -104,4 +104,4 @@ static inline void pd_trace_register_janet(void *janet_env)
 }
 #endif
 
-#endif /* POLICYD_POLICY_TRACE_H */
+#endif /* PHRONESIS_POLICY_TRACE_H */

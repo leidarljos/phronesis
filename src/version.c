@@ -1,12 +1,12 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 #include "phronesis/supervisor.h"
 
-const char *policyd_version_string(void)
+const char *phronesis_version_string(void)
 {
-	return POLICYD_VERSION;
+	return PHRONESIS_VERSION;
 }
 
-int policyd_api_version(void)
+int phronesis_api_version(void)
 {
-	return POLICYD_API_VERSION;
+	return PHRONESIS_API_VERSION;
 }

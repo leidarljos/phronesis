@@ -47,30 +47,30 @@ static int write_tree_script(const char *path, const char *marker, int depth, in
 
 static void run_tree_case(const char *tag, int depth, int ignore_term)
 {
-	policyd_supervisor_t *s = NULL;
-	char st[POLICYD_PATH_MAX], rt[POLICYD_PATH_MAX];
-	char script[POLICYD_PATH_MAX], marker[POLICYD_PATH_MAX];
+	phronesis_supervisor_t *s = NULL;
+	char st[PHRONESIS_PATH_MAX], rt[PHRONESIS_PATH_MAX];
+	char script[PHRONESIS_PATH_MAX], marker[PHRONESIS_PATH_MAX];
 	char *argv[3];
 	pid_t leader = 0, leaf = 0;
-	policyd_agent_status_t stt;
+	phronesis_agent_status_t stt;
 	int tries;
 
-	assert_int_equal(t_open_pair(&s, st, sizeof(st), rt, sizeof(rt), tag), POLICYD_OK);
+	assert_int_equal(t_open_pair(&s, st, sizeof(st), rt, sizeof(rt), tag), PHRONESIS_OK);
 	snprintf(script, sizeof(script), "%s/tree.sh", rt);
 	snprintf(marker, sizeof(marker), "%s/leaf.pid", rt);
 	assert_int_equal(write_tree_script(script, marker, depth, ignore_term), 0);
 	argv[0] = "/bin/sh";
 	argv[1] = script;
 	argv[2] = NULL;
-	assert_int_equal(policyd_supervisor_start(s, "agent-tree", NULL, NULL, argv), POLICYD_OK);
-	assert_int_equal(policyd_supervisor_status(s, "agent-tree", &stt), POLICYD_OK);
+	assert_int_equal(phronesis_supervisor_start(s, "agent-tree", NULL, NULL, argv), PHRONESIS_OK);
+	assert_int_equal(phronesis_supervisor_status(s, "agent-tree", &stt), PHRONESIS_OK);
 	leader = stt.pid;
 	assert_true(t_pid_alive(leader));
 	assert_int_equal(t_wait_file(marker, 2000), 0);
 	assert_int_equal(t_read_pidfile(marker, &leaf), 0);
 	assert_true(leaf > 1 && leaf != leader);
 	assert_true(t_pid_alive(leaf));
-	assert_int_equal(policyd_supervisor_stop(s, "agent-tree"), POLICYD_OK);
+	assert_int_equal(phronesis_supervisor_stop(s, "agent-tree"), PHRONESIS_OK);
 	for (tries = 0; tries < 100; tries++) {
 		if (!t_pid_alive(leader) && !t_pid_alive(leaf))
 			break;
@@ -78,9 +78,9 @@ static void run_tree_case(const char *tag, int depth, int ignore_term)
 	}
 	assert_false(t_pid_alive(leader));
 	assert_false(t_pid_alive(leaf));
-	assert_int_equal(policyd_supervisor_status(s, "agent-tree", &stt), POLICYD_OK);
-	assert_int_equal(stt.state, POLICYD_AGENT_STOPPED);
-	policyd_supervisor_close(s);
+	assert_int_equal(phronesis_supervisor_status(s, "agent-tree", &stt), PHRONESIS_OK);
+	assert_int_equal(stt.state, PHRONESIS_AGENT_STOPPED);
+	phronesis_supervisor_close(s);
 	t_rm_rf(st);
 	t_rm_rf(rt);
 }
@@ -105,41 +105,41 @@ static void test_kill_sigterm_ignored_leader(void **state)
 
 static void test_stop_after_external_kill(void **state)
 {
-	policyd_supervisor_t *s = NULL;
-	char st[POLICYD_PATH_MAX], rt[POLICYD_PATH_MAX];
-	policyd_agent_status_t stt;
+	phronesis_supervisor_t *s = NULL;
+	char st[PHRONESIS_PATH_MAX], rt[PHRONESIS_PATH_MAX];
+	phronesis_agent_status_t stt;
 	char *argv[] = { "sleep", "120", NULL };
 	pid_t pid;
 
 	(void)state;
-	assert_int_equal(t_open_pair(&s, st, sizeof(st), rt, sizeof(rt), "extkill"), POLICYD_OK);
-	assert_int_equal(policyd_supervisor_start(s, "agent-a", NULL, NULL, argv), POLICYD_OK);
-	assert_int_equal(policyd_supervisor_status(s, "agent-a", &stt), POLICYD_OK);
+	assert_int_equal(t_open_pair(&s, st, sizeof(st), rt, sizeof(rt), "extkill"), PHRONESIS_OK);
+	assert_int_equal(phronesis_supervisor_start(s, "agent-a", NULL, NULL, argv), PHRONESIS_OK);
+	assert_int_equal(phronesis_supervisor_status(s, "agent-a", &stt), PHRONESIS_OK);
 	pid = stt.pid;
 	assert_int_equal(kill(pid, SIGKILL), 0);
 	usleep(50 * 1000);
-	assert_int_equal(policyd_supervisor_stop(s, "agent-a"), POLICYD_OK);
-	assert_int_equal(policyd_supervisor_status(s, "agent-a", &stt), POLICYD_OK);
-	assert_int_equal(stt.state, POLICYD_AGENT_STOPPED);
-	policyd_supervisor_close(s);
+	assert_int_equal(phronesis_supervisor_stop(s, "agent-a"), PHRONESIS_OK);
+	assert_int_equal(phronesis_supervisor_status(s, "agent-a", &stt), PHRONESIS_OK);
+	assert_int_equal(stt.state, PHRONESIS_AGENT_STOPPED);
+	phronesis_supervisor_close(s);
 	t_rm_rf(st);
 	t_rm_rf(rt);
 }
 
 static void test_thrash_start_stop(void **state)
 {
-	policyd_supervisor_t *s = NULL;
-	char st[POLICYD_PATH_MAX], rt[POLICYD_PATH_MAX];
+	phronesis_supervisor_t *s = NULL;
+	char st[PHRONESIS_PATH_MAX], rt[PHRONESIS_PATH_MAX];
 	char *argv[] = { "sleep", "30", NULL };
 	int i;
 
 	(void)state;
-	assert_int_equal(t_open_pair(&s, st, sizeof(st), rt, sizeof(rt), "thrash"), POLICYD_OK);
+	assert_int_equal(t_open_pair(&s, st, sizeof(st), rt, sizeof(rt), "thrash"), PHRONESIS_OK);
 	for (i = 0; i < 8; i++) {
-		assert_int_equal(policyd_supervisor_start(s, "agent-a", NULL, NULL, argv), POLICYD_OK);
-		assert_int_equal(policyd_supervisor_stop(s, "agent-a"), POLICYD_OK);
+		assert_int_equal(phronesis_supervisor_start(s, "agent-a", NULL, NULL, argv), PHRONESIS_OK);
+		assert_int_equal(phronesis_supervisor_stop(s, "agent-a"), PHRONESIS_OK);
 	}
-	policyd_supervisor_close(s);
+	phronesis_supervisor_close(s);
 	t_rm_rf(st);
 	t_rm_rf(rt);
 }

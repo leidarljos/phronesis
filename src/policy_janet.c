@@ -245,7 +245,7 @@ static void seal_pack_env(JanetTable *env)
  */
 static void unload_packs(void);
 
-void policyd_policy_pack_reset(void)
+void phronesis_policy_pack_reset(void)
 {
 	unload_packs();
 	pack_failed = 0;
@@ -858,7 +858,7 @@ static int load_pack_once(void)
 	return load_packs_from_spec(spec, 0) == 0 ? 0 : -1;
 }
 
-int policyd_policy_shell_pack_reload_internal(const char *path)
+int phronesis_policy_shell_pack_reload_internal(const char *path)
 {
 	int rc;
 
@@ -885,15 +885,15 @@ int policyd_policy_shell_pack_reload_internal(const char *path)
 }
 
 /* Public ABI (declared in supervisor.h). */
-int policyd_policy_shell_pack_reload(const char *path)
+int phronesis_policy_shell_pack_reload(const char *path)
 {
-	int rc = policyd_policy_shell_pack_reload_internal(path);
+	int rc = phronesis_policy_shell_pack_reload_internal(path);
 
 	if (rc == 0)
-		return POLICYD_OK;
+		return PHRONESIS_OK;
 	if (rc == -1)
-		return POLICYD_ERR_INVAL;
-	return POLICYD_ERR_IO;
+		return PHRONESIS_ERR_INVAL;
+	return PHRONESIS_ERR_IO;
 }
 
 static int path_under_workspace(const char *workspace, const char *path)
@@ -984,13 +984,13 @@ static int build_policy_decision_code(uint16_t decision, uint16_t code,
 }
 
 struct shell_path_probe {
-	char arg[POLICYD_PATH_MAX];
-	char resolved[POLICYD_PATH_MAX];
+	char arg[PHRONESIS_PATH_MAX];
+	char resolved[PHRONESIS_PATH_MAX];
 	int exists;
 	char head[SHELL_HEAD_MAX];
 };
 
-int policyd_policy_build_shell_view(const char *workspace, const char *cwd,
+int phronesis_policy_build_shell_view(const char *workspace, const char *cwd,
 				 capn_ptr argv, uint8_t **flat_out,
 				 size_t *flat_len)
 {
@@ -1003,10 +1003,10 @@ int policyd_policy_build_shell_view(const char *workspace, const char *cwd,
 	int rc = -1;
 	int capn_live = 0;
 	capn_text empty = { 0, "", NULL };
-	char abs[POLICYD_PATH_MAX];
+	char abs[PHRONESIS_PATH_MAX];
 	/* Heap: musl default thread stacks are 128 KB. */
 	struct shell_path_probe *probes = NULL;
-	char (*argv_store)[POLICYD_PATH_MAX] = NULL;
+	char (*argv_store)[PHRONESIS_PATH_MAX] = NULL;
 	int argv_n = 0;
 
 	if (!flat_out || !flat_len)
@@ -1030,7 +1030,7 @@ int policyd_policy_build_shell_view(const char *workspace, const char *cwd,
 		for (i = 0; i < n; i++) {
 			capn_text t = capn_get_text(argv, i, empty);
 
-			if ((size_t)t.len >= POLICYD_PATH_MAX) {
+			if ((size_t)t.len >= PHRONESIS_PATH_MAX) {
 				rc = -2;
 				goto out;
 			}
@@ -1058,7 +1058,7 @@ int policyd_policy_build_shell_view(const char *workspace, const char *cwd,
 			continue;
 		if (!strchr(tok, '/') && !strchr(tok, '.'))
 			continue;
-		if (policyd_policy_resolve_script(cwd, tok, abs, sizeof(abs)) != 0)
+		if (phronesis_policy_resolve_script(cwd, tok, abs, sizeof(abs)) != 0)
 			continue;
 		if (!path_under_workspace(workspace, abs))
 			continue;
@@ -1122,11 +1122,11 @@ out:
  */
 static int decision_rank(int decision)
 {
-	if (decision == (int)POLICYD_DECISION_DENY)
+	if (decision == (int)PHRONESIS_DECISION_DENY)
 		return 3;
-	if (decision == (int)POLICYD_DECISION_PROMPT)
+	if (decision == (int)PHRONESIS_DECISION_PROMPT)
 		return 2;
-	if (decision == (int)POLICYD_DECISION_ALLOW)
+	if (decision == (int)PHRONESIS_DECISION_ALLOW)
 		return 1;
 	return 3;
 }
@@ -1212,7 +1212,7 @@ static void compose_pack_entry(const char *entry, int need_flag_shell,
 	*out_len = 0;
 
 	if (load_pack_once() != 0) {
-		(void)build_policy_decision_code(0, POLICYD_REASON_PACK_MISSING,
+		(void)build_policy_decision_code(0, PHRONESIS_REASON_PACK_MISSING,
 						 out, out_len);
 		return;
 	}
@@ -1243,14 +1243,14 @@ static void compose_pack_entry(const char *entry, int need_flag_shell,
 			free(one);
 			free(best);
 			(void)build_policy_decision_code(
-				0, POLICYD_REASON_PACK_MISSING, out, out_len);
+				0, PHRONESIS_REASON_PACK_MISSING, out, out_len);
 			return;
 		}
 		if (rc == -2) {
 			free(one);
 			free(best);
 			(void)build_policy_decision_code(
-				0, POLICYD_REASON_PACK_RUNTIME_ERROR, out,
+				0, PHRONESIS_REASON_PACK_RUNTIME_ERROR, out,
 				out_len);
 			return;
 		}
@@ -1258,19 +1258,19 @@ static void compose_pack_entry(const char *entry, int need_flag_shell,
 			free(one);
 			free(best);
 			(void)build_policy_decision_code(
-				0, POLICYD_REASON_PACK_BAD_RESULT, out, out_len);
+				0, PHRONESIS_REASON_PACK_BAD_RESULT, out, out_len);
 			return;
 		}
 		if (read_decision_fields(one, one_len, &dec, &code) != 0) {
 			free(one);
 			free(best);
 			(void)build_policy_decision_code(
-				0, POLICYD_REASON_PACK_BAD_RESULT, out, out_len);
+				0, PHRONESIS_REASON_PACK_BAD_RESULT, out, out_len);
 			return;
 		}
 		rank = decision_rank(dec);
 		/* Deny short-circuit: first deny wins. */
-		if (dec == (int)POLICYD_DECISION_DENY) {
+		if (dec == (int)PHRONESIS_DECISION_DENY) {
 			free(best);
 			*out = one;
 			*out_len = one_len;
@@ -1288,7 +1288,7 @@ static void compose_pack_entry(const char *entry, int need_flag_shell,
 
 	if (!any || !best) {
 		free(best);
-		(void)build_policy_decision_code(0, POLICYD_REASON_PACK_MISSING,
+		(void)build_policy_decision_code(0, PHRONESIS_REASON_PACK_MISSING,
 						 out, out_len);
 		return;
 	}
@@ -1296,7 +1296,7 @@ static void compose_pack_entry(const char *entry, int need_flag_shell,
 	*out_len = best_len;
 }
 
-void policyd_policy_shell_pack(const char *workspace, const char *cwd,
+void phronesis_policy_shell_pack(const char *workspace, const char *cwd,
 			    capn_ptr argv, uint8_t **out, size_t *out_len)
 {
 	uint8_t *view_flat = NULL;
@@ -1308,23 +1308,23 @@ void policyd_policy_shell_pack(const char *workspace, const char *cwd,
 	*out_len = 0;
 
 	if (load_pack_once() != 0) {
-		(void)build_policy_decision_code(0, POLICYD_REASON_PACK_MISSING,
+		(void)build_policy_decision_code(0, PHRONESIS_REASON_PACK_MISSING,
 						 out, out_len);
 		return;
 	}
 
 	{
-		int view_rc = policyd_policy_build_shell_view(
+		int view_rc = phronesis_policy_build_shell_view(
 			workspace, cwd, argv, &view_flat, &view_len);
 
 		if (view_rc == -2) {
 			(void)build_policy_decision_code(
-				0, POLICYD_REASON_FIELD_TOO_LONG, out, out_len);
+				0, PHRONESIS_REASON_FIELD_TOO_LONG, out, out_len);
 			return;
 		}
 		if (view_rc != 0 || !view_flat) {
 			(void)build_policy_decision_code(
-				0, POLICYD_REASON_SHELL_VIEW_BUILD_FAILED, out,
+				0, PHRONESIS_REASON_SHELL_VIEW_BUILD_FAILED, out,
 				out_len);
 			return;
 		}
@@ -1334,7 +1334,7 @@ void policyd_policy_shell_pack(const char *workspace, const char *cwd,
 	free(view_flat);
 }
 
-void policyd_policy_audio_pack(const uint8_t *in, size_t in_len, uint8_t **out,
+void phronesis_policy_audio_pack(const uint8_t *in, size_t in_len, uint8_t **out,
 			    size_t *out_len)
 {
 	/* Cap'n AudioCheck → every pack with audio-check → compose. */

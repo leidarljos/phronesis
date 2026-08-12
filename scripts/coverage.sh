@@ -4,8 +4,8 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
-B="${POLICYD_COVERAGE_BUILD_DIR:-build-cov}"
-OUT="${POLICYD_COVERAGE_OUT_DIR:-coverage-out}"
+B="${PHRONESIS_COVERAGE_BUILD_DIR:-build-cov}"
+OUT="${PHRONESIS_COVERAGE_OUT_DIR:-coverage-out}"
 
 command -v gcovr >/dev/null 2>&1 || {
   echo "error: gcovr required" >&2
@@ -15,8 +15,8 @@ command -v gcovr >/dev/null 2>&1 || {
 rm -rf "$B" "$OUT"
 meson setup "$B" -Db_coverage=true -Dbuildtype=debug
 meson compile -C "$B"
-export POLICYD_BUILD_DIR="$ROOT/$B"
-export POLICYD_BIN="$ROOT/$B/phronesis"
+export PHRONESIS_BUILD_DIR="$ROOT/$B"
+export PHRONESIS_BIN="$ROOT/$B/phronesis"
 meson test -C "$B" --print-errorlogs
 
 mkdir -p "$OUT"

@@ -17,14 +17,14 @@ static void usage(const char *argv0)
 		argv0, argv0, argv0, argv0, argv0);
 }
 
-static const char *state_name(policyd_agent_state_t st)
+static const char *state_name(phronesis_agent_state_t st)
 {
 	switch (st) {
-	case POLICYD_AGENT_RUNNING:
+	case PHRONESIS_AGENT_RUNNING:
 		return "running";
-	case POLICYD_AGENT_FAILED:
+	case PHRONESIS_AGENT_FAILED:
 		return "failed";
-	case POLICYD_AGENT_STOPPED:
+	case PHRONESIS_AGENT_STOPPED:
 	default:
 		return "stopped";
 	}
@@ -35,7 +35,7 @@ int main(int argc, char **argv)
 	const char *state_dir = NULL;
 	const char *runtime_dir = NULL;
 	const char *cmd;
-	policyd_supervisor_t *sup = NULL;
+	phronesis_supervisor_t *sup = NULL;
 	int i = 1;
 	int rc;
 	int exit_code = 0;
@@ -61,8 +61,8 @@ int main(int argc, char **argv)
 	}
 	cmd = argv[i++];
 
-	rc = policyd_supervisor_open(&sup, state_dir, runtime_dir);
-	if (rc != POLICYD_OK) {
+	rc = phronesis_supervisor_open(&sup, state_dir, runtime_dir);
+	if (rc != PHRONESIS_OK) {
 		fprintf(stderr, "open failed: %d\n", rc);
 		return 1;
 	}
@@ -89,23 +89,23 @@ int main(int argc, char **argv)
 			exit_code = 2;
 			goto out;
 		}
-		rc = policyd_supervisor_start(sup, id, "develop", NULL, &argv[dash + 1]);
-		if (rc != POLICYD_OK) {
+		rc = phronesis_supervisor_start(sup, id, "develop", NULL, &argv[dash + 1]);
+		if (rc != PHRONESIS_OK) {
 			fprintf(stderr, "start failed: %d\n", rc);
 			exit_code = 1;
 			goto out;
 		}
 		printf("started %s\n", id);
 	} else if (strcmp(cmd, "status") == 0) {
-		policyd_agent_status_t st;
+		phronesis_agent_status_t st;
 
 		if (i >= argc) {
 			usage(argv[0]);
 			exit_code = 2;
 			goto out;
 		}
-		rc = policyd_supervisor_status(sup, argv[i], &st);
-		if (rc != POLICYD_OK) {
+		rc = phronesis_supervisor_status(sup, argv[i], &st);
+		if (rc != PHRONESIS_OK) {
 			fprintf(stderr, "status failed: %d\n", rc);
 			exit_code = 1;
 			goto out;
@@ -118,8 +118,8 @@ int main(int argc, char **argv)
 			exit_code = 2;
 			goto out;
 		}
-		rc = policyd_supervisor_stop(sup, argv[i]);
-		if (rc != POLICYD_OK) {
+		rc = phronesis_supervisor_stop(sup, argv[i]);
+		if (rc != PHRONESIS_OK) {
 			fprintf(stderr, "stop failed: %d\n", rc);
 			exit_code = 1;
 			goto out;
@@ -131,14 +131,14 @@ int main(int argc, char **argv)
 			exit_code = 2;
 			goto out;
 		}
-		rc = policyd_supervisor_log(sup, argv[i], argv[i + 1], argv[i + 2]);
-		if (rc != POLICYD_OK) {
+		rc = phronesis_supervisor_log(sup, argv[i], argv[i + 1], argv[i + 2]);
+		if (rc != PHRONESIS_OK) {
 			fprintf(stderr, "log failed: %d\n", rc);
 			exit_code = 1;
 			goto out;
 		}
 	} else if (strcmp(cmd, "check") == 0) {
-		policyd_policy_result_t pr;
+		phronesis_policy_result_t pr;
 		const char *path = NULL;
 		const char *dec;
 
@@ -149,17 +149,17 @@ int main(int argc, char **argv)
 		}
 		if (i + 3 < argc)
 			path = argv[i + 3];
-		rc = policyd_policy_check(sup, argv[i], argv[i + 1], argv[i + 2], path, &pr);
-		if (rc != POLICYD_OK) {
+		rc = phronesis_policy_check(sup, argv[i], argv[i + 1], argv[i + 2], path, &pr);
+		if (rc != PHRONESIS_OK) {
 			fprintf(stderr, "check failed: %d\n", rc);
 			exit_code = 1;
 			goto out;
 		}
 		switch (pr.decision) {
-		case POLICYD_DECISION_ALLOW:
+		case PHRONESIS_DECISION_ALLOW:
 			dec = "allow";
 			break;
-		case POLICYD_DECISION_PROMPT:
+		case PHRONESIS_DECISION_PROMPT:
 			dec = "prompt";
 			break;
 		default:
@@ -167,13 +167,13 @@ int main(int argc, char **argv)
 			break;
 		}
 		printf("decision=%s reason=%s\n", dec, pr.reason);
-		exit_code = (pr.decision == POLICYD_DECISION_DENY) ? 2 : 0;
+		exit_code = (pr.decision == PHRONESIS_DECISION_DENY) ? 2 : 0;
 	} else {
 		usage(argv[0]);
 		exit_code = 2;
 	}
 
 out:
-	policyd_supervisor_close(sup);
+	phronesis_supervisor_close(sup);
 	return exit_code;
 }

@@ -3,8 +3,8 @@
 
 #include <string.h>
 
-void policyd_policy_result_set(policyd_policy_result_t *out, policyd_decision_t decision,
-			    policyd_policy_reason_t code)
+void phronesis_policy_result_set(phronesis_policy_result_t *out, phronesis_decision_t decision,
+			    phronesis_policy_reason_t code)
 {
 	if (!out)
 		return;

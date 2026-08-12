@@ -4,7 +4,7 @@
 Host entry: ``just publish-lib`` (builds the archive first).
 
 Upload uses curl (same pattern as tools generic package publish), with JOB-TOKEN.
-Set POLICYD_PUBLISH_DRY_RUN=1 to verify symbols only (merge-request continuous integration).
+Set PHRONESIS_PUBLISH_DRY_RUN=1 to verify symbols only (merge-request continuous integration).
 """
 from __future__ import annotations
 
@@ -16,14 +16,14 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-LIB = Path(os.environ.get("POLICYD_STATIC_LIB", ROOT / "build" / "libphronesis.a"))
+LIB = Path(os.environ.get("PHRONESIS_STATIC_LIB", ROOT / "build" / "libphronesis.a"))
 PACKAGE = "libphronesis"
 FILE = "libphronesis.a"
 # Flat Cap'n product surface (API_VERSION 3) + supervisor lifecycle.
 NEED_SYMS = (
-    "policyd_supervisor_open",
-    "policyd_status",
-    "policyd_check_shell",
+    "phronesis_supervisor_open",
+    "phronesis_status",
+    "phronesis_check_shell",
 )
 
 
@@ -111,7 +111,7 @@ def main() -> None:
     verify_archive()
     pin = schema_pin_path()
     print(f"schema pin: {pin.read_text().strip()}")
-    if os.environ.get("POLICYD_PUBLISH_DRY_RUN") == "1":
+    if os.environ.get("PHRONESIS_PUBLISH_DRY_RUN") == "1":
         print("dry-run: skip package registry upload")
         return
     upload()

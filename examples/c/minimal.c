@@ -27,7 +27,7 @@ static void rm_tree(const char *path)
 static int make_dirs(char *state, size_t sn, char *runtime, size_t rn)
 {
 	/* Prefer a non-/tmp scratch root (runtime under /tmp is rejected). */
-	const char *base = getenv("POLICYD_EXAMPLE_ROOT");
+	const char *base = getenv("PHRONESIS_EXAMPLE_ROOT");
 	char tmpl_s[256];
 	char tmpl_r[256];
 	char *s;
@@ -50,7 +50,7 @@ static int make_dirs(char *state, size_t sn, char *runtime, size_t rn)
 
 int main(void)
 {
-	policyd_supervisor_t *sup = NULL;
+	phronesis_supervisor_t *sup = NULL;
 	char *argv[] = { "true", NULL };
 	char state_dir[512];
 	char runtime_dir[512];
@@ -58,44 +58,44 @@ int main(void)
 	int exit_code = 0;
 
 	printf("phronesis %s (api %d)\n",
-	       policyd_version_string(),
-	       policyd_api_version());
+	       phronesis_version_string(),
+	       phronesis_api_version());
 
 	if (make_dirs(state_dir, sizeof(state_dir), runtime_dir, sizeof(runtime_dir)) != 0) {
 		fprintf(stderr,
-			"mkdtemp failed (need writable /var/tmp or POLICYD_EXAMPLE_ROOT)\n");
+			"mkdtemp failed (need writable /var/tmp or PHRONESIS_EXAMPLE_ROOT)\n");
 		return 1;
 	}
 
-	rc = policyd_supervisor_open(&sup, state_dir, runtime_dir);
-	if (rc != POLICYD_OK) {
+	rc = phronesis_supervisor_open(&sup, state_dir, runtime_dir);
+	if (rc != PHRONESIS_OK) {
 		fprintf(stderr, "open failed: %d\n", rc);
 		exit_code = 1;
 		goto cleanup;
 	}
 
-	rc = policyd_supervisor_start(sup, "ex-agent", "demo", state_dir, argv);
-	if (rc != POLICYD_OK && rc != POLICYD_ERR_EXISTS) {
+	rc = phronesis_supervisor_start(sup, "ex-agent", "demo", state_dir, argv);
+	if (rc != PHRONESIS_OK && rc != PHRONESIS_ERR_EXISTS) {
 		fprintf(stderr, "start failed: %d\n", rc);
 		exit_code = 1;
 		goto cleanup;
 	}
 
 	{
-		policyd_agent_status_t st;
+		phronesis_agent_status_t st;
 
 		memset(&st, 0, sizeof(st));
-		if (policyd_supervisor_status(sup, "ex-agent", &st) == POLICYD_OK)
+		if (phronesis_supervisor_status(sup, "ex-agent", &st) == PHRONESIS_OK)
 			printf("agent %s state=%d pid=%d\n", st.id, (int)st.state,
 			       (int)st.pid);
 	}
 
-	(void)policyd_supervisor_stop(sup, "ex-agent");
+	(void)phronesis_supervisor_stop(sup, "ex-agent");
 	printf("example ok state=%s\n", state_dir);
 
 cleanup:
 	if (sup)
-		policyd_supervisor_close(sup);
+		phronesis_supervisor_close(sup);
 	rm_tree(state_dir);
 	rm_tree(runtime_dir);
 	return exit_code;

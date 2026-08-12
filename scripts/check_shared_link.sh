@@ -2,17 +2,17 @@
 # Product link-line contract for libphronesis.so (not an inventory dump).
 #
 # Embedders open this shared object and call Cap'n Policyd methods
-# (policyd_check_shell, …). The .so must:
+# (phronesis_check_shell, …). The .so must:
 #   - export product Cap'n entries
 #   - NEEDED the Cap'n pure-C runtime (libcapnp_c)
 #   - not NEEDED a peer/socket host stack (nng, libuv, systemd, libcap)
 #
 # Visibility of other symbols is compile-time (gnu_symbol_visibility=hidden
-# + POLICYD_API). This script does not re-list internals.
+# + PHRONESIS_API). This script does not re-list internals.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-BUILD="${POLICYD_BUILD_DIR:-$ROOT/build}"
+BUILD="${PHRONESIS_BUILD_DIR:-$ROOT/build}"
 
 SO=
 if [[ -e "$BUILD/libphronesis.so" ]]; then
@@ -72,9 +72,9 @@ need_export() {
 		;;
 	esac
 }
-need_export policyd_status
-need_export policyd_check_shell
-need_export policyd_check_seat
-need_export policyd_check_audio
+need_export phronesis_status
+need_export phronesis_check_shell
+need_export phronesis_check_seat
+need_export phronesis_check_audio
 
 echo "ok: $SO — Policyd Cap'n methods exported, libcapnp_c NEEDED, no peer host stack"

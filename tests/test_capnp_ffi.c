@@ -20,35 +20,35 @@
 #include <cmocka.h>
 
 struct capn_fix {
-	policyd_supervisor_t *sup;
-	char st[POLICYD_PATH_MAX];
-	char rt[POLICYD_PATH_MAX];
+	phronesis_supervisor_t *sup;
+	char st[PHRONESIS_PATH_MAX];
+	char rt[PHRONESIS_PATH_MAX];
 };
 
 static int capn_setup(void **state)
 {
 	struct capn_fix *f = calloc(1, sizeof(*f));
-	char pack[POLICYD_PATH_MAX];
+	char pack[PHRONESIS_PATH_MAX];
 	const char *src;
 
 	assert_non_null(f);
 	assert_int_equal(t_open_pair(&f->sup, f->st, sizeof(f->st), f->rt,
 				     sizeof(f->rt), "capn"),
-			 POLICYD_OK);
+			 PHRONESIS_OK);
 	/* Product pack: shell-check + audio-check (absolute; reload after shell suite). */
-	src = getenv("POLICYD_SOURCE_ROOT");
+	src = getenv("PHRONESIS_SOURCE_ROOT");
 	if (!src || !src[0])
 		src = ".";
 	snprintf(pack, sizeof(pack), "%s/policy/shell.janet", src);
 	setenv("GROKOS_POLICYD_DEV_PACK", "1", 1);
 	setenv("GROKOS_POLICYD_JANET_PACK", pack, 1);
 	{
-		char root[POLICYD_PATH_MAX];
+		char root[PHRONESIS_PATH_MAX];
 
 		snprintf(root, sizeof(root), "%s/policy", src);
 		setenv("GROKOS_POLICYD_PACK_ROOT", root, 1);
 	}
-	assert_int_equal(policyd_policy_shell_pack_reload(pack), POLICYD_OK);
+	assert_int_equal(phronesis_policy_shell_pack_reload(pack), PHRONESIS_OK);
 	*state = f;
 	return 0;
 }
@@ -61,7 +61,7 @@ static int capn_teardown(void **state)
 	unsetenv("GROKOS_POLICYD_DEV_PACK");
 	if (f) {
 		if (f->sup)
-			policyd_supervisor_close(f->sup);
+			phronesis_supervisor_close(f->sup);
 		t_rm_rf(f->st);
 		t_rm_rf(f->rt);
 		free(f);
@@ -102,23 +102,23 @@ static AgentId_ptr mk_agent(struct capn_segment *seg, uint64_t hi, uint64_t lo)
 	return p;
 }
 
-static void start_hex_agent(policyd_supervisor_t *sup, uint64_t hi, uint64_t lo)
+static void start_hex_agent(phronesis_supervisor_t *sup, uint64_t hi, uint64_t lo)
 {
-	char hex[POLICYD_ID_MAX];
+	char hex[PHRONESIS_ID_MAX];
 	char *argv[] = { "sleep", "30", NULL };
 
-	policyd_agent_id_to_hex(hi, lo, hex);
+	phronesis_agent_id_to_hex(hi, lo, hex);
 	assert_true(hex[0] != '\0');
-	assert_int_equal(policyd_supervisor_start(sup, hex, NULL, "/ws/proj", argv),
-			 POLICYD_OK);
+	assert_int_equal(phronesis_supervisor_start(sup, hex, NULL, "/ws/proj", argv),
+			 PHRONESIS_OK);
 }
 
-static void stop_hex_agent(policyd_supervisor_t *sup, uint64_t hi, uint64_t lo)
+static void stop_hex_agent(phronesis_supervisor_t *sup, uint64_t hi, uint64_t lo)
 {
-	char hex[POLICYD_ID_MAX];
+	char hex[PHRONESIS_ID_MAX];
 
-	policyd_agent_id_to_hex(hi, lo, hex);
-	assert_int_equal(policyd_supervisor_stop(sup, hex), POLICYD_OK);
+	phronesis_agent_id_to_hex(hi, lo, hex);
+	assert_int_equal(phronesis_supervisor_stop(sup, hex), PHRONESIS_OK);
 }
 
 static void expect_decision_code(const uint8_t *msg, size_t len,
@@ -154,7 +154,7 @@ static void test_status(void **state)
 	PolicydStatus_ptr root;
 	struct PolicydStatus st;
 
-	policyd_status(f->sup, &out, &out_len);
+	phronesis_status(f->sup, &out, &out_len);
 	assert_non_null(out);
 	memset(&c, 0, sizeof(c));
 	assert_int_equal(capn_init_mem(&c, out, out_len, 0), 0);
@@ -187,7 +187,7 @@ static void test_check_seat_allow(void **state)
 	assert_int_equal(write_msg(&c, &in, &in_len), 0);
 	capn_free(&c);
 
-	policyd_check_seat(f->sup, in, in_len, &out, &out_len);
+	phronesis_check_seat(f->sup, in, in_len, &out, &out_len);
 	free(in);
 	expect_decision_code(out, out_len, Decision_allow,
 			     PolicyReason_seatBoardAllow, 1, 2);
@@ -203,11 +203,11 @@ static void test_check_seat_bind_allow(void **state)
 	SeatCheck_ptr sp;
 	uint8_t *in = NULL, *out = NULL;
 	size_t in_len = 0, out_len = 0;
-	char hex[POLICYD_ID_MAX];
+	char hex[PHRONESIS_ID_MAX];
 
-	policyd_agent_id_to_hex(9, 10, hex);
-	assert_int_equal(policyd_supervisor_bind(f->sup, hex, "agent", "/ws/proj", 0),
-			 POLICYD_OK);
+	phronesis_agent_id_to_hex(9, 10, hex);
+	assert_int_equal(phronesis_supervisor_bind(f->sup, hex, "agent", "/ws/proj", 0),
+			 PHRONESIS_OK);
 
 	memset(&c, 0, sizeof(c));
 	capn_init_malloc(&c);
@@ -220,12 +220,12 @@ static void test_check_seat_bind_allow(void **state)
 	assert_int_equal(write_msg(&c, &in, &in_len), 0);
 	capn_free(&c);
 
-	policyd_check_seat(f->sup, in, in_len, &out, &out_len);
+	phronesis_check_seat(f->sup, in, in_len, &out, &out_len);
 	free(in);
 	expect_decision_code(out, out_len, Decision_allow,
 			     PolicyReason_seatBoardAllow, 9, 10);
 	free(out);
-	assert_int_equal(policyd_supervisor_stop(f->sup, hex), POLICYD_OK);
+	assert_int_equal(phronesis_supervisor_stop(f->sup, hex), PHRONESIS_OK);
 }
 
 static void test_admit_model_allow(void **state)
@@ -252,7 +252,7 @@ static void test_admit_model_allow(void **state)
 	assert_int_equal(write_msg(&c, &in, &in_len), 0);
 	capn_free(&c);
 
-	policyd_admit_model(f->sup, in, in_len, &out, &out_len);
+	phronesis_admit_model(f->sup, in, in_len, &out, &out_len);
 	free(in);
 	expect_decision_code(out, out_len, Decision_allow,
 			     PolicyReason_modelStartAllow, 3, 4);
@@ -279,7 +279,7 @@ static void test_check_seat_null_id_deny(void **state)
 	assert_int_equal(write_msg(&c, &in, &in_len), 0);
 	capn_free(&c);
 
-	policyd_check_seat(f->sup, in, in_len, &out, &out_len);
+	phronesis_check_seat(f->sup, in, in_len, &out, &out_len);
 	free(in);
 	expect_decision_code(out, out_len, Decision_deny,
 			     PolicyReason_invalidMessage, 0, 0);
@@ -307,7 +307,7 @@ static void test_check_model_null_id_deny(void **state)
 	assert_int_equal(write_msg(&c, &in, &in_len), 0);
 	capn_free(&c);
 
-	policyd_check_model(f->sup, in, in_len, &out, &out_len);
+	phronesis_check_model(f->sup, in, in_len, &out, &out_len);
 	free(in);
 	expect_decision_code(out, out_len, Decision_deny,
 			     PolicyReason_invalidMessage, 0, 0);
@@ -334,7 +334,7 @@ static void test_check_seat_unknown_id_deny(void **state)
 	assert_int_equal(write_msg(&c, &in, &in_len), 0);
 	capn_free(&c);
 
-	policyd_check_seat(f->sup, in, in_len, &out, &out_len);
+	phronesis_check_seat(f->sup, in, in_len, &out, &out_len);
 	free(in);
 	expect_decision_code(out, out_len, Decision_deny,
 			     PolicyReason_toolsDefaultDeny, 1, 2);
@@ -365,7 +365,7 @@ static void test_check_model_allow(void **state)
 	assert_int_equal(write_msg(&c, &in, &in_len), 0);
 	capn_free(&c);
 
-	policyd_check_model(f->sup, in, in_len, &out, &out_len);
+	phronesis_check_model(f->sup, in, in_len, &out, &out_len);
 	free(in);
 	expect_decision_code(out, out_len, Decision_allow,
 			     PolicyReason_modelStartAllow, 5, 6);
@@ -396,7 +396,7 @@ static void test_check_seat_stopped_id_deny(void **state)
 	assert_int_equal(write_msg(&c, &in, &in_len), 0);
 	capn_free(&c);
 
-	policyd_check_seat(f->sup, in, in_len, &out, &out_len);
+	phronesis_check_seat(f->sup, in, in_len, &out, &out_len);
 	free(in);
 	expect_decision_code(out, out_len, Decision_deny,
 			     PolicyReason_toolsDefaultDeny, 7, 8);
@@ -426,7 +426,7 @@ static void test_check_seat_deny_all(void **state)
 	assert_int_equal(write_msg(&c, &in, &in_len), 0);
 	capn_free(&c);
 
-	policyd_check_seat(f->sup, in, in_len, &out, &out_len);
+	phronesis_check_seat(f->sup, in, in_len, &out, &out_len);
 	free(in);
 	expect_decision_code(out, out_len, Decision_deny, PolicyReason_denyAll, 1, 2);
 	free(out);
@@ -457,7 +457,7 @@ static void test_check_model_deny_all(void **state)
 	assert_int_equal(write_msg(&c, &in, &in_len), 0);
 	capn_free(&c);
 
-	policyd_check_model(f->sup, in, in_len, &out, &out_len);
+	phronesis_check_model(f->sup, in, in_len, &out, &out_len);
 	free(in);
 	expect_decision_code(out, out_len, Decision_deny, PolicyReason_denyAll, 5, 6);
 	free(out);
@@ -486,7 +486,7 @@ static void test_check_risk_deny_all(void **state)
 	assert_int_equal(write_msg(&c, &in, &in_len), 0);
 	capn_free(&c);
 
-	policyd_check_risk(f->sup, in, in_len, &out, &out_len);
+	phronesis_check_risk(f->sup, in, in_len, &out, &out_len);
 	free(in);
 	/* Without DENY_ALL this would be prompt; flag must force deny. */
 	expect_decision_code(out, out_len, Decision_deny, PolicyReason_denyAll, 7, 8);
@@ -528,7 +528,7 @@ static void test_check_risk_secret_export_deny(void **state)
 		assert_int_equal(write_msg(&c, &in, &in_len), 0);
 		capn_free(&c);
 
-		policyd_check_risk(f->sup, in, in_len, &out, &out_len);
+		phronesis_check_risk(f->sup, in, in_len, &out, &out_len);
 		free(in);
 		expect_decision_code(out, out_len, cases[i].dec, cases[i].code,
 				     11, 12);
@@ -539,7 +539,7 @@ static void test_check_risk_secret_export_deny(void **state)
 static void test_check_path_write_vs_delete(void **state)
 {
 	struct capn_fix *f = *state;
-	char id[POLICYD_ID_MAX];
+	char id[PHRONESIS_ID_MAX];
 	char *argv[] = { "true", NULL };
 	const char *path = "/ws/proj/out";
 	struct {
@@ -555,10 +555,10 @@ static void test_check_path_write_vs_delete(void **state)
 	size_t i;
 
 	unsetenv("GROKOS_POLICYD_DENY_ALL");
-	policyd_agent_id_to_hex(13, 14, id);
+	phronesis_agent_id_to_hex(13, 14, id);
 	assert_int_equal(
-		policyd_supervisor_start(f->sup, id, NULL, "/ws/proj", argv),
-		POLICYD_OK);
+		phronesis_supervisor_start(f->sup, id, NULL, "/ws/proj", argv),
+		PHRONESIS_OK);
 
 	for (i = 0; i < sizeof(cases) / sizeof(cases[0]); i++) {
 		struct capn c;
@@ -581,16 +581,16 @@ static void test_check_path_write_vs_delete(void **state)
 		assert_int_equal(write_msg(&c, &in, &in_len), 0);
 		capn_free(&c);
 
-		policyd_check_path(f->sup, in, in_len, &out, &out_len);
+		phronesis_check_path(f->sup, in, in_len, &out, &out_len);
 		free(in);
 		expect_decision_code(out, out_len, cases[i].dec, cases[i].code,
 				     13, 14);
 		free(out);
 	}
-	assert_int_equal(policyd_supervisor_stop(f->sup, id), POLICYD_OK);
+	assert_int_equal(phronesis_supervisor_stop(f->sup, id), PHRONESIS_OK);
 }
 
-static void check_audio_action(policyd_supervisor_t *sup, enum AudioAction action,
+static void check_audio_action(phronesis_supervisor_t *sup, enum AudioAction action,
 			       enum Decision want_dec, enum PolicyReason want_code)
 {
 	struct capn c;
@@ -610,7 +610,7 @@ static void check_audio_action(policyd_supervisor_t *sup, enum AudioAction actio
 	assert_int_equal(write_msg(&c, &in, &in_len), 0);
 	capn_free(&c);
 
-	policyd_check_audio(sup, in, in_len, &out, &out_len);
+	phronesis_check_audio(sup, in, in_len, &out, &out_len);
 	free(in);
 	expect_decision_code(out, out_len, want_dec, want_code, 9, 10);
 	free(out);
@@ -692,7 +692,7 @@ static void test_check_audio_bad_message(void **state)
 	unsetenv("GROKOS_POLICYD_AUDIO_ALLOW");
 	unsetenv("GROKOS_POLICYD_DENY_ALL");
 
-	policyd_check_audio(f->sup, NULL, 0, &out, &out_len);
+	phronesis_check_audio(f->sup, NULL, 0, &out, &out_len);
 	/* Bad input: zero agent echo + invalidMessage. */
 	expect_decision_code(out, out_len, Decision_deny,
 			     PolicyReason_invalidMessage, 0, 0);

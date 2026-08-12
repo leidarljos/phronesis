@@ -1,6 +1,6 @@
 # AGENTS.md — phronesis
 
-1. **Cap'n is the language.** Product API is Cap'n methods (`policyd_check_shell`, …).
+1. **Cap'n is the language.** Product API is Cap'n methods (`phronesis_check_shell`, …).
 2. Public Cap'n interface: `schema/policy.capnp` + `schema/util.capnp`. Do not invent parallel DTOs.
 3. Link **c-capnproto** (`libcapnp_c`); wrap is public GitHub if pkg-config is missing.
 4. **Consumers** must **link this library** (`pkg-config phronesis` / install). Never re-vendor `src/` into consumer trees.

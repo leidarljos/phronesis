@@ -122,7 +122,7 @@ int grok_beneath_rel(const char *root, const char *path, char *rel, size_t n)
 
 static int walk_open(int rootfd, const char *rel, int flags, int *outfd)
 {
-	char buf[POLICYD_PATH_MAX];
+	char buf[PHRONESIS_PATH_MAX];
 	char *save = NULL;
 	char *tok;
 	int cur;

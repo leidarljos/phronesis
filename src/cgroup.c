@@ -8,30 +8,30 @@
 
 #ifndef __linux__
 
-int policyd_cgroup_create(const char *runtime_dir, const char *agent_id,
+int phronesis_cgroup_create(const char *runtime_dir, const char *agent_id,
 		       char *path_out, size_t path_len)
 {
 	(void)runtime_dir;
 	(void)agent_id;
 	if (path_out && path_len)
 		path_out[0] = '\0';
-	return POLICYD_OK;
+	return PHRONESIS_OK;
 }
 
-int policyd_cgroup_attach(const char *cgroup_path, pid_t pid)
+int phronesis_cgroup_attach(const char *cgroup_path, pid_t pid)
 {
 	(void)cgroup_path;
 	(void)pid;
-	return POLICYD_ERR_STATE;
+	return PHRONESIS_ERR_STATE;
 }
 
-int policyd_cgroup_kill(const char *cgroup_path)
+int phronesis_cgroup_kill(const char *cgroup_path)
 {
 	(void)cgroup_path;
-	return POLICYD_ERR_STATE;
+	return PHRONESIS_ERR_STATE;
 }
 
-void policyd_cgroup_remove(const char *cgroup_path)
+void phronesis_cgroup_remove(const char *cgroup_path)
 {
 	(void)cgroup_path;
 }
@@ -56,7 +56,7 @@ static int write_str(const char *path, const char *data)
 static int self_cgroup_rel(char *out, size_t n)
 {
 	FILE *f;
-	char line[POLICYD_PATH_MAX];
+	char line[PHRONESIS_PATH_MAX];
 
 	f = fopen("/proc/self/cgroup", "r");
 	if (!f)
@@ -84,37 +84,37 @@ static int self_cgroup_rel(char *out, size_t n)
 	return -1;
 }
 
-int policyd_cgroup_create(const char *runtime_dir, const char *agent_id,
+int phronesis_cgroup_create(const char *runtime_dir, const char *agent_id,
 		       char *path_out, size_t path_len)
 {
-	char rel[POLICYD_PATH_MAX];
-	char base[POLICYD_PATH_MAX];
-	char path[POLICYD_PATH_MAX];
-	char controllers[POLICYD_PATH_MAX];
+	char rel[PHRONESIS_PATH_MAX];
+	char base[PHRONESIS_PATH_MAX];
+	char path[PHRONESIS_PATH_MAX];
+	char controllers[PHRONESIS_PATH_MAX];
 
 	if (path_out && path_len)
 		path_out[0] = '\0';
 	if (!runtime_dir || !agent_id || !path_out || path_len == 0)
-		return POLICYD_ERR_INVAL;
+		return PHRONESIS_ERR_INVAL;
 	if (self_cgroup_rel(rel, sizeof(rel)) != 0)
-		return POLICYD_OK;
+		return PHRONESIS_OK;
 
 	/* Prefer a child under our current cgroup (needs subtree control / write). */
 	if (rel[0] == '\0' || strcmp(rel, "/") == 0) {
 		if (snprintf(base, sizeof(base), "/sys/fs/cgroup") >= (int)sizeof(base))
-			return POLICYD_OK;
+			return PHRONESIS_OK;
 	} else {
 		/* Bound: prefix + rel must fit base without format-truncation Werror. */
 		if (strlen(rel) + sizeof("/sys/fs/cgroup") > sizeof(base))
-			return POLICYD_OK;
+			return PHRONESIS_OK;
 		if (snprintf(base, sizeof(base), "/sys/fs/cgroup%s", rel) >= (int)sizeof(base))
-			return POLICYD_OK;
+			return PHRONESIS_OK;
 	}
 
 	if (strlen(base) + 1 + strlen(agent_id) + sizeof("/grok-") > sizeof(path))
-		return POLICYD_OK;
+		return PHRONESIS_OK;
 	if (snprintf(path, sizeof(path), "%s/grok-%s", base, agent_id) >= (int)sizeof(path))
-		return POLICYD_OK;
+		return PHRONESIS_OK;
 
 	/* Best-effort enable controllers on parent (ignore failure). */
 	if (snprintf(controllers, sizeof(controllers), "%s/cgroup.subtree_control", base) <
@@ -122,52 +122,52 @@ int policyd_cgroup_create(const char *runtime_dir, const char *agent_id,
 		(void)write_str(controllers, "+pids +memory");
 	}
 
-	if (policyd_paths_ensure_dir(path, 0755) != POLICYD_OK) {
+	if (phronesis_paths_ensure_dir(path, 0755) != PHRONESIS_OK) {
 		/*
 		 * Fallback: mirror under runtime (still needs move into a real
 		 * hierarchy — only works if runtime is on cgroupfs; usually not).
 		 * Leave empty → caller uses process-group kill.
 		 */
-		return POLICYD_OK;
+		return PHRONESIS_OK;
 	}
 
 	if (snprintf(path_out, path_len, "%s", path) >= (int)path_len) {
 		path_out[0] = '\0';
-		return POLICYD_OK;
+		return PHRONESIS_OK;
 	}
-	return POLICYD_OK;
+	return PHRONESIS_OK;
 }
 
-int policyd_cgroup_attach(const char *cgroup_path, pid_t pid)
+int phronesis_cgroup_attach(const char *cgroup_path, pid_t pid)
 {
-	char procs[POLICYD_PATH_MAX];
+	char procs[PHRONESIS_PATH_MAX];
 	char buf[32];
 
 	if (!cgroup_path || !cgroup_path[0] || pid <= 0)
-		return POLICYD_ERR_INVAL;
+		return PHRONESIS_ERR_INVAL;
 	if (snprintf(procs, sizeof(procs), "%s/cgroup.procs", cgroup_path) >= (int)sizeof(procs))
-		return POLICYD_ERR_INVAL;
+		return PHRONESIS_ERR_INVAL;
 	if (snprintf(buf, sizeof(buf), "%d", (int)pid) >= (int)sizeof(buf))
-		return POLICYD_ERR_INVAL;
+		return PHRONESIS_ERR_INVAL;
 	if (write_str(procs, buf) != 0)
-		return POLICYD_ERR_IO;
-	return POLICYD_OK;
+		return PHRONESIS_ERR_IO;
+	return PHRONESIS_OK;
 }
 
-int policyd_cgroup_kill(const char *cgroup_path)
+int phronesis_cgroup_kill(const char *cgroup_path)
 {
-	char killp[POLICYD_PATH_MAX];
+	char killp[PHRONESIS_PATH_MAX];
 
 	if (!cgroup_path || !cgroup_path[0])
-		return POLICYD_ERR_INVAL;
+		return PHRONESIS_ERR_INVAL;
 	if (snprintf(killp, sizeof(killp), "%s/cgroup.kill", cgroup_path) >= (int)sizeof(killp))
-		return POLICYD_ERR_INVAL;
+		return PHRONESIS_ERR_INVAL;
 	if (write_str(killp, "1") != 0)
-		return POLICYD_ERR_IO;
-	return POLICYD_OK;
+		return PHRONESIS_ERR_IO;
+	return PHRONESIS_OK;
 }
 
-void policyd_cgroup_remove(const char *cgroup_path)
+void phronesis_cgroup_remove(const char *cgroup_path)
 {
 	if (cgroup_path && cgroup_path[0])
 		(void)rmdir(cgroup_path);

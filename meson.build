@@ -255,7 +255,7 @@ install_subdir(
 default_janet_pack = get_option('prefix') / policy_pack_install / 'shell.janet'
 message('Default Janet pack: @0@'.format(default_janet_pack))
 
-# Default-hidden visibility: only POLICYD_API symbols leave the .so.
+# Default-hidden visibility: only PHRONESIS_API symbols leave the .so.
 # Tests link the static archive so they can exercise internal helpers without
 # exporting those helpers to embedders.
 phronesis_lib = library(
@@ -340,8 +340,8 @@ test(
   timeout: 120,
   workdir: meson.project_source_root(),
   env: {
-    'POLICYD_BUILD_DIR': meson.project_build_root(),
-    'POLICYD_SOURCE_ROOT': meson.project_source_root(),
+    'PHRONESIS_BUILD_DIR': meson.project_build_root(),
+    'PHRONESIS_SOURCE_ROOT': meson.project_source_root(),
     'GROKOS_POLICYD_PACK_ROOT': meson.project_source_root() / 'policy',
   },
 )
@@ -352,7 +352,7 @@ test(
   'shared_link',
   bash,
   args: [meson.project_source_root() / 'scripts/check_shared_link.sh'],
-  env: {'POLICYD_BUILD_DIR': meson.project_build_root()},
+  env: {'PHRONESIS_BUILD_DIR': meson.project_build_root()},
   depends: [phronesis_lib],
   workdir: meson.project_source_root(),
 )
@@ -376,9 +376,9 @@ if get_option('mutation')
     depends: [supervisor_test],
     env: {
       'MULL_CONFIG': meson.project_source_root() / 'mull.yml',
-      'POLICYD_BUILD_DIR': meson.project_build_root(),
-      # Shell pack tests resolve policy/shell.janet via POLICYD_SOURCE_ROOT.
-      'POLICYD_SOURCE_ROOT': meson.project_source_root(),
+      'PHRONESIS_BUILD_DIR': meson.project_build_root(),
+      # Shell pack tests resolve policy/shell.janet via PHRONESIS_SOURCE_ROOT.
+      'PHRONESIS_SOURCE_ROOT': meson.project_source_root(),
       'GROKOS_POLICYD_PACK_ROOT': meson.project_source_root() / 'policy',
     },
   )
