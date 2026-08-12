@@ -155,8 +155,7 @@ int grok_policy_resolve_script(const char *cwd, const char *script, char *out,
 	return 0;
 }
 
-/** Truthy env for TCB gates: 1 / true / yes (any case of true/yes). */
-static int env_truthy(const char *name)
+int grok_env_truthy(const char *name)
 {
 	const char *v = getenv(name);
 
@@ -165,6 +164,11 @@ static int env_truthy(const char *name)
 	return strcmp(v, "1") == 0 || strcmp(v, "true") == 0 ||
 	       strcmp(v, "yes") == 0 || strcmp(v, "TRUE") == 0 ||
 	       strcmp(v, "YES") == 0;
+}
+
+int grok_policy_deny_all(void)
+{
+	return grok_env_truthy("GROKOS_POLICYD_DENY_ALL");
 }
 
 int grok_policy_eval(const char *workspace, const char *tool,
@@ -179,10 +183,10 @@ int grok_policy_eval(const char *workspace, const char *tool,
 	PD_TRACE_EVENT(PD_TRACE_LAYER_HOST, PD_TRACE_PHASE_ENTER,
 		       "policy-eval", tool && tool[0] ? tool : "", -1, NULL, 0);
 
-	if (env_truthy("GROKOS_POLICYD_DENY_ALL")) {
+	if (grok_policy_deny_all()) {
 		grok_policy_result_set(out, GROK_DECISION_DENY,
 				       GROK_REASON_DENY_ALL);
-				PD_TRACE_EVENT(PD_TRACE_LAYER_HOST, PD_TRACE_PHASE_DECIDE,
+		PD_TRACE_EVENT(PD_TRACE_LAYER_HOST, PD_TRACE_PHASE_DECIDE,
 			       "policy-eval/deny-all", "GROKOS_POLICYD_DENY_ALL",
 			       (int)GROK_REASON_DENY_ALL, "deny", 1);
 		return GROK_OK;

@@ -206,6 +206,97 @@ static void expect_decision_code(const uint8_t *msg, size_t len,
 	capn_free(&c);
 }
 
+/* DENY_ALL must cover Cap'n PolicyDecision entries that skipped policy_eval. */
+static void test_check_seat_deny_all(void **state)
+{
+	struct capn_fix *f = *state;
+	struct capn c;
+	struct SeatCheck sc;
+	SeatCheck_ptr sp;
+	uint8_t *in = NULL, *out = NULL;
+	size_t in_len = 0, out_len = 0;
+
+	setenv("GROKOS_POLICYD_DENY_ALL", "1", 1);
+
+	memset(&c, 0, sizeof(c));
+	capn_init_malloc(&c);
+	memset(&sc, 0, sizeof(sc));
+	sc.agentId = mk_agent(capn_root(&c).seg, 1, 2);
+	sc.action = SeatAction_publishRun;
+	sp = new_SeatCheck(capn_root(&c).seg);
+	write_SeatCheck(&sc, sp);
+	assert_int_equal(capn_setp(capn_root(&c), 0, sp.p), 0);
+	assert_int_equal(write_msg(&c, &in, &in_len), 0);
+	capn_free(&c);
+
+	grok_policyd_check_seat(f->sup, in, in_len, &out, &out_len);
+	free(in);
+	expect_decision_code(out, out_len, Decision_deny, PolicyReason_denyAll, 1, 2);
+	free(out);
+	unsetenv("GROKOS_POLICYD_DENY_ALL");
+}
+
+static void test_check_model_deny_all(void **state)
+{
+	struct capn_fix *f = *state;
+	struct capn c;
+	struct ModelCheck mc;
+	ModelCheck_ptr mp;
+	uint8_t *in = NULL, *out = NULL;
+	size_t in_len = 0, out_len = 0;
+
+	setenv("GROKOS_POLICYD_DENY_ALL", "1", 1);
+
+	memset(&c, 0, sizeof(c));
+	capn_init_malloc(&c);
+	memset(&mc, 0, sizeof(mc));
+	mc.agentId = mk_agent(capn_root(&c).seg, 5, 6);
+	mc.model.len = 0;
+	mc.model.str = "";
+	mc.model.seg = NULL;
+	mp = new_ModelCheck(capn_root(&c).seg);
+	write_ModelCheck(&mc, mp);
+	assert_int_equal(capn_setp(capn_root(&c), 0, mp.p), 0);
+	assert_int_equal(write_msg(&c, &in, &in_len), 0);
+	capn_free(&c);
+
+	grok_policyd_check_model(f->sup, in, in_len, &out, &out_len);
+	free(in);
+	expect_decision_code(out, out_len, Decision_deny, PolicyReason_denyAll, 5, 6);
+	free(out);
+	unsetenv("GROKOS_POLICYD_DENY_ALL");
+}
+
+static void test_check_risk_deny_all(void **state)
+{
+	struct capn_fix *f = *state;
+	struct capn c;
+	struct RiskCheck rc;
+	RiskCheck_ptr rp;
+	uint8_t *in = NULL, *out = NULL;
+	size_t in_len = 0, out_len = 0;
+
+	setenv("GROKOS_POLICYD_DENY_ALL", "1", 1);
+
+	memset(&c, 0, sizeof(c));
+	capn_init_malloc(&c);
+	memset(&rc, 0, sizeof(rc));
+	rc.agentId = mk_agent(capn_root(&c).seg, 7, 8);
+	rc.action = RiskAction_network;
+	rp = new_RiskCheck(capn_root(&c).seg);
+	write_RiskCheck(&rc, rp);
+	assert_int_equal(capn_setp(capn_root(&c), 0, rp.p), 0);
+	assert_int_equal(write_msg(&c, &in, &in_len), 0);
+	capn_free(&c);
+
+	grok_policyd_check_risk(f->sup, in, in_len, &out, &out_len);
+	free(in);
+	/* Without DENY_ALL this would be prompt; flag must force deny. */
+	expect_decision_code(out, out_len, Decision_deny, PolicyReason_denyAll, 7, 8);
+	free(out);
+	unsetenv("GROKOS_POLICYD_DENY_ALL");
+}
+
 static void check_audio_action(grok_supervisor_t *sup, enum AudioAction action,
 			       enum Decision want_dec, enum PolicyReason want_code)
 {
@@ -323,6 +414,12 @@ int run_capnp_ffi_tests(void)
 		cmocka_unit_test_setup_teardown(test_check_seat_allow,
 						capn_setup, capn_teardown),
 		cmocka_unit_test_setup_teardown(test_admit_model_allow,
+						capn_setup, capn_teardown),
+		cmocka_unit_test_setup_teardown(test_check_seat_deny_all,
+						capn_setup, capn_teardown),
+		cmocka_unit_test_setup_teardown(test_check_model_deny_all,
+						capn_setup, capn_teardown),
+		cmocka_unit_test_setup_teardown(test_check_risk_deny_all,
 						capn_setup, capn_teardown),
 		cmocka_unit_test_setup_teardown(test_check_audio_defaults,
 						capn_setup, capn_teardown),

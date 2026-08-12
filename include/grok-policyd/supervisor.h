@@ -446,7 +446,8 @@ GROK_POLICYD_API void grok_policyd_check_risk(grok_supervisor_t *sup,
  * alwaysListen / networkStt / inject deny; listenArm prompt; unknown deny.
  * Host TCB: truthy @c GROKOS_POLICYD_AUDIO_ALLOW allows all actions
  * (fixture/CI only; leave unset in production); @c GROKOS_POLICYD_DENY_ALL
- * still wins. No waveforms / PCM on the wire.
+ * still wins (same hard deny as every other Cap'n PolicyDecision entry).
+ * No waveforms / PCM on the wire.
  */
 GROK_POLICYD_API void grok_policyd_check_audio(grok_supervisor_t *sup,
 					       const uint8_t *in,

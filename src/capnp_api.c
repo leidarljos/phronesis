@@ -154,6 +154,15 @@ static void deny_msg(struct AgentId agent, grok_policy_reason_t code,
 	emit_code(GROK_DECISION_DENY, code, agent, out, out_len);
 }
 
+/** @return 1 if DENY_ALL fired (decision already written). */
+static int deny_if_all(struct AgentId agent, uint8_t **out, size_t *out_len)
+{
+	if (!grok_policy_deny_all())
+		return 0;
+	emit_code(GROK_DECISION_DENY, GROK_REASON_DENY_ALL, agent, out, out_len);
+	return 1;
+}
+
 static int open_in(const uint8_t *in, size_t in_len, struct capn *c)
 {
 	if (!in || in_len == 0 || in_len > GROK_POLICY_CAPNP_MAX_BODY)
@@ -201,11 +210,11 @@ void grok_policyd_check_seat(grok_supervisor_t *sup, const uint8_t *in,
 
 	(void)sup;
 	memset(&agent, 0, sizeof(agent));
-	PD_TRACE_EVENT(PD_TRACE_LAYER_HOST, PD_TRACE_PHASE_ENTER, "checkShell",
-		       "grok_policyd_check_shell", -1, NULL, 0);
+	PD_TRACE_EVENT(PD_TRACE_LAYER_HOST, PD_TRACE_PHASE_ENTER, "checkSeat",
+		       "grok_policyd_check_seat", -1, NULL, 0);
 	if (open_in(in, in_len, &c) != 0) {
 		PD_TRACE_EVENT(PD_TRACE_LAYER_CAPNP, PD_TRACE_PHASE_ERROR,
-			       "checkShell/open", "invalid Cap'n message",
+			       "checkSeat/open", "invalid Cap'n message",
 			       (int)GROK_REASON_INVALID_MESSAGE, "deny", 1);
 		deny_msg(agent, GROK_REASON_INVALID_MESSAGE, out, out_len);
 		return;
@@ -213,6 +222,10 @@ void grok_policyd_check_seat(grok_supervisor_t *sup, const uint8_t *in,
 	root.p = capn_getp(capn_root(&c), 0, 1);
 	read_SeatCheck(&sc, root);
 	read_agent(sc.agentId, &agent);
+	if (deny_if_all(agent, out, out_len)) {
+		capn_free(&c);
+		return;
+	}
 	switch (sc.action) {
 	case SeatAction_publishRun:
 	case SeatAction_readRun:
@@ -248,6 +261,10 @@ void grok_policyd_check_model(grok_supervisor_t *sup, const uint8_t *in,
 	root.p = capn_getp(capn_root(&c), 0, 1);
 	read_ModelCheck(&mc, root);
 	read_agent(mc.agentId, &agent);
+	if (deny_if_all(agent, out, out_len)) {
+		capn_free(&c);
+		return;
+	}
 	grok_policy_result_set(&pr, GROK_DECISION_ALLOW,
 			       GROK_REASON_MODEL_START_ALLOW);
 	capn_free(&c);
@@ -275,6 +292,10 @@ void grok_policyd_check_path(grok_supervisor_t *sup, const uint8_t *in,
 	root.p = capn_getp(capn_root(&c), 0, 1);
 	read_PathCheck(&pc, root);
 	read_agent(pc.agentId, &agent);
+	if (deny_if_all(agent, out, out_len)) {
+		capn_free(&c);
+		return;
+	}
 	ws = workspace_for(sup, agent, ws_buf, sizeof(ws_buf));
 	pl = pc.path.len > 0 ? (size_t)pc.path.len : 0;
 	if (pl >= sizeof(path) || (pl > 0 && !pc.path.str)) {
@@ -336,6 +357,10 @@ void grok_policyd_check_shell(grok_supervisor_t *sup, const uint8_t *in,
 	root.p = capn_getp(capn_root(&c), 0, 1);
 	read_ShellCheck(&sc, root);
 	read_agent(sc.agentId, &agent);
+	if (deny_if_all(agent, out, out_len)) {
+		capn_free(&c);
+		return;
+	}
 	ws = workspace_for(sup, agent, ws_buf, sizeof(ws_buf));
 	cl = sc.cwd.len > 0 ? (size_t)sc.cwd.len : 0;
 	if (cl >= sizeof(cwd) || (cl > 0 && !sc.cwd.str)) {
@@ -407,6 +432,10 @@ void grok_policyd_check_risk(grok_supervisor_t *sup, const uint8_t *in,
 	root.p = capn_getp(capn_root(&c), 0, 1);
 	read_RiskCheck(&rc, root);
 	read_agent(rc.agentId, &agent);
+	if (deny_if_all(agent, out, out_len)) {
+		capn_free(&c);
+		return;
+	}
 	memset(&pr, 0, sizeof(pr));
 	/* secretExport: never allow (no secrets leave seat / traces). */
 	if (rc.action == RiskAction_secretExport) {
@@ -419,18 +448,6 @@ void grok_policyd_check_risk(grok_supervisor_t *sup, const uint8_t *in,
 	}
 	capn_free(&c);
 	emit_decision(&pr, agent, out, out_len);
-}
-
-/** Truthy env for TCB gates: 1 / true / yes (any case of true/yes). */
-static int env_truthy(const char *name)
-{
-	const char *v = getenv(name);
-
-	if (!v || !v[0])
-		return 0;
-	return strcmp(v, "1") == 0 || strcmp(v, "true") == 0 ||
-	       strcmp(v, "yes") == 0 || strcmp(v, "TRUE") == 0 ||
-	       strcmp(v, "YES") == 0;
 }
 
 /** Read Cap'n PolicyDecision decision+code into @a out (reason ignored). */
@@ -476,13 +493,10 @@ void grok_policyd_check_audio(grok_supervisor_t *sup, const uint8_t *in,
 	read_agent(ac.agentId, &agent);
 	capn_free(&c);
 
-	/* Hard TCB env gates (same story as shell workspace gate before pack). */
-	if (env_truthy("GROKOS_POLICYD_DENY_ALL")) {
-		emit_code(GROK_DECISION_DENY, GROK_REASON_DENY_ALL, agent, out,
-			  out_len);
+	/* Hard TCB env gates before pack (DENY_ALL wins over AUDIO_ALLOW). */
+	if (deny_if_all(agent, out, out_len))
 		return;
-	}
-	if (env_truthy("GROKOS_POLICYD_AUDIO_ALLOW")) {
+	if (grok_env_truthy("GROKOS_POLICYD_AUDIO_ALLOW")) {
 		emit_code(GROK_DECISION_ALLOW, GROK_REASON_AUDIO_FIXTURE_ALLOW,
 			  agent, out, out_len);
 		return;
@@ -692,6 +706,10 @@ void grok_policyd_reload_shell_pack(grok_supervisor_t *sup, const uint8_t *in,
 	memcpy(path, rp.path.str, pl);
 	path[pl] = '\0';
 	capn_free(&c);
+
+	/* Lockdown: do not reconfigure packs under DENY_ALL. */
+	if (deny_if_all(agent, out, out_len))
+		return;
 
 	rc = grok_policy_shell_pack_reload_internal(path);
 	memset(&pr, 0, sizeof(pr));
