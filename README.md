@@ -12,6 +12,7 @@ code. Protocol failures deny.
 | **Product API** | typed C entry points in `include/phronesis/supervisor.h` |
 | **C helpers** | `include/phronesis/supervisor.h` |
 | **License** | MIT (`LICENSE`); third-party notes in `NOTICE` |
+| **Migration** | [`MIGRATION.md`](MIGRATION.md) |
 
 ## Build (no private remotes)
 
@@ -77,11 +78,11 @@ phronesis_check_shell(sup, shell_msg, shell_len, &out, &out_len);
 | checkPath | read/write under workspace | outside → deny; delete → prompt |
 | checkShell | cwd under workspace; content pack: python via uv+PEP723; deny sudo/curl\|sh/banned PMs/dangerous git | bare python / missing PEP 723 / danger runners → deny |
 | checkRisk | — | secretExport → deny; other risk → prompt |
-| checkAudio | `GROKOS_POLICYD_AUDIO_ALLOW` fixture (all `AudioAction`; CI/dogfood only — leave unset in production) | product pack (`audio-check`): micOpen/alwaysListen/networkStt/inject **deny**; listenArm **prompt**; unknown **deny**. Host: `DENY_ALL` wins over fixture. No PCM. meta #97 |
+| checkAudio | `PHRONESIS_AUDIO_ALLOW` fixture (all `AudioAction`; CI/dogfood only — leave unset in production) | product pack (`audio-check`): micOpen/alwaysListen/networkStt/inject **deny**; listenArm **prompt**; unknown **deny**. Host: `DENY_ALL` wins over fixture. No PCM. meta #97 |
 
 Lexical paths: absolute only; reject `//`, `.`, `..`. No `realpath`.
 
-`GROKOS_POLICYD_DENY_ALL` forces deny on the CLI/string eval path and on `checkAudio` (it wins over `GROKOS_POLICYD_AUDIO_ALLOW`). Not all Cap'n methods consult it yet.
+`PHRONESIS_DENY_ALL` forces deny on the CLI/string eval path and on `checkAudio` (it wins over `PHRONESIS_AUDIO_ALLOW`). Not all Cap'n methods consult it yet.
 
 ## Build / test / coverage (pixi only)
 
@@ -144,9 +145,9 @@ MIT for first-party code. See `LICENSE` and `NOTICE`.
 
 ## Deny-all and audio fixture (tests / lockdown)
 
-Set `GROKOS_POLICYD_DENY_ALL=1` (or `true`/`yes`) to force deny on the CLI/string `policy_check` path and on Cap'n `checkAudio`. Used to prove agent/sessiond fail closed under a hard seat. Unset for normal allowlists.
+Set `PHRONESIS_DENY_ALL=1` (or `true`/`yes`) to force deny on the CLI/string `policy_check` path and on Cap'n `checkAudio`. Used to prove agent/sessiond fail closed under a hard seat. Unset for normal allowlists.
 
-Set `GROKOS_POLICYD_AUDIO_ALLOW=1` only in CI/dogfood to allow all `AudioAction` on `checkAudio`. Leave unset in production images. `DENY_ALL` still wins when both are set.
+Set `PHRONESIS_AUDIO_ALLOW=1` only in CI/dogfood to allow all `AudioAction` on `checkAudio`. Leave unset in production images. `DENY_ALL` still wins when both are set.
 
 ### Cap'n interface (Meson)
 
@@ -177,7 +178,7 @@ package) until that lock is rebuilt on conda-forge.
 Interactive probe for Cap'n `checkShell` / path / seat / risk with bit-identical
 WASM TCB, optional TRACE, and the **same multi-pack load path as product**:
 
-- Default `GROKOS_POLICYD_JANET_PACK=/policy/shell.janet:/policy/packs.d`
+- Default `PHRONESIS_JANET_PACK=/policy/shell.janet:/policy/packs.d`
 - Composition deny > prompt > allow across packs that define the entry
 - Author mode reloads a colon list (not a single file only)
 

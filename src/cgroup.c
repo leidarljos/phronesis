@@ -8,7 +8,7 @@
 
 #ifndef __linux__
 
-int grok_cgroup_create(const char *runtime_dir, const char *agent_id,
+int phronesis_cgroup_create(const char *runtime_dir, const char *agent_id,
 		       char *path_out, size_t path_len)
 {
 	(void)runtime_dir;
@@ -18,20 +18,20 @@ int grok_cgroup_create(const char *runtime_dir, const char *agent_id,
 	return PHRONESIS_OK;
 }
 
-int grok_cgroup_attach(const char *cgroup_path, pid_t pid)
+int phronesis_cgroup_attach(const char *cgroup_path, pid_t pid)
 {
 	(void)cgroup_path;
 	(void)pid;
 	return PHRONESIS_ERR_STATE;
 }
 
-int grok_cgroup_kill(const char *cgroup_path)
+int phronesis_cgroup_kill(const char *cgroup_path)
 {
 	(void)cgroup_path;
 	return PHRONESIS_ERR_STATE;
 }
 
-void grok_cgroup_remove(const char *cgroup_path)
+void phronesis_cgroup_remove(const char *cgroup_path)
 {
 	(void)cgroup_path;
 }
@@ -84,7 +84,7 @@ static int self_cgroup_rel(char *out, size_t n)
 	return -1;
 }
 
-int grok_cgroup_create(const char *runtime_dir, const char *agent_id,
+int phronesis_cgroup_create(const char *runtime_dir, const char *agent_id,
 		       char *path_out, size_t path_len)
 {
 	char rel[PHRONESIS_PATH_MAX];
@@ -111,9 +111,9 @@ int grok_cgroup_create(const char *runtime_dir, const char *agent_id,
 			return PHRONESIS_OK;
 	}
 
-	if (strlen(base) + 1 + strlen(agent_id) + sizeof("/grok-") > sizeof(path))
+	if (strlen(base) + 1 + strlen(agent_id) + sizeof("/phronesis-") > sizeof(path))
 		return PHRONESIS_OK;
-	if (snprintf(path, sizeof(path), "%s/grok-%s", base, agent_id) >= (int)sizeof(path))
+	if (snprintf(path, sizeof(path), "%s/phronesis-%s", base, agent_id) >= (int)sizeof(path))
 		return PHRONESIS_OK;
 
 	/* Best-effort enable controllers on parent (ignore failure). */
@@ -122,7 +122,7 @@ int grok_cgroup_create(const char *runtime_dir, const char *agent_id,
 		(void)write_str(controllers, "+pids +memory");
 	}
 
-	if (grok_paths_ensure_dir(path, 0755) != PHRONESIS_OK) {
+	if (phronesis_paths_ensure_dir(path, 0755) != PHRONESIS_OK) {
 		/*
 		 * Fallback: mirror under runtime (still needs move into a real
 		 * hierarchy — only works if runtime is on cgroupfs; usually not).
@@ -138,7 +138,7 @@ int grok_cgroup_create(const char *runtime_dir, const char *agent_id,
 	return PHRONESIS_OK;
 }
 
-int grok_cgroup_attach(const char *cgroup_path, pid_t pid)
+int phronesis_cgroup_attach(const char *cgroup_path, pid_t pid)
 {
 	char procs[PHRONESIS_PATH_MAX];
 	char buf[32];
@@ -154,7 +154,7 @@ int grok_cgroup_attach(const char *cgroup_path, pid_t pid)
 	return PHRONESIS_OK;
 }
 
-int grok_cgroup_kill(const char *cgroup_path)
+int phronesis_cgroup_kill(const char *cgroup_path)
 {
 	char killp[PHRONESIS_PATH_MAX];
 
@@ -167,7 +167,7 @@ int grok_cgroup_kill(const char *cgroup_path)
 	return PHRONESIS_OK;
 }
 
-void grok_cgroup_remove(const char *cgroup_path)
+void phronesis_cgroup_remove(const char *cgroup_path)
 {
 	if (cgroup_path && cgroup_path[0])
 		(void)rmdir(cgroup_path);

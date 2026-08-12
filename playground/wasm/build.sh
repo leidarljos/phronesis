@@ -61,7 +61,7 @@ fi
 
 # --- schema C (host capnpc-c) ---
 # gen-capnp-c.sh SCHEMA_DIR OUTDIR CAPNPC_C (SoT pin or subproject schemadir)
-SCHEMA_DIR="${GROKOS_SCHEMA_DIR:-$ROOT/schema}"
+SCHEMA_DIR="${PHRONESIS_SCHEMA_DIR:-$ROOT/schema}"
 echo "generating Cap'n C schema from $SCHEMA_DIR into $GEN" >&2
 bash "$ROOT/scripts/gen-capnp-c.sh" \
 	"$SCHEMA_DIR" \
@@ -128,8 +128,8 @@ COMMON_CFLAGS=(
 	-std=gnu11
 	-O2
 	-D_GNU_SOURCE
-	-DGROKOS_POLICYD_PLAYGROUND=1
-	-DGROKOS_POLICYD_TRACE=1
+	-DPHRONESIS_PLAYGROUND=1
+	-DPHRONESIS_TRACE=1
 	-DJANET_API=
 	-DJANET_SPAWN_NO_CHDIR
 	-DJANET_NO_EV

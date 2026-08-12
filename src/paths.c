@@ -30,7 +30,7 @@ static int join3(char *out, size_t n, const char *a, const char *b, const char *
  * Create one directory leaf. Temporarily umask(0) so mode is exact (tests
  * expect 0700). Existing dirs are left alone (no chmod of shared parents).
  */
-int grok_paths_ensure_dir(const char *path, int mode)
+int phronesis_paths_ensure_dir(const char *path, int mode)
 {
 	mode_t old;
 	struct stat st;
@@ -62,28 +62,28 @@ static int ensure_state_tree(const char *state)
 {
 	char buf[PHRONESIS_PATH_MAX];
 
-	if (grok_paths_ensure_dir(state, 0700) != PHRONESIS_OK)
+	if (phronesis_paths_ensure_dir(state, 0700) != PHRONESIS_OK)
 		return PHRONESIS_ERR_IO;
 	if (join3(buf, sizeof(buf), state, "log", NULL) != PHRONESIS_OK)
 		return PHRONESIS_ERR_INVAL;
-	if (grok_paths_ensure_dir(buf, 0700) != PHRONESIS_OK)
+	if (phronesis_paths_ensure_dir(buf, 0700) != PHRONESIS_OK)
 		return PHRONESIS_ERR_IO;
 	if (join3(buf, sizeof(buf), state, "phronesis", NULL) != PHRONESIS_OK)
 		return PHRONESIS_ERR_INVAL;
-	if (grok_paths_ensure_dir(buf, 0700) != PHRONESIS_OK)
+	if (phronesis_paths_ensure_dir(buf, 0700) != PHRONESIS_OK)
 		return PHRONESIS_ERR_IO;
 	return PHRONESIS_OK;
 }
 
-int grok_paths_resolve(char *state_dir, size_t state_len,
+int phronesis_paths_resolve(char *state_dir, size_t state_len,
 		       char *runtime_dir, size_t runtime_len,
 		       char *action_log, size_t log_len,
 		       const char *state_override,
 		       const char *runtime_override)
 {
-	const char *env_state = getenv("GROKOS_STATE_DIR");
-	const char *env_runtime = getenv("GROKOS_RUNTIME_DIR");
-	const char *env_log = getenv("GROKOS_ACTION_LOG");
+	const char *env_state = getenv("PHRONESIS_STATE_DIR");
+	const char *env_runtime = getenv("PHRONESIS_RUNTIME_DIR");
+	const char *env_log = getenv("PHRONESIS_ACTION_LOG");
 	const char *xdg_state = getenv("XDG_STATE_HOME");
 	const char *xdg_runtime = getenv("XDG_RUNTIME_DIR");
 	const char *home = getenv("HOME");
@@ -96,12 +96,12 @@ int grok_paths_resolve(char *state_dir, size_t state_len,
 		if (snprintf(state_dir, state_len, "%s", env_state) >= (int)state_len)
 			return PHRONESIS_ERR_INVAL;
 	} else if (xdg_state && xdg_state[0]) {
-		if (join3(state_dir, state_len, xdg_state, "grokos", NULL) != PHRONESIS_OK)
+		if (join3(state_dir, state_len, xdg_state, "phronesis", NULL) != PHRONESIS_OK)
 			return PHRONESIS_ERR_INVAL;
 	} else if (home && home[0]) {
 		if (join3(tmp, sizeof(tmp), home, ".local/state", NULL) != PHRONESIS_OK)
 			return PHRONESIS_ERR_INVAL;
-		if (join3(state_dir, state_len, tmp, "grokos", NULL) != PHRONESIS_OK)
+		if (join3(state_dir, state_len, tmp, "phronesis", NULL) != PHRONESIS_OK)
 			return PHRONESIS_ERR_INVAL;
 	} else {
 		return PHRONESIS_ERR_STATE;
@@ -114,7 +114,7 @@ int grok_paths_resolve(char *state_dir, size_t state_len,
 		if (snprintf(runtime_dir, runtime_len, "%s", env_runtime) >= (int)runtime_len)
 			return PHRONESIS_ERR_INVAL;
 	} else if (xdg_runtime && xdg_runtime[0]) {
-		if (join3(runtime_dir, runtime_len, xdg_runtime, "grokos", NULL) != PHRONESIS_OK)
+		if (join3(runtime_dir, runtime_len, xdg_runtime, "phronesis", NULL) != PHRONESIS_OK)
 			return PHRONESIS_ERR_INVAL;
 	} else {
 		if (join3(runtime_dir, runtime_len, state_dir, "run", NULL) != PHRONESIS_OK)
@@ -134,7 +134,7 @@ int grok_paths_resolve(char *state_dir, size_t state_len,
 
 	if (ensure_state_tree(state_dir) != PHRONESIS_OK)
 		return PHRONESIS_ERR_IO;
-	if (grok_paths_ensure_dir(runtime_dir, 0700) != PHRONESIS_OK)
+	if (phronesis_paths_ensure_dir(runtime_dir, 0700) != PHRONESIS_OK)
 		return PHRONESIS_ERR_IO;
 	return PHRONESIS_OK;
 }

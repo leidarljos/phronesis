@@ -300,7 +300,7 @@ void phronesis_check_path(phronesis_supervisor_t *sup, const uint8_t *in,
 	emit_decision(&pr, agent, out, out_len);
 }
 
-#ifdef GROKOS_POLICYD_TRACE
+#ifdef PHRONESIS_TRACE
 static const char *decision_str(phronesis_decision_t d)
 {
 	switch (d) {
@@ -353,7 +353,7 @@ void phronesis_check_shell(phronesis_supervisor_t *sup, const uint8_t *in,
 	(void)phronesis_policy_eval(ws, "shell", "exec", cwd[0] ? cwd : NULL, &pr);
 	if (pr.decision != PHRONESIS_DECISION_ALLOW) {
 		capn_free(&c);
-#ifdef GROKOS_POLICYD_TRACE
+#ifdef PHRONESIS_TRACE
 		PD_TRACE_EVENT(PD_TRACE_LAYER_HOST, PD_TRACE_PHASE_DECIDE,
 			       "checkShell/path-plane", "path plane short-circuit",
 			       (int)pr.code, decision_str(pr.decision), 1);
@@ -475,12 +475,12 @@ void phronesis_check_audio(phronesis_supervisor_t *sup, const uint8_t *in,
 	capn_free(&c);
 
 	/* Hard TCB env gates (same story as shell workspace gate before pack). */
-	if (env_truthy("GROKOS_POLICYD_DENY_ALL")) {
+	if (env_truthy("PHRONESIS_DENY_ALL")) {
 		emit_code(PHRONESIS_DECISION_DENY, PHRONESIS_REASON_DENY_ALL, agent, out,
 			  out_len);
 		return;
 	}
-	if (env_truthy("GROKOS_POLICYD_AUDIO_ALLOW")) {
+	if (env_truthy("PHRONESIS_AUDIO_ALLOW")) {
 		emit_code(PHRONESIS_DECISION_ALLOW, PHRONESIS_REASON_AUDIO_FIXTURE_ALLOW,
 			  agent, out, out_len);
 		return;

@@ -27,7 +27,7 @@ just = "==1.57.0"
 [tasks]
 env-info = "bash scripts/pixi_env_info.sh"
 clean = "rm -rf build build-cov coverage-out"
-setup = { cmd = "bash -c 'opts=\"${POLICYD_MESON_OPTS:-}\"; if [ -f build/build.ninja ]; then meson setup build --reconfigure $opts; else meson setup build $opts; fi'" }
+setup = { cmd = "bash -c 'opts=\"${PHRONESIS_MESON_OPTS:-}\"; if [ -f build/build.ninja ]; then meson setup build --reconfigure $opts; else meson setup build $opts; fi'" }
 compile = { cmd = "meson compile -C build", depends-on = ["setup"] }
 # Both shared + static (default_library=both); name disambiguated for Meson.
 lib = { cmd = "meson compile -C build phronesis:shared_library phronesis:static_library", depends-on = ["setup"] }

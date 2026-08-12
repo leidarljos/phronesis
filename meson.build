@@ -13,7 +13,7 @@ project(
     check: true,
   ).stdout().strip(),
   license: 'MIT',
-  # Match grokos-schema subproject (meson_version >=1.3).
+  # meson_version >=1.3 (wrap / schema codegen).
   meson_version: '>=1.3.0',
   default_options: [
     'c_std=gnu11',
@@ -115,20 +115,20 @@ endif
 # not compiled here. Override with -Dschema_dir= when injecting another tree.
 schema_dir_opt = get_option('schema_dir')
 if schema_dir_opt != ''
-  grokos_schemadir = schema_dir_opt
+  schema_root = schema_dir_opt
 else
-  grokos_schemadir = meson.current_source_dir() / 'schema'
+  schema_root = meson.current_source_dir() / 'schema'
 endif
-if not fs.is_file(grokos_schemadir / 'policy.capnp') or not fs.is_file(
-  grokos_schemadir / 'util.capnp',
+if not fs.is_file(schema_root / 'policy.capnp') or not fs.is_file(
+  schema_root / 'util.capnp',
 )
   error(
     'Cap\'n interface incomplete under @0@ (need policy.capnp + util.capnp)'.format(
-      grokos_schemadir,
+      schema_root,
     ),
   )
 endif
-message('Cap\'n interface: schemadir=@0@'.format(grokos_schemadir))
+message('Cap\'n interface: schemadir=@0@'.format(schema_root))
 
 # policy imports util — gen script stages both .capnp and emits C into OUTDIR.
 # Outputs 4–5 are installable staged IDL (avoids subproject install sandbox).
@@ -144,13 +144,13 @@ schema_gen = custom_target(
   ],
   command: [
     gen_capnp,
-    grokos_schemadir,
+    schema_root,
     '@OUTDIR@',
     capnpc_c,
   ],
   depend_files: [
-    grokos_schemadir / 'policy.capnp',
-    grokos_schemadir / 'util.capnp',
+    schema_root / 'policy.capnp',
+    schema_root / 'util.capnp',
   ],
   build_by_default: true,
   install: true,
@@ -206,7 +206,7 @@ lib_srcs = files(
   'src/policy.c',
   'src/policy_reason.c',
   'src/policy_janet.c',
-  # TRACE ring: empty TU unless -DGROKOS_POLICYD_TRACE=1 (playground only).
+  # TRACE ring: empty TU unless -DPHRONESIS_TRACE=1 (playground only).
   'src/policy_trace.c',
   'src/supervisor.c',
   'src/version.c',
@@ -235,8 +235,8 @@ dl_dep = cc.find_library('dl', required: true)
 thread_dep = dependency('threads')
 
 # Product Janet packs (shell-check + audio-check + pure lib/). Installed so
-# seats load law with no GROKOS_POLICYD_JANET_PACK env. Default path is baked
-# into the library as GROKOS_POLICYD_DEFAULT_JANET_PACK.
+# seats load law with no PHRONESIS_JANET_PACK env. Default path is baked
+# into the library as PHRONESIS_DEFAULT_JANET_PACK.
 policy_pack_install = get_option('datadir') / 'phronesis' / 'policy'
 install_data(
   'schema/SCHEMA_PIN',
@@ -269,7 +269,7 @@ phronesis_lib = library(
   gnu_symbol_visibility: 'hidden',
   c_args: mull_c_args + [
     '-DJANET_API=',
-    '-DGROKOS_POLICYD_DEFAULT_JANET_PACK="@0@"'.format(default_janet_pack),
+    '-DPHRONESIS_DEFAULT_JANET_PACK="@0@"'.format(default_janet_pack),
   ],
 )
 
@@ -339,8 +339,8 @@ test(
   timeout: 120,
   workdir: meson.project_source_root(),
   env: {
-    'POLICYD_BUILD_DIR': meson.project_build_root(),
-    'POLICYD_SOURCE_ROOT': meson.project_source_root(),
+    'PHRONESIS_BUILD_DIR': meson.project_build_root(),
+    'PHRONESIS_SOURCE_ROOT': meson.project_source_root(),
   },
 )
 
@@ -350,7 +350,7 @@ test(
   'shared_link',
   bash,
   args: [meson.project_source_root() / 'scripts/check_shared_link.sh'],
-  env: {'POLICYD_BUILD_DIR': meson.project_build_root()},
+  env: {'PHRONESIS_BUILD_DIR': meson.project_build_root()},
   depends: [phronesis_lib],
   workdir: meson.project_source_root(),
 )
@@ -374,9 +374,9 @@ if get_option('mutation')
     depends: [supervisor_test],
     env: {
       'MULL_CONFIG': meson.project_source_root() / 'mull.yml',
-      'POLICYD_BUILD_DIR': meson.project_build_root(),
-      # Shell pack tests resolve policy/shell.janet via POLICYD_SOURCE_ROOT.
-      'POLICYD_SOURCE_ROOT': meson.project_source_root(),
+      'PHRONESIS_BUILD_DIR': meson.project_build_root(),
+      # Shell pack tests resolve policy/shell.janet via PHRONESIS_SOURCE_ROOT.
+      'PHRONESIS_SOURCE_ROOT': meson.project_source_root(),
     },
   )
 endif

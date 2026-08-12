@@ -104,7 +104,7 @@ build:pixi:
   before_script: *pixi_prepare
   script:
     - export PATH="${CI_PROJECT_DIR}/.pixi/envs/ci/bin:${PIXI_HOME}/bin:${PATH}"
-    - export POLICYD_BIN="${CI_PROJECT_DIR}/build/phronesis"
+    - export PHRONESIS_BIN="${CI_PROJECT_DIR}/build/phronesis"
     - just build
   after_script:
     - df -h || true
@@ -129,7 +129,7 @@ publish:lib:
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
       variables:
-        POLICYD_PUBLISH_DRY_RUN: "1"
+        PHRONESIS_PUBLISH_DRY_RUN: "1"
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
 
 # Meson -Db_coverage + gcovr. No percentage gate.

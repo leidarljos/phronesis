@@ -2,7 +2,7 @@
 # Unit-tested via tests/test_pack_lib.c. Host loads sorted lib/ before shell.janet
 # (name sorts after layout.janet so Decision/AudioAction/PolicyReason bind).
 # Product defaults for Policyd.checkAudio (meta #97 Track E).
-# Host TCB still applies GROKOS_POLICYD_DENY_ALL / GROKOS_POLICYD_AUDIO_ALLOW.
+# Host TCB still applies PHRONESIS_DENY_ALL / PHRONESIS_AUDIO_ALLOW.
 
 (defn audio-decide
   ``Map AudioAction ordinal → [decision code].

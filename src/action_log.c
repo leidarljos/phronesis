@@ -34,7 +34,7 @@ static int json_escape(const char *in, char *out, size_t outlen)
 	return 0;
 }
 
-int grok_action_log_append(const char *path,
+int phronesis_action_log_append(const char *path,
 			   const char *agent_id,
 			   const char *kind,
 			   const char *detail)
@@ -69,7 +69,7 @@ int grok_action_log_append(const char *path,
 	return PHRONESIS_OK;
 }
 
-int grok_action_log_last(const char *path, char *buf, size_t buflen)
+int phronesis_action_log_last(const char *path, char *buf, size_t buflen)
 {
 	FILE *f;
 	char line[2048];
