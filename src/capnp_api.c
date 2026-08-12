@@ -201,11 +201,11 @@ void phronesis_check_seat(phronesis_supervisor_t *sup, const uint8_t *in,
 
 	(void)sup;
 	memset(&agent, 0, sizeof(agent));
-	PD_TRACE_EVENT(PD_TRACE_LAYER_HOST, PD_TRACE_PHASE_ENTER, "checkShell",
-		       "phronesis_check_shell", -1, NULL, 0);
+	PD_TRACE_EVENT(PD_TRACE_LAYER_HOST, PD_TRACE_PHASE_ENTER, "checkSeat",
+		       "phronesis_check_seat", -1, NULL, 0);
 	if (open_in(in, in_len, &c) != 0) {
 		PD_TRACE_EVENT(PD_TRACE_LAYER_CAPNP, PD_TRACE_PHASE_ERROR,
-			       "checkShell/open", "invalid Cap'n message",
+			       "checkSeat/open", "invalid Cap'n message",
 			       (int)PHRONESIS_REASON_INVALID_MESSAGE, "deny", 1);
 		deny_msg(agent, PHRONESIS_REASON_INVALID_MESSAGE, out, out_len);
 		return;
