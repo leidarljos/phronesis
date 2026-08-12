@@ -40,33 +40,33 @@ int grok_action_log_append(const char *path,
 			   const char *detail)
 {
 	FILE *f;
-	char ek[GROK_DETAIL_MAX * 2];
-	char ed[GROK_DETAIL_MAX * 2];
-	char ea[GROK_ID_MAX * 2];
+	char ek[PHRONESIS_DETAIL_MAX * 2];
+	char ed[PHRONESIS_DETAIL_MAX * 2];
+	char ea[PHRONESIS_ID_MAX * 2];
 	time_t now;
 
 	if (!path || !kind || !kind[0])
-		return GROK_ERR_INVAL;
+		return PHRONESIS_ERR_INVAL;
 	if (json_escape(kind, ek, sizeof(ek)) != 0)
-		return GROK_ERR_INVAL;
+		return PHRONESIS_ERR_INVAL;
 	if (json_escape(detail ? detail : "", ed, sizeof(ed)) != 0)
-		return GROK_ERR_INVAL;
+		return PHRONESIS_ERR_INVAL;
 	if (json_escape(agent_id ? agent_id : "", ea, sizeof(ea)) != 0)
-		return GROK_ERR_INVAL;
+		return PHRONESIS_ERR_INVAL;
 
 	now = time(NULL);
 	f = fopen(path, "a");
 	if (!f)
-		return GROK_ERR_IO;
+		return PHRONESIS_ERR_IO;
 	if (fprintf(f,
 		    "{\"ts\":%lld,\"agent\":\"%s\",\"kind\":\"%s\",\"detail\":\"%s\"}\n",
 		    (long long)now, ea, ek, ed) < 0) {
 		fclose(f);
-		return GROK_ERR_IO;
+		return PHRONESIS_ERR_IO;
 	}
 	if (fclose(f) != 0)
-		return GROK_ERR_IO;
-	return GROK_OK;
+		return PHRONESIS_ERR_IO;
+	return PHRONESIS_OK;
 }
 
 int grok_action_log_last(const char *path, char *buf, size_t buflen)
@@ -77,12 +77,12 @@ int grok_action_log_last(const char *path, char *buf, size_t buflen)
 	size_t n;
 
 	if (!path || !buf || buflen == 0)
-		return GROK_ERR_INVAL;
+		return PHRONESIS_ERR_INVAL;
 	buf[0] = '\0';
 	last[0] = '\0';
 	f = fopen(path, "r");
 	if (!f)
-		return GROK_ERR_IO;
+		return PHRONESIS_ERR_IO;
 	while (fgets(line, sizeof(line), f)) {
 		n = strlen(line);
 		while (n > 0 && (line[n - 1] == '\n' || line[n - 1] == '\r'))
@@ -92,8 +92,8 @@ int grok_action_log_last(const char *path, char *buf, size_t buflen)
 	}
 	fclose(f);
 	if (!last[0])
-		return GROK_ERR_NOTFOUND;
+		return PHRONESIS_ERR_NOTFOUND;
 	if (snprintf(buf, buflen, "%s", last) >= (int)buflen)
-		return GROK_ERR_INVAL;
-	return GROK_OK;
+		return PHRONESIS_ERR_INVAL;
+	return PHRONESIS_OK;
 }

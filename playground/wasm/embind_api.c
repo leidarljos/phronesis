@@ -26,32 +26,32 @@
 #define PD_DEFAULT_PACK_SPEC "/policy/shell.janet:/policy/packs.d"
 
 EMSCRIPTEN_KEEPALIVE
-grok_supervisor_t *pd_supervisor_open(const char *state, const char *runtime)
+phronesis_supervisor_t *pd_supervisor_open(const char *state, const char *runtime)
 {
-	grok_supervisor_t *s = NULL;
+	phronesis_supervisor_t *s = NULL;
 	const char *st = state && state[0] ? state : "/pd-state";
 	const char *rt = runtime && runtime[0] ? runtime : "/pd-runtime";
 
 	/* Prefer multi-pack colon list under MEMFS; do not override if already set. */
 	setenv("GROKOS_POLICYD_JANET_PACK", PD_DEFAULT_PACK_SPEC, 0);
-	if (grok_supervisor_open(&s, st, rt) != GROK_OK)
+	if (phronesis_supervisor_open(&s, st, rt) != PHRONESIS_OK)
 		return NULL;
 	return s;
 }
 
 EMSCRIPTEN_KEEPALIVE
-void pd_supervisor_close(grok_supervisor_t *s)
+void pd_supervisor_close(phronesis_supervisor_t *s)
 {
-	grok_supervisor_close(s);
+	phronesis_supervisor_close(s);
 }
 
 /*
  * Run checkShell. On success writes malloc'd Cap'n PolicyDecision into
  * *out_holder and returns length (>= 0). On failure returns -1 and *out_holder
- * is NULL (or whatever grok_policyd left).
+ * is NULL (or whatever phronesis left).
  */
 EMSCRIPTEN_KEEPALIVE
-int pd_check_shell(grok_supervisor_t *s, const uint8_t *in, size_t in_len,
+int pd_check_shell(phronesis_supervisor_t *s, const uint8_t *in, size_t in_len,
 		   uint8_t **out_holder)
 {
 	uint8_t *out = NULL;
@@ -62,7 +62,7 @@ int pd_check_shell(grok_supervisor_t *s, const uint8_t *in, size_t in_len,
 	*out_holder = NULL;
 	/* Fresh ring per check so take_trace_json matches this call. */
 	pd_trace_clear();
-	grok_policyd_check_shell(s, in, in_len, &out, &out_len);
+	phronesis_check_shell(s, in, in_len, &out, &out_len);
 	if (!out || out_len == 0 || out_len > (size_t)INT32_MAX) {
 		free(out);
 		return -1;
@@ -75,9 +75,9 @@ int pd_check_shell(grok_supervisor_t *s, const uint8_t *in, size_t in_len,
  * Same Cap'n in / malloc'd PolicyDecision out shape as pd_check_shell for
  * path / seat / risk (fixture parity + playground).
  */
-static int pd_check_common(grok_supervisor_t *s, const uint8_t *in,
+static int pd_check_common(phronesis_supervisor_t *s, const uint8_t *in,
 			   size_t in_len, uint8_t **out_holder,
-			   void (*fn)(grok_supervisor_t *, const uint8_t *,
+			   void (*fn)(phronesis_supervisor_t *, const uint8_t *,
 				      size_t, uint8_t **, size_t *))
 {
 	uint8_t *out = NULL;
@@ -97,24 +97,24 @@ static int pd_check_common(grok_supervisor_t *s, const uint8_t *in,
 }
 
 EMSCRIPTEN_KEEPALIVE
-int pd_check_path(grok_supervisor_t *s, const uint8_t *in, size_t in_len,
+int pd_check_path(phronesis_supervisor_t *s, const uint8_t *in, size_t in_len,
 		  uint8_t **out_holder)
 {
-	return pd_check_common(s, in, in_len, out_holder, grok_policyd_check_path);
+	return pd_check_common(s, in, in_len, out_holder, phronesis_check_path);
 }
 
 EMSCRIPTEN_KEEPALIVE
-int pd_check_seat(grok_supervisor_t *s, const uint8_t *in, size_t in_len,
+int pd_check_seat(phronesis_supervisor_t *s, const uint8_t *in, size_t in_len,
 		  uint8_t **out_holder)
 {
-	return pd_check_common(s, in, in_len, out_holder, grok_policyd_check_seat);
+	return pd_check_common(s, in, in_len, out_holder, phronesis_check_seat);
 }
 
 EMSCRIPTEN_KEEPALIVE
-int pd_check_risk(grok_supervisor_t *s, const uint8_t *in, size_t in_len,
+int pd_check_risk(phronesis_supervisor_t *s, const uint8_t *in, size_t in_len,
 		  uint8_t **out_holder)
 {
-	return pd_check_common(s, in, in_len, out_holder, grok_policyd_check_risk);
+	return pd_check_common(s, in, in_len, out_holder, phronesis_check_risk);
 }
 
 /*
@@ -122,11 +122,11 @@ int pd_check_risk(grok_supervisor_t *s, const uint8_t *in, size_t in_len,
  * Author-mode path: write MEMFS pack via Module.FS, then call this.
  */
 EMSCRIPTEN_KEEPALIVE
-int pd_reload_shell_pack(grok_supervisor_t *s, const uint8_t *in, size_t in_len,
+int pd_reload_shell_pack(phronesis_supervisor_t *s, const uint8_t *in, size_t in_len,
 			 uint8_t **out_holder)
 {
 	return pd_check_common(s, in, in_len, out_holder,
-			       grok_policyd_reload_shell_pack);
+			       phronesis_reload_shell_pack);
 }
 
 /*
@@ -142,11 +142,11 @@ int pd_reload_pack_path(const char *path)
 
 	if (!path || !path[0])
 		return -1;
-	/* Public ABI: GROK_OK / GROK_ERR_INVAL / GROK_ERR_IO. Map to 0/-1/-2 for JS. */
-	rc = grok_policy_shell_pack_reload(path);
-	if (rc == GROK_OK)
+	/* Public ABI: PHRONESIS_OK / PHRONESIS_ERR_INVAL / PHRONESIS_ERR_IO. Map to 0/-1/-2 for JS. */
+	rc = phronesis_shell_pack_reload(path);
+	if (rc == PHRONESIS_OK)
 		return 0;
-	if (rc == GROK_ERR_INVAL)
+	if (rc == PHRONESIS_ERR_INVAL)
 		return -1;
 	return -2;
 }

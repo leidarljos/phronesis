@@ -1,15 +1,15 @@
 # phronesis
 
 In-process policy library for a multi-agent seat. Callers link `libphronesis`
-and send Cap'n messages into `grok_policyd_handle_capnp` or the typed C
-entry points (`checkShell`, `checkPath`, `checkSeat`, …). Every check returns
+and send Cap'n messages into the typed C entry points (`phronesis_check_shell`,
+`phronesis_check_path`, `phronesis_check_seat`, …). Every check returns
 a Cap'n `PolicyDecision` (`deny` / `allow` / `prompt`) plus a `PolicyReason`
 code. Protocol failures deny.
 
 | | |
 |--|--|
 | **Language** | Cap'n interface: `schema/policy.capnp` + `schema/util.capnp` in this tree |
-| **Product API** | `grok_policyd_handle_capnp()` (in-process FFI) |
+| **Product API** | typed C entry points in `include/phronesis/supervisor.h` |
 | **C helpers** | `include/phronesis/supervisor.h` |
 | **License** | MIT (`LICENSE`); third-party notes in `NOTICE` |
 
@@ -62,11 +62,11 @@ sessiond, shell.
 /* in: Cap'n ShellCheck root; out: Cap'n PolicyDecision root */
 uint8_t *out = NULL;
 size_t out_len = 0;
-grok_policyd_check_shell(sup, shell_msg, shell_len, &out, &out_len);
+phronesis_check_shell(sup, shell_msg, shell_len, &out, &out_len);
 /* decode PolicyDecision from out; free(out) */
 ```
 
-`grok_policy_check` is CLI string bridge only.
+`phronesis_policy_check` is CLI string bridge only.
 
 ### Decision table (by method)
 

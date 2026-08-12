@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: MIT */
-#ifndef GROK_POLICYD_TEST_HARNESS_H
-#define GROK_POLICYD_TEST_HARNESS_H
+#ifndef PHRONESIS_TEST_HARNESS_H
+#define PHRONESIS_TEST_HARNESS_H
 
 #include "phronesis/supervisor.h"
 
@@ -15,7 +15,7 @@ int t_pid_alive(pid_t pid);
 int t_read_pidfile(const char *path, pid_t *out);
 void t_rm_rf(const char *path);
 
-int t_open_pair(grok_supervisor_t **out, char *state, size_t sn,
+int t_open_pair(phronesis_supervisor_t **out, char *state, size_t sn,
 		char *runtime, size_t rn, const char *tag);
 
 int run_paths_tests(void);

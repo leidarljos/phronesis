@@ -11,7 +11,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-void grok_agent_id_to_hex(uint64_t hi, uint64_t lo, char out[GROK_ID_MAX])
+void phronesis_agent_id_to_hex(uint64_t hi, uint64_t lo, char out[PHRONESIS_ID_MAX])
 {
 	if (!out)
 		return;
@@ -19,11 +19,11 @@ void grok_agent_id_to_hex(uint64_t hi, uint64_t lo, char out[GROK_ID_MAX])
 		out[0] = '\0';
 		return;
 	}
-	snprintf(out, GROK_ID_MAX, "%016llx%016llx",
+	snprintf(out, PHRONESIS_ID_MAX, "%016llx%016llx",
 		 (unsigned long long)hi, (unsigned long long)lo);
 }
 
-int grok_policyd_map_admit_kind(const char *kind, const char **tool,
+int phronesis_map_admit_kind(const char *kind, const char **tool,
 				const char **action)
 {
 	if (!kind || !tool || !action)
@@ -128,7 +128,7 @@ static int path_is_sensitive(const char *path)
 	return 0;
 }
 
-int grok_policy_resolve_script(const char *cwd, const char *script, char *out,
+int phronesis_resolve_script(const char *cwd, const char *script, char *out,
 			       size_t out_n)
 {
 	size_t cl, sl;
@@ -167,31 +167,31 @@ static int env_truthy(const char *name)
 	       strcmp(v, "YES") == 0;
 }
 
-int grok_policy_eval(const char *workspace, const char *tool,
+int phronesis_policy_eval(const char *workspace, const char *tool,
 		     const char *action, const char *path,
-		     grok_policy_result_t *out)
+		     phronesis_policy_result_t *out)
 {
 	if (!out)
-		return GROK_ERR_INVAL;
-	grok_policy_result_set(out, GROK_DECISION_DENY,
-			       GROK_REASON_TOOLS_DEFAULT_DENY);
+		return PHRONESIS_ERR_INVAL;
+	phronesis_policy_result_set(out, PHRONESIS_DECISION_DENY,
+			       PHRONESIS_REASON_TOOLS_DEFAULT_DENY);
 
 	PD_TRACE_EVENT(PD_TRACE_LAYER_HOST, PD_TRACE_PHASE_ENTER,
 		       "policy-eval", tool && tool[0] ? tool : "", -1, NULL, 0);
 
 	if (env_truthy("GROKOS_POLICYD_DENY_ALL")) {
-		grok_policy_result_set(out, GROK_DECISION_DENY,
-				       GROK_REASON_DENY_ALL);
+		phronesis_policy_result_set(out, PHRONESIS_DECISION_DENY,
+				       PHRONESIS_REASON_DENY_ALL);
 				PD_TRACE_EVENT(PD_TRACE_LAYER_HOST, PD_TRACE_PHASE_DECIDE,
 			       "policy-eval/deny-all", "GROKOS_POLICYD_DENY_ALL",
-			       (int)GROK_REASON_DENY_ALL, "deny", 1);
-		return GROK_OK;
+			       (int)PHRONESIS_REASON_DENY_ALL, "deny", 1);
+		return PHRONESIS_OK;
 	}
 
 	if (!tool || !tool[0] || !action || !action[0]) {
-		grok_policy_result_set(out, GROK_DECISION_DENY,
-				       GROK_REASON_MISSING_TOOL_ACTION);
-		return GROK_OK;
+		phronesis_policy_result_set(out, PHRONESIS_DECISION_DENY,
+				       PHRONESIS_REASON_MISSING_TOOL_ACTION);
+		return PHRONESIS_OK;
 	}
 
 	if (strcmp(tool, "seat") == 0) {
@@ -199,54 +199,54 @@ int grok_policy_eval(const char *workspace, const char *tool,
 		    strcmp(action, "read_run") == 0 ||
 		    strcmp(action, "list_runs") == 0 ||
 		    strcmp(action, "list_events") == 0) {
-			grok_policy_result_set(out, GROK_DECISION_ALLOW,
-					       GROK_REASON_SEAT_BOARD_ALLOW);
-			return GROK_OK;
+			phronesis_policy_result_set(out, PHRONESIS_DECISION_ALLOW,
+					       PHRONESIS_REASON_SEAT_BOARD_ALLOW);
+			return PHRONESIS_OK;
 		}
-		grok_policy_result_set(out, GROK_DECISION_DENY,
-				       GROK_REASON_UNKNOWN_SEAT_ACTION);
-		return GROK_OK;
+		phronesis_policy_result_set(out, PHRONESIS_DECISION_DENY,
+				       PHRONESIS_REASON_UNKNOWN_SEAT_ACTION);
+		return PHRONESIS_OK;
 	}
 	if (strcmp(tool, "model") == 0 && strcmp(action, "start") == 0) {
-		grok_policy_result_set(out, GROK_DECISION_ALLOW,
-				       GROK_REASON_MODEL_START_ALLOW);
-		return GROK_OK;
+		phronesis_policy_result_set(out, PHRONESIS_DECISION_ALLOW,
+				       PHRONESIS_REASON_MODEL_START_ALLOW);
+		return PHRONESIS_OK;
 	}
 	/* Secrets must never leave the seat — deny, not prompt. */
 	if (strcmp(action, "secret_export") == 0) {
-		grok_policy_result_set(out, GROK_DECISION_DENY,
-				       GROK_REASON_SECRET_EXPORT_DENIED);
-		return GROK_OK;
+		phronesis_policy_result_set(out, PHRONESIS_DECISION_DENY,
+				       PHRONESIS_REASON_SECRET_EXPORT_DENIED);
+		return PHRONESIS_OK;
 	}
 	if (strcmp(action, "delete") == 0 || strcmp(action, "network") == 0 ||
 	    strcmp(action, "sudo") == 0) {
-		grok_policy_result_set(out, GROK_DECISION_PROMPT,
-				       GROK_REASON_HIGH_RISK_PROMPT);
-		return GROK_OK;
+		phronesis_policy_result_set(out, PHRONESIS_DECISION_PROMPT,
+				       PHRONESIS_REASON_HIGH_RISK_PROMPT);
+		return PHRONESIS_OK;
 	}
 	if ((strcmp(action, "read") == 0 || strcmp(action, "write") == 0) &&
 	    path && path[0] && path_is_sensitive(path)) {
-		grok_policy_result_set(out, GROK_DECISION_DENY,
-				       GROK_REASON_PATH_SENSITIVE_DENY);
-		return GROK_OK;
+		phronesis_policy_result_set(out, PHRONESIS_DECISION_DENY,
+				       PHRONESIS_REASON_PATH_SENSITIVE_DENY);
+		return PHRONESIS_OK;
 	}
 	if ((strcmp(action, "read") == 0 || strcmp(action, "write") == 0) &&
 	    path && path[0] && path_under_workspace(workspace, path)) {
-		grok_policy_result_set(out, GROK_DECISION_ALLOW,
-				       GROK_REASON_PATH_UNDER_WORKSPACE_ALLOW);
-		return GROK_OK;
+		phronesis_policy_result_set(out, PHRONESIS_DECISION_ALLOW,
+				       PHRONESIS_REASON_PATH_UNDER_WORKSPACE_ALLOW);
+		return PHRONESIS_OK;
 	}
 	if (strcmp(tool, "shell") == 0 && strcmp(action, "exec") == 0 &&
 	    path && path[0] && path_under_workspace(workspace, path)) {
-		grok_policy_result_set(out, GROK_DECISION_ALLOW,
-				       GROK_REASON_SHELL_EXEC_ALLOW);
-		return GROK_OK;
+		phronesis_policy_result_set(out, PHRONESIS_DECISION_ALLOW,
+				       PHRONESIS_REASON_SHELL_EXEC_ALLOW);
+		return PHRONESIS_OK;
 	}
 	if (path && path[0] && !path_under_workspace(workspace, path))
-		grok_policy_result_set(out, GROK_DECISION_DENY,
-				       GROK_REASON_PATH_OUTSIDE_WORKSPACE);
+		phronesis_policy_result_set(out, PHRONESIS_DECISION_DENY,
+				       PHRONESIS_REASON_PATH_OUTSIDE_WORKSPACE);
 	else
-		grok_policy_result_set(out, GROK_DECISION_DENY,
-				       GROK_REASON_TOOLS_DEFAULT_DENY);
-	return GROK_OK;
+		phronesis_policy_result_set(out, PHRONESIS_DECISION_DENY,
+				       PHRONESIS_REASON_TOOLS_DEFAULT_DENY);
+	return PHRONESIS_OK;
 }
