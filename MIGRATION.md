@@ -118,6 +118,5 @@ this library; seat `session.capnp` stays in the session package.
 
 ## Non-goals
 
-Dual env aliases in this library. GitLab `grokos-tools` includes in
-`.gitlab-ci.yml` (that pipeline is the old host). OpenMandriva
+Dual env aliases in this library. OpenMandriva
 `grokos-packaging/grok-policyd`. Playground WASM rebuild.
