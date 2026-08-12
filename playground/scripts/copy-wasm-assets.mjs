@@ -29,9 +29,9 @@ const fixturesDest = join(astroPublic, "fixtures");
 const catalogDest = join(playground, "astro", "src", "lib", "fixture-catalog.json");
 
 const NEEDED = [
-  "policyd-playground.js",
-  "policyd-playground.wasm",
-  "policyd-playground.data",
+  "phronesis-playground.js",
+  "phronesis-playground.wasm",
+  "phronesis-playground.data",
 ];
 
 function copyTree(src, dest) {

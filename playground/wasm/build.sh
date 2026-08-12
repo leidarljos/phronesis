@@ -2,8 +2,8 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 # Direct-emcc playground build (v1). Produces:
-#   playground/dist-wasm/policyd-playground.js
-#   playground/dist-wasm/policyd-playground.wasm
+#   playground/dist-wasm/phronesis-playground.js
+#   playground/dist-wasm/phronesis-playground.wasm
 #
 # Product meson default path is untouched. Requires:
 #   - emcc on PATH (emsdk activate, or conda-forge emscripten)
@@ -173,7 +173,7 @@ fi
 EXPORTS='["_pd_supervisor_open","_pd_supervisor_close","_pd_check_shell","_pd_check_path","_pd_check_seat","_pd_check_risk","_pd_reload_shell_pack","_pd_reload_pack_path","_pd_read_decision","_pd_clear_trace","_pd_take_trace_json","_pd_free","_malloc","_free"]'
 RUNTIME='["ccall","cwrap","getValue","setValue","UTF8ToString","stringToUTF8","HEAPU8","FS"]'
 
-echo "emcc → $DIST/policyd-playground.js" >&2
+echo "emcc → $DIST/phronesis-playground.js" >&2
 emcc "${COMMON_CFLAGS[@]}" \
 	"${SRCS[@]}" \
 	-s MODULARIZE=1 \
@@ -189,12 +189,12 @@ emcc "${COMMON_CFLAGS[@]}" \
 	-s FORCE_FILESYSTEM=1 \
 	-s ERROR_ON_UNDEFINED_SYMBOLS=1 \
 	--preload-file "$MEMFS@/" \
-	-o "$DIST/policyd-playground.js"
+	-o "$DIST/phronesis-playground.js"
 
-test -f "$DIST/policyd-playground.js"
-test -f "$DIST/policyd-playground.wasm"
+test -f "$DIST/phronesis-playground.js"
+test -f "$DIST/phronesis-playground.wasm"
 # .data accompanies --preload-file; required for MEMFS seed
-test -f "$DIST/policyd-playground.data"
+test -f "$DIST/phronesis-playground.data"
 
 # Strip absolute host paths emcc embeds (PACKAGE_NAME / datafile keys).
 # Keeps tree free of personal home dirs for leakguard + portable Pages assets.
@@ -202,7 +202,7 @@ python3 - "$DIST" "$ROOT" <<'PY'
 import pathlib, re, sys
 dist = pathlib.Path(sys.argv[1])
 root = pathlib.Path(sys.argv[2]).resolve()
-js = dist / "policyd-playground.js"
+js = dist / "phronesis-playground.js"
 text = js.read_text(errors="replace")
 # Prefer longest-prefix rewrites first.
 for abs_p in (str(dist.resolve()), str(root)):
@@ -214,5 +214,5 @@ js.write_text(text)
 print(f"scrubbed host paths in {js}", file=sys.stderr)
 PY
 
-echo "OK: $DIST/policyd-playground.{js,wasm,data}" >&2
-ls -la "$DIST"/policyd-playground.*
+echo "OK: $DIST/phronesis-playground.{js,wasm,data}" >&2
+ls -la "$DIST"/phronesis-playground.*

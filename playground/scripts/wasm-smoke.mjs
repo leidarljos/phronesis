@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Lazy-load policyd-playground WASM and run checkShell smoke.
+ * Lazy-load phronesis-playground WASM and run checkShell smoke.
  *
  * Default:
  *   argv ["uv","run","--script","ok.py"] under /ws
@@ -28,7 +28,7 @@ function fail(msg) {
   process.exit(1);
 }
 
-const jsPath = join(dist, "policyd-playground.js");
+const jsPath = join(dist, "phronesis-playground.js");
 let createModule;
 try {
   const mod = await import(pathToFileURL(jsPath).href);

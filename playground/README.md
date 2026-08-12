@@ -30,8 +30,6 @@ Prebuilt WASM is committed under `playground/dist-wasm/`. You only need **Node 2
 
 ```bash
 # from this repo root
-git fetch origin
-git checkout feat/policyd-playground   # or the MR source branch
 
 # 1) Node smoke (no browser)
 node playground/scripts/wasm-smoke.mjs
@@ -116,7 +114,7 @@ v1 builds with a single script that compiles product C + deps with Emscripten:
 playground/wasm/build.sh
   → gen Cap'n C (host capnpc-c)
   → seed MEMFS (policy pack, /ws/ok.py, agent slot, /pd-state, /pd-runtime)
-  → emcc link → playground/dist-wasm/policyd-playground.{js,wasm,data}
+  → emcc link → playground/dist-wasm/phronesis-playground.{js,wasm,data}
 ```
 
 ### Why direct emcc
@@ -151,9 +149,9 @@ playground/wasm/build.sh
 
 ```bash
 bash playground/wasm/build.sh
-# → playground/dist-wasm/policyd-playground.js
-# → playground/dist-wasm/policyd-playground.wasm
-# → playground/dist-wasm/policyd-playground.data  (MEMFS preload)
+# → playground/dist-wasm/phronesis-playground.js
+# → playground/dist-wasm/phronesis-playground.wasm
+# → playground/dist-wasm/phronesis-playground.data  (MEMFS preload)
 ```
 
 ### Smoke
@@ -262,7 +260,7 @@ Three-pane island under `playground/astro/` (Astro 5 + Preact):
 ### Lazy WASM
 
 `/play` renders HTML without loading WASM. Click **Load evaluator** to
-dynamic-import `public/wasm/policyd-playground.js` (copied from
+dynamic-import `public/wasm/phronesis-playground.js` (copied from
 `playground/dist-wasm` by `copy-wasm-assets.mjs` on `predev` / `prebuild`).
 
 ### Base path (GitLab Pages)
@@ -324,7 +322,7 @@ entry when playground files change. Script still fails closed without WASM.
 
 ```bash
 # Required for a full evaluator site: dist-wasm (from rg.terra build)
-ls playground/dist-wasm/policyd-playground.{js,wasm,data}
+ls playground/dist-wasm/phronesis-playground.{js,wasm,data}
 
 cd playground/astro
 npm ci
