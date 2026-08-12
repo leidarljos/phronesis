@@ -81,7 +81,7 @@ variables:
 .mutation_paths: &mutation_paths
   - src/policy.c
   - src/capnp_api.c
-  - schema/policy.capnp
+  - schema/SCHEMA_PIN
   - subprojects/grokos-schema.wrap
   - mull.yml
   - tests/test_policy.c
@@ -94,7 +94,8 @@ variables:
   - src/policy*.c
   - src/capnp_api.c
   - src/policy_trace.*
-  - schema/policy.capnp
+  - schema/SCHEMA_PIN
+  - subprojects/grokos-schema.wrap
 
 build:pixi:
   stage: build

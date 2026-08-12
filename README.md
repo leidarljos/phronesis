@@ -6,7 +6,7 @@ Policy and multi-agent supervisor (security-critical core) for [GrokOS](https://
 |--|--|
 | **Meta** | https://nova.teachx.ai/trace-analysis/grokos |
 | **Issues** | https://nova.teachx.ai/trace-analysis/grokos/-/issues |
-| **Language** | Cap'n SoT: [grokos-schema](https://nova.teachx.ai/trace-analysis/grokos-packages/grokos-schema) via Meson subproject; local `schema/` pin as fallback |
+| **Language** | Cap'n SoT: [grokos-schema](https://nova.teachx.ai/trace-analysis/grokos-packages/grokos-schema) via Meson subproject/wrap; `schema/SCHEMA_PIN` is publish provenance only |
 | **Product API** | `grok_policyd_handle_capnp()` (in-process FFI) |
 | **C helpers** | `include/grok-policyd/supervisor.h` |
 
@@ -124,8 +124,10 @@ Set `GROKOS_POLICYD_AUDIO_ALLOW=1` only in CI/dogfood to allow all `AudioAction`
 
 ### Schema SoT (Meson)
 
-Policyd consumes Cap'n IDL **only** through a resolved `schemadir` (never a
-second edit tree of field layouts):
+Policyd consumes Cap'n IDL **only** through a resolved `schemadir`. There is
+**no committed** `schema/*.capnp` fork (meta #105). That is the failure #131
+prevented: wrap miss → silent compile of a stale local IDL tree while
+session/agent spoke a newer tag.
 
 1. **Monorepo dogfood** (preferred when packages sit side-by-side):
 
@@ -135,23 +137,27 @@ second edit tree of field layouts):
 
 2. **Wrap** (`subprojects/grokos-schema.wrap`): **schema-v0.3.10** /
    `65d9669` (meta #126 / #131). CI `publish:lib` / `build:pixi` run
-   `scripts/ci-seed-schema.sh` (job token) then `-Dschema_require_sot=true`.
-   The published `.a` is that wrap revision — not the offline `schema/` pin.
-   Wrap clone without credentials is for local meson only (`required: false`).
+   `scripts/ci-seed-schema.sh` then `-Dschema_require_sot=true`. The published
+   `.a` is that wrap revision. Wrap clone without credentials is for local
+   meson only (`required: false`).
 
 3. **pkg-config** `grokos-schema` (`schemadir=…`) when the schema package is
    installed on the system.
 
-4. **Local pin** `schema/` + `SCHEMA_PIN` when none of the above are available
-   (offline dogfood only). Re-vendor from SoT with
-   `grokos-schema/scripts/vendor-into.sh --dest schema --pin`.
+4. **Offline dogfood only:** materialize untracked `schema/*.capnp` next to
+   committed `schema/SCHEMA_PIN`:
 
-A prebuilt `libgrok_policyd.a` (GitLab generic `libgrok_policyd/<sha>/` or
-conda `grok-policyd-musl-static`) was built from the wrap SHA seeded at
-publish time. Consumers compare that SHA to the product pin (session/agent
-schema-v0.3.10). `publish:lib` uploads `SCHEMA_PIN` next to the `.a` so the
-consumer can read it; a missing stamp after the wrap moved cannot prove
-`65d9669` (stale wrap-era archive) and must not link quietly.
+   ```bash
+   grokos-schema/scripts/vendor-into.sh --dest schema --pin
+   ```
+
+   Without subproject/pkg-config and without that materialize, meson fails
+   closed (no second SoT in git).
+
+`schema/SCHEMA_PIN` is **publish provenance** (uploaded next to
+`libgrok_policyd.a`), lockstep with the wrap SHA — not a hand-edited IDL tree.
+Consumers compare that SHA to the product pin. A missing stamp after the wrap
+moved cannot prove `65d9669` and must not link quietly.
 
 `scripts/gen-capnp-c.sh` always reads `policy.capnp` and `util.capnp` from the
 same schemadir (no mixed sources). Staged IDL installs under

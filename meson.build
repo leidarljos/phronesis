@@ -98,9 +98,10 @@ endif
 
 # Cap'n SoT resolution (IDL only; policyd still owns capnpc-c for its TCB):
 #   1) subproject grokos-schema (monorepo: ln -sfn ../../grokos-schema
-#      subprojects/grokos-schema; CI/dev: subprojects/grokos-schema.wrap)
+#      subprojects/grokos-schema; CI/dev: seed wrap then subproject)
 #   2) installed pkg-config grokos-schema (schemadir variable)
-#   3) local schema/ pin (SCHEMA_PIN) when wrap clone fails offline
+#   3) offline dogfood only: schema/*.capnp materialized next to SCHEMA_PIN
+#      (vendor-into). No committed IDL — meta #105 / #131 silent local-pin drift.
 # Do not install_data() files from a nested subproject (Meson sandbox).
 # Stage IDL via custom_target outputs and install those.
 schema_proj = subproject(
@@ -133,17 +134,30 @@ if grokos_schemadir == ''
   endif
 endif
 if grokos_schemadir == ''
-  # Local pin only for offline dogfood. CI sets -Dschema_require_sot=true.
+  # Local materialize only for offline dogfood. CI sets -Dschema_require_sot=true
+  # so wrap/auth miss cannot compile a second IDL tree (meta #131).
   if get_option('schema_require_sot')
     error(
       'grokos-schema SoT missing: CI must clone into subprojects/grokos-schema '
       + '(job-token) or install pkg-config grokos-schema. Local pin disabled '
-      + '(-Dschema_require_sot=true).',
+      + '(-Dschema_require_sot=true; meta #131).',
     )
   endif
   grokos_schemadir = meson.current_source_dir() / 'schema'
   schema_via = 'local-pin'
-  warning('grokos-schema subproject/pkg-config missing; using local schema/ pin')
+  if not fs.is_file(grokos_schemadir / 'policy.capnp') or not fs.is_file(
+    grokos_schemadir / 'util.capnp',
+  )
+    error(
+      'grokos-schema SoT missing and schema/ has no materialized IDL. '
+      + 'Seed subprojects/grokos-schema (wrap) or run: '
+      + 'grokos-schema/scripts/vendor-into.sh --dest schema --pin. '
+      + 'Committed Cap\'n forks were removed (meta #105 / #131).',
+    )
+  endif
+  warning(
+    'grokos-schema subproject/pkg-config missing; using materialized schema/ pin',
+  )
 endif
 if not fs.is_file(grokos_schemadir / 'policy.capnp') or not fs.is_file(
   grokos_schemadir / 'util.capnp',

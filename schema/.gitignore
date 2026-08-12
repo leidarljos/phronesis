@@ -1,0 +1,3 @@
+# Materialize offline with grokos-schema vendor-into (meta #105 / #131).
+# Do not commit a second Cap'n SoT here — wrap/subproject is the product door.
+/*.capnp
