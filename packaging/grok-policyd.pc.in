@@ -2,6 +2,7 @@ prefix=@PREFIX@
 exec_prefix=${prefix}
 libdir=${prefix}/lib
 includedir=${prefix}/include
+schemadir=${prefix}/share/grok-policyd
 
 Name: grok-policyd
 Description: In-process policy library (stable C ABI)
