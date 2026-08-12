@@ -48,7 +48,7 @@ int phronesis_policy_eval(const char *workspace,
 /** Truthy env for TCB gates: 1 / true / yes (any case of true/yes). */
 int phronesis_env_truthy(const char *name);
 
-/** Truthy GROKOS_POLICYD_DENY_ALL — hard deny for Cap'n PolicyDecision entries. */
+/** Truthy PHRONESIS_DENY_ALL — hard deny for Cap'n PolicyDecision entries. */
 int phronesis_policy_deny_all(void);
 
 /**

@@ -6,12 +6,12 @@
  * Audio: Cap'n AudioCheck → pack audio-check → Cap'n PolicyDecision.
  * Pack authors reason text + code. Host may re-stamp agentId on audio.
  *
- * Multi-pack: GROKOS_POLICYD_JANET_PACK is a colon-separated list of pack
+ * Multi-pack: PHRONESIS_JANET_PACK is a colon-separated list of pack
  * files and/or directories of top-level *.janet files. Each pack loads into
  * its own sealed env. checkShell / checkAudio run every pack that defines
  * the entry and compose fail-closed (deny > prompt > allow).
  * Pack bytes are read through grok_beneath_open on one pack-root fd
- * (install policy directory or GROKOS_POLICYD_PACK_ROOT; never "/").
+ * (install policy directory or PHRONESIS_PACK_ROOT; never "/").
  */
 #include "policy_janet.h"
 #include "internal.h"
@@ -70,8 +70,8 @@ static int pack_spec_set;
  * $prefix/share/phronesis/policy/shell.janet so installed seats load the
  * product pack with no env. Overridable at compile time.
  */
-#ifndef GROKOS_POLICYD_DEFAULT_JANET_PACK
-#define GROKOS_POLICYD_DEFAULT_JANET_PACK \
+#ifndef PHRONESIS_DEFAULT_JANET_PACK
+#define PHRONESIS_DEFAULT_JANET_PACK \
 	"/usr/local/share/phronesis/policy/shell.janet"
 #endif
 
@@ -132,16 +132,16 @@ static int pack_under_trusted_prefix(const char *path)
 	char dir[PACK_PATH_MAX];
 	size_t n;
 
-	if (path_under_prefix(path, "/usr/local/share/grok-policyd") ||
-	    path_under_prefix(path, "/usr/share/grok-policyd"))
+	if (path_under_prefix(path, "/usr/local/share/phronesis") ||
+	    path_under_prefix(path, "/usr/share/phronesis"))
 		return 1;
-	prefix = getenv("GROKOS_PREFIX");
+	prefix = getenv("PHRONESIS_PREFIX");
 	if (prefix && prefix[0] &&
-	    snprintf(prefix_root, sizeof(prefix_root), "%s/share/grok-policyd",
+	    snprintf(prefix_root, sizeof(prefix_root), "%s/share/phronesis",
 		     prefix) < (int)sizeof(prefix_root) &&
 	    path_under_prefix(path, prefix_root))
 		return 1;
-	def = GROKOS_POLICYD_DEFAULT_JANET_PACK;
+	def = PHRONESIS_DEFAULT_JANET_PACK;
 	slash = def ? strrchr(def, '/') : NULL;
 	if (slash && slash > def) {
 		n = (size_t)(slash - def);
@@ -152,7 +152,7 @@ static int pack_under_trusted_prefix(const char *path)
 				return 1;
 		}
 	}
-	root = getenv("GROKOS_POLICYD_PACK_ROOT");
+	root = getenv("PHRONESIS_PACK_ROOT");
 	if (root && root[0] == '/' && !path_is_fs_root(root) &&
 	    path_under_prefix(path, root))
 		return 1;
@@ -164,7 +164,7 @@ static int pack_reload_segment_allowed(const char *path)
 {
 	if (!path_is_absolute_file(path) && !path_is_absolute_dir(path))
 		return 0;
-	if (env_flag_on("GROKOS_POLICYD_DEV_PACK"))
+	if (env_flag_on("PHRONESIS_DEV_PACK"))
 		return 1;
 	return pack_under_trusted_prefix(path);
 }
@@ -190,9 +190,9 @@ static int pack_reload_spec_allowed(const char *spec)
 
 /**
  * First existing pack path among product defaults.
- * Env override (GROKOS_POLICYD_JANET_PACK) is a colon list of absolute files
+ * Env override (PHRONESIS_JANET_PACK) is a colon list of absolute files
  * and/or directories. Each segment must sit under an allowlisted prefix
- * (or GROKOS_POLICYD_DEV_PACK=1). CWD-relative policy/shell.janet is
+ * (or PHRONESIS_DEV_PACK=1). CWD-relative policy/shell.janet is
  * only a candidate when that dev flag is set.
  */
 static const char *default_pack_spec(void)
@@ -206,14 +206,14 @@ static const char *default_pack_spec(void)
 	if (pack_spec_set && pack_spec_buf[0])
 		return pack_spec_buf;
 	{
-		const char *e = getenv("GROKOS_POLICYD_JANET_PACK");
+		const char *e = getenv("PHRONESIS_JANET_PACK");
 
 		if (e && e[0] && pack_reload_spec_allowed(e))
 			return e;
 	}
 
-	cands[n++] = GROKOS_POLICYD_DEFAULT_JANET_PACK;
-	prefix = getenv("GROKOS_PREFIX");
+	cands[n++] = PHRONESIS_DEFAULT_JANET_PACK;
+	prefix = getenv("PHRONESIS_PREFIX");
 	if (prefix && prefix[0] &&
 	    snprintf(prefix_buf, sizeof(prefix_buf),
 		     "%s/share/phronesis/policy/shell.janet",
@@ -221,7 +221,7 @@ static const char *default_pack_spec(void)
 		cands[n++] = prefix_buf;
 	cands[n++] = "/usr/local/share/phronesis/policy/shell.janet";
 	cands[n++] = "/usr/share/phronesis/policy/shell.janet";
-	if (env_flag_on("GROKOS_POLICYD_DEV_PACK"))
+	if (env_flag_on("PHRONESIS_DEV_PACK"))
 		cands[n++] = "policy/shell.janet";
 
 	for (i = 0; i < n; i++) {
@@ -229,7 +229,7 @@ static const char *default_pack_spec(void)
 			return cands[i];
 	}
 	/* Last resort: compile-time path (fail closed at load if missing). */
-	return GROKOS_POLICYD_DEFAULT_JANET_PACK;
+	return PHRONESIS_DEFAULT_JANET_PACK;
 }
 
 static void seal_pack_env(JanetTable *env)
@@ -296,7 +296,7 @@ static int path_has_dotdot(const char *path)
 
 static int default_pack_dir(char *out, size_t n)
 {
-	const char *p = GROKOS_POLICYD_DEFAULT_JANET_PACK;
+	const char *p = PHRONESIS_DEFAULT_JANET_PACK;
 	const char *slash = strrchr(p, '/');
 	size_t len;
 
@@ -312,7 +312,7 @@ static int default_pack_dir(char *out, size_t n)
 
 static int pack_root_path(char *out, size_t n)
 {
-	const char *e = getenv("GROKOS_POLICYD_PACK_ROOT");
+	const char *e = getenv("PHRONESIS_PACK_ROOT");
 
 	if (e && e[0]) {
 		if (e[0] != '/' || path_is_fs_root(e) || path_has_dotdot(e))
@@ -854,7 +854,7 @@ static int load_pack_once(void)
 	if (pack_loaded)
 		return 0;
 	spec = default_pack_spec();
-	/* Relative only when GROKOS_POLICYD_DEV_PACK selected the cwd candidate. */
+	/* Relative only when PHRONESIS_DEV_PACK selected the cwd candidate. */
 	return load_packs_from_spec(spec, 0) == 0 ? 0 : -1;
 }
 
@@ -878,7 +878,7 @@ int phronesis_policy_shell_pack_reload_internal(const char *path)
 		return rc;
 	}
 	/* Keep env in sync for subprocesses / diagnostics. */
-	if (setenv("GROKOS_POLICYD_JANET_PACK", pack_spec_buf, 1) != 0) {
+	if (setenv("PHRONESIS_JANET_PACK", pack_spec_buf, 1) != 0) {
 		/* Non-fatal: pack_spec_buf is source of truth for this process. */
 	}
 	return 0;

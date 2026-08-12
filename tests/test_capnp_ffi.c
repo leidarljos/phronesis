@@ -40,13 +40,13 @@ static int capn_setup(void **state)
 	if (!src || !src[0])
 		src = ".";
 	snprintf(pack, sizeof(pack), "%s/policy/shell.janet", src);
-	setenv("GROKOS_POLICYD_DEV_PACK", "1", 1);
-	setenv("GROKOS_POLICYD_JANET_PACK", pack, 1);
+	setenv("PHRONESIS_DEV_PACK", "1", 1);
+	setenv("PHRONESIS_JANET_PACK", pack, 1);
 	{
 		char root[PHRONESIS_PATH_MAX];
 
 		snprintf(root, sizeof(root), "%s/policy", src);
-		setenv("GROKOS_POLICYD_PACK_ROOT", root, 1);
+		setenv("PHRONESIS_PACK_ROOT", root, 1);
 	}
 	assert_int_equal(phronesis_policy_shell_pack_reload(pack), PHRONESIS_OK);
 	*state = f;
@@ -57,8 +57,8 @@ static int capn_teardown(void **state)
 {
 	struct capn_fix *f = *state;
 
-	unsetenv("GROKOS_POLICYD_JANET_PACK");
-	unsetenv("GROKOS_POLICYD_DEV_PACK");
+	unsetenv("PHRONESIS_JANET_PACK");
+	unsetenv("PHRONESIS_DEV_PACK");
 	if (f) {
 		if (f->sup)
 			phronesis_supervisor_close(f->sup);
@@ -413,7 +413,7 @@ static void test_check_seat_deny_all(void **state)
 	uint8_t *in = NULL, *out = NULL;
 	size_t in_len = 0, out_len = 0;
 
-	setenv("GROKOS_POLICYD_DENY_ALL", "1", 1);
+	setenv("PHRONESIS_DENY_ALL", "1", 1);
 
 	memset(&c, 0, sizeof(c));
 	capn_init_malloc(&c);
@@ -430,7 +430,7 @@ static void test_check_seat_deny_all(void **state)
 	free(in);
 	expect_decision_code(out, out_len, Decision_deny, PolicyReason_denyAll, 1, 2);
 	free(out);
-	unsetenv("GROKOS_POLICYD_DENY_ALL");
+	unsetenv("PHRONESIS_DENY_ALL");
 }
 
 static void test_check_model_deny_all(void **state)
@@ -442,7 +442,7 @@ static void test_check_model_deny_all(void **state)
 	uint8_t *in = NULL, *out = NULL;
 	size_t in_len = 0, out_len = 0;
 
-	setenv("GROKOS_POLICYD_DENY_ALL", "1", 1);
+	setenv("PHRONESIS_DENY_ALL", "1", 1);
 
 	memset(&c, 0, sizeof(c));
 	capn_init_malloc(&c);
@@ -461,7 +461,7 @@ static void test_check_model_deny_all(void **state)
 	free(in);
 	expect_decision_code(out, out_len, Decision_deny, PolicyReason_denyAll, 5, 6);
 	free(out);
-	unsetenv("GROKOS_POLICYD_DENY_ALL");
+	unsetenv("PHRONESIS_DENY_ALL");
 }
 
 static void test_check_risk_deny_all(void **state)
@@ -473,7 +473,7 @@ static void test_check_risk_deny_all(void **state)
 	uint8_t *in = NULL, *out = NULL;
 	size_t in_len = 0, out_len = 0;
 
-	setenv("GROKOS_POLICYD_DENY_ALL", "1", 1);
+	setenv("PHRONESIS_DENY_ALL", "1", 1);
 
 	memset(&c, 0, sizeof(c));
 	capn_init_malloc(&c);
@@ -491,7 +491,7 @@ static void test_check_risk_deny_all(void **state)
 	/* Without DENY_ALL this would be prompt; flag must force deny. */
 	expect_decision_code(out, out_len, Decision_deny, PolicyReason_denyAll, 7, 8);
 	free(out);
-	unsetenv("GROKOS_POLICYD_DENY_ALL");
+	unsetenv("PHRONESIS_DENY_ALL");
 }
 
 static void test_check_risk_secret_export_deny(void **state)
@@ -509,7 +509,7 @@ static void test_check_risk_secret_export_deny(void **state)
 	};
 	size_t i;
 
-	unsetenv("GROKOS_POLICYD_DENY_ALL");
+	unsetenv("PHRONESIS_DENY_ALL");
 	for (i = 0; i < sizeof(cases) / sizeof(cases[0]); i++) {
 		struct capn c;
 		struct RiskCheck rc;
@@ -554,7 +554,7 @@ static void test_check_path_write_vs_delete(void **state)
 	};
 	size_t i;
 
-	unsetenv("GROKOS_POLICYD_DENY_ALL");
+	unsetenv("PHRONESIS_DENY_ALL");
 	phronesis_agent_id_to_hex(13, 14, id);
 	assert_int_equal(
 		phronesis_supervisor_start(f->sup, id, NULL, "/ws/proj", argv),
@@ -621,8 +621,8 @@ static void test_check_audio_defaults(void **state)
 {
 	struct capn_fix *f = *state;
 
-	unsetenv("GROKOS_POLICYD_AUDIO_ALLOW");
-	unsetenv("GROKOS_POLICYD_DENY_ALL");
+	unsetenv("PHRONESIS_AUDIO_ALLOW");
+	unsetenv("PHRONESIS_DENY_ALL");
 
 	check_audio_action(f->sup, AudioAction_micOpen, Decision_deny,
 			   PolicyReason_audioMicOpenDeny);
@@ -640,8 +640,8 @@ static void test_check_audio_fixture_allow(void **state)
 {
 	struct capn_fix *f = *state;
 
-	unsetenv("GROKOS_POLICYD_DENY_ALL");
-	setenv("GROKOS_POLICYD_AUDIO_ALLOW", "1", 1);
+	unsetenv("PHRONESIS_DENY_ALL");
+	setenv("PHRONESIS_AUDIO_ALLOW", "1", 1);
 
 	check_audio_action(f->sup, AudioAction_micOpen, Decision_allow,
 			   PolicyReason_audioFixtureAllow);
@@ -654,29 +654,29 @@ static void test_check_audio_fixture_allow(void **state)
 	check_audio_action(f->sup, AudioAction_inject, Decision_allow,
 			   PolicyReason_audioFixtureAllow);
 
-	unsetenv("GROKOS_POLICYD_AUDIO_ALLOW");
+	unsetenv("PHRONESIS_AUDIO_ALLOW");
 }
 
 static void test_check_audio_deny_all_wins(void **state)
 {
 	struct capn_fix *f = *state;
 
-	setenv("GROKOS_POLICYD_AUDIO_ALLOW", "1", 1);
-	setenv("GROKOS_POLICYD_DENY_ALL", "1", 1);
+	setenv("PHRONESIS_AUDIO_ALLOW", "1", 1);
+	setenv("PHRONESIS_DENY_ALL", "1", 1);
 
 	check_audio_action(f->sup, AudioAction_listenArm, Decision_deny,
 			   PolicyReason_denyAll);
 
-	unsetenv("GROKOS_POLICYD_DENY_ALL");
-	unsetenv("GROKOS_POLICYD_AUDIO_ALLOW");
+	unsetenv("PHRONESIS_DENY_ALL");
+	unsetenv("PHRONESIS_AUDIO_ALLOW");
 }
 
 static void test_check_audio_unknown_action(void **state)
 {
 	struct capn_fix *f = *state;
 
-	unsetenv("GROKOS_POLICYD_AUDIO_ALLOW");
-	unsetenv("GROKOS_POLICYD_DENY_ALL");
+	unsetenv("PHRONESIS_AUDIO_ALLOW");
+	unsetenv("PHRONESIS_DENY_ALL");
 
 	/* Out-of-range ordinal → deny audioUnknownAction (fail closed). */
 	check_audio_action(f->sup, (enum AudioAction)99, Decision_deny,
@@ -689,8 +689,8 @@ static void test_check_audio_bad_message(void **state)
 	uint8_t *out = NULL;
 	size_t out_len = 0;
 
-	unsetenv("GROKOS_POLICYD_AUDIO_ALLOW");
-	unsetenv("GROKOS_POLICYD_DENY_ALL");
+	unsetenv("PHRONESIS_AUDIO_ALLOW");
+	unsetenv("PHRONESIS_DENY_ALL");
 
 	phronesis_check_audio(f->sup, NULL, 0, &out, &out_len);
 	/* Bad input: zero agent echo + invalidMessage. */

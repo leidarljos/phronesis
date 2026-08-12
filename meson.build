@@ -207,7 +207,7 @@ lib_srcs = files(
   'src/policy.c',
   'src/policy_reason.c',
   'src/policy_janet.c',
-  # TRACE ring: empty TU unless -DGROKOS_POLICYD_TRACE=1 (playground only).
+  # TRACE ring: empty TU unless -DPHRONESIS_TRACE=1 (playground only).
   'src/policy_trace.c',
   'src/supervisor.c',
   'src/version.c',
@@ -236,8 +236,8 @@ dl_dep = cc.find_library('dl', required: true)
 thread_dep = dependency('threads')
 
 # Product Janet packs (shell-check + audio-check + pure lib/). Installed so
-# seats load law with no GROKOS_POLICYD_JANET_PACK env. Default path is baked
-# into the library as GROKOS_POLICYD_DEFAULT_JANET_PACK.
+# seats load law with no PHRONESIS_JANET_PACK env. Default path is baked
+# into the library as PHRONESIS_DEFAULT_JANET_PACK.
 policy_pack_install = get_option('datadir') / 'phronesis' / 'policy'
 install_data(
   'schema/SCHEMA_PIN',
@@ -270,7 +270,7 @@ phronesis_lib = library(
   gnu_symbol_visibility: 'hidden',
   c_args: mull_c_args + [
     '-DJANET_API=',
-    '-DGROKOS_POLICYD_DEFAULT_JANET_PACK="@0@"'.format(default_janet_pack),
+    '-DPHRONESIS_DEFAULT_JANET_PACK="@0@"'.format(default_janet_pack),
   ],
 )
 
@@ -342,7 +342,7 @@ test(
   env: {
     'PHRONESIS_BUILD_DIR': meson.project_build_root(),
     'PHRONESIS_SOURCE_ROOT': meson.project_source_root(),
-    'GROKOS_POLICYD_PACK_ROOT': meson.project_source_root() / 'policy',
+    'PHRONESIS_PACK_ROOT': meson.project_source_root() / 'policy',
   },
 )
 
@@ -379,7 +379,7 @@ if get_option('mutation')
       'PHRONESIS_BUILD_DIR': meson.project_build_root(),
       # Shell pack tests resolve policy/shell.janet via PHRONESIS_SOURCE_ROOT.
       'PHRONESIS_SOURCE_ROOT': meson.project_source_root(),
-      'GROKOS_POLICYD_PACK_ROOT': meson.project_source_root() / 'policy',
+      'PHRONESIS_PACK_ROOT': meson.project_source_root() / 'policy',
     },
   )
 endif

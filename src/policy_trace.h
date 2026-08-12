@@ -2,8 +2,8 @@
 /*
  * Playground-only forensic TraceEvent ring (compile-gated).
  *
- * Product builds leave GROKOS_POLICYD_TRACE undefined: all macros are no-ops
- * and pd_trace_to_json returns NULL. Playground emcc sets -DGROKOS_POLICYD_TRACE=1.
+ * Product builds leave PHRONESIS_TRACE undefined: all macros are no-ops
+ * and pd_trace_to_json returns NULL. Playground emcc sets -DPHRONESIS_TRACE=1.
  */
 #ifndef PHRONESIS_POLICY_TRACE_H
 #define PHRONESIS_POLICY_TRACE_H
@@ -29,7 +29,7 @@ typedef enum {
 	PD_TRACE_PHASE_ERROR = 5
 } pd_trace_phase_t;
 
-#ifdef GROKOS_POLICYD_TRACE
+#ifdef PHRONESIS_TRACE
 
 void pd_trace_clear(void);
 
@@ -71,7 +71,7 @@ void pd_trace_register_janet(void *janet_env);
 #define PD_TRACE_COMMIT() pd_trace_commit()
 #define PD_TRACE_REGISTER_JANET(env) pd_trace_register_janet(env)
 
-#else /* !GROKOS_POLICYD_TRACE */
+#else /* !PHRONESIS_TRACE */
 
 static inline void pd_trace_clear(void)
 {
@@ -98,7 +98,7 @@ static inline void pd_trace_register_janet(void *janet_env)
 #define PD_TRACE_COMMIT() ((void)0)
 #define PD_TRACE_REGISTER_JANET(env) ((void)0)
 
-#endif /* GROKOS_POLICYD_TRACE */
+#endif /* PHRONESIS_TRACE */
 
 #ifdef __cplusplus
 }

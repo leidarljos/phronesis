@@ -466,8 +466,8 @@ PHRONESIS_API void phronesis_check_risk(phronesis_supervisor_t *sup,
  *
  * Product defaults (Janet pack @c audio-check / voice-law): micOpen /
  * alwaysListen / networkStt / inject deny; listenArm prompt; unknown deny.
- * Host TCB: truthy @c GROKOS_POLICYD_AUDIO_ALLOW allows all actions
- * (fixture/CI only; leave unset in production); @c GROKOS_POLICYD_DENY_ALL
+ * Host TCB: truthy @c PHRONESIS_AUDIO_ALLOW allows all actions
+ * (fixture/CI only; leave unset in production); @c PHRONESIS_DENY_ALL
  * still wins (same hard deny as every other Cap'n PolicyDecision entry).
  * No waveforms / PCM on the wire.
  */
@@ -511,7 +511,7 @@ PHRONESIS_API void phronesis_reload_shell_pack(phronesis_supervisor_t *sup,
  * @param path  Colon-separated list of absolute .janet pack files and/or
  *              absolute directories of top-level *.janet packs. Empty is
  *              invalid. Each file is opened under the pack root
- *              (install policy directory or @c GROKOS_POLICYD_PACK_ROOT;
+ *              (install policy directory or @c PHRONESIS_PACK_ROOT;
  *              not "/"). Symlink steps in the pack tree fail the open.
  *              Each pack loads into
  *              its own sealed env; checkShell / checkAudio compose

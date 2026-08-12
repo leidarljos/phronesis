@@ -46,7 +46,7 @@ static void test_deny_all_env(void **state)
 					       NULL, "/ws", argv),
 			 PHRONESIS_OK);
 
-	setenv("GROKOS_POLICYD_DENY_ALL", "1", 1);
+	setenv("PHRONESIS_DENY_ALL", "1", 1);
 	assert_int_equal(
 		phronesis_policy_check(s, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "model", "start",
 				  "/bin/true", &pr),
@@ -60,7 +60,7 @@ static void test_deny_all_env(void **state)
 		PHRONESIS_OK);
 	assert_int_equal(pr.decision, PHRONESIS_DECISION_DENY);
 
-	unsetenv("GROKOS_POLICYD_DENY_ALL");
+	unsetenv("PHRONESIS_DENY_ALL");
 	assert_int_equal(
 		phronesis_policy_check(s, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "model", "start",
 				  "/bin/true", &pr),
@@ -92,23 +92,23 @@ static void test_deny_all_truthy_spellings(void **state)
 					       NULL, "/ws", argv),
 			 PHRONESIS_OK);
 	for (i = 0; i < sizeof(deny_vals) / sizeof(deny_vals[0]); i++) {
-		setenv("GROKOS_POLICYD_DENY_ALL", deny_vals[i], 1);
+		setenv("PHRONESIS_DENY_ALL", deny_vals[i], 1);
 		assert_int_equal(
 			phronesis_policy_check(s, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
 					  "model", "start", "/bin/true", &pr),
 			PHRONESIS_OK);
 		assert_int_equal(pr.decision, PHRONESIS_DECISION_DENY);
 		assert_int_equal(pr.code, PHRONESIS_REASON_DENY_ALL);
-		unsetenv("GROKOS_POLICYD_DENY_ALL");
+		unsetenv("PHRONESIS_DENY_ALL");
 	}
 	for (i = 0; i < sizeof(allow_vals) / sizeof(allow_vals[0]); i++) {
-		setenv("GROKOS_POLICYD_DENY_ALL", allow_vals[i], 1);
+		setenv("PHRONESIS_DENY_ALL", allow_vals[i], 1);
 		assert_int_equal(
 			phronesis_policy_check(s, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
 					  "model", "start", "/bin/true", &pr),
 			PHRONESIS_OK);
 		assert_int_equal(pr.decision, PHRONESIS_DECISION_ALLOW);
-		unsetenv("GROKOS_POLICYD_DENY_ALL");
+		unsetenv("PHRONESIS_DENY_ALL");
 	}
 	assert_int_equal(phronesis_supervisor_stop(s,
 					      "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),

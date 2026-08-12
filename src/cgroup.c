@@ -111,9 +111,9 @@ int phronesis_cgroup_create(const char *runtime_dir, const char *agent_id,
 			return PHRONESIS_OK;
 	}
 
-	if (strlen(base) + 1 + strlen(agent_id) + sizeof("/grok-") > sizeof(path))
+	if (strlen(base) + 1 + strlen(agent_id) + sizeof("/phronesis-") > sizeof(path))
 		return PHRONESIS_OK;
-	if (snprintf(path, sizeof(path), "%s/grok-%s", base, agent_id) >= (int)sizeof(path))
+	if (snprintf(path, sizeof(path), "%s/phronesis-%s", base, agent_id) >= (int)sizeof(path))
 		return PHRONESIS_OK;
 
 	/* Best-effort enable controllers on parent (ignore failure). */

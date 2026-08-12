@@ -14,14 +14,14 @@
 #include <stdlib.h>
 #include <string.h>
 
-#ifndef GROKOS_POLICYD_PLAYGROUND
-#define GROKOS_POLICYD_PLAYGROUND 1
+#ifndef PHRONESIS_PLAYGROUND
+#define PHRONESIS_PLAYGROUND 1
 #endif
 
 /*
  * Default multi-pack spec under MEMFS (seeded by memfs_seed.sh).
  * Colon list: product entry + packs.d directory (sorted top-level *.janet).
- * Same shape as GROKOS_POLICYD_JANET_PACK / reloadShellPack on the host.
+ * Same shape as PHRONESIS_JANET_PACK / reloadShellPack on the host.
  */
 #define PD_DEFAULT_PACK_SPEC "/policy/shell.janet:/policy/packs.d"
 
@@ -33,9 +33,9 @@ phronesis_supervisor_t *pd_supervisor_open(const char *state, const char *runtim
 	const char *rt = runtime && runtime[0] ? runtime : "/pd-runtime";
 
 	/* Prefer multi-pack colon list under MEMFS; do not override if already set. */
-	setenv("GROKOS_POLICYD_DEV_PACK", "1", 0);
-	setenv("GROKOS_POLICYD_PACK_ROOT", "/policy", 0);
-	setenv("GROKOS_POLICYD_JANET_PACK", PD_DEFAULT_PACK_SPEC, 0);
+	setenv("PHRONESIS_DEV_PACK", "1", 0);
+	setenv("PHRONESIS_PACK_ROOT", "/policy", 0);
+	setenv("PHRONESIS_JANET_PACK", PD_DEFAULT_PACK_SPEC, 0);
 	if (phronesis_supervisor_open(&s, st, rt) != PHRONESIS_OK)
 		return NULL;
 	return s;
@@ -133,7 +133,7 @@ int pd_reload_shell_pack(phronesis_supervisor_t *s, const uint8_t *in, size_t in
 
 /*
  * Convenience: reload multi-pack colon list or absolute path (no Cap'n).
- * Path is the same shape as GROKOS_POLICYD_JANET_PACK / Cap'n reloadShellPack:
+ * Path is the same shape as PHRONESIS_JANET_PACK / Cap'n reloadShellPack:
  * colon-separated absolute .janet files and/or directories of top-level packs.
  * Returns 0 reloaded, -1 path invalid, -2 load failed.
  */
@@ -184,7 +184,7 @@ int pd_read_decision(const uint8_t *buf, size_t len, int *decision_out,
 	return 0;
 }
 
-/* Clear the TRACE ring (no-op when built without GROKOS_POLICYD_TRACE). */
+/* Clear the TRACE ring (no-op when built without PHRONESIS_TRACE). */
 EMSCRIPTEN_KEEPALIVE
 void pd_clear_trace(void)
 {

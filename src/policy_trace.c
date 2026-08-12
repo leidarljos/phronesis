@@ -4,7 +4,7 @@
  */
 #include "policy_trace.h"
 
-#ifndef GROKOS_POLICYD_TRACE
+#ifndef PHRONESIS_TRACE
 /* Product builds compile this unit without TRACE symbols. */
 typedef int pd_trace_product_empty_tu;
 #else
@@ -533,4 +533,4 @@ void pd_trace_register_janet(void *janet_env)
 	janet_cfuns(env, "pd-trace", pd_trace_cfuns);
 }
 
-#endif /* GROKOS_POLICYD_TRACE */
+#endif /* PHRONESIS_TRACE */

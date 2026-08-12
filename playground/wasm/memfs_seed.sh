@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # Seed playground/wasm/memfs for --preload-file (Emscripten MEMFS root).
 #
-# Multi-pack layout (matches product GROKOS_POLICYD_JANET_PACK colon / packs.d):
+# Multi-pack layout (matches product PHRONESIS_JANET_PACK colon / packs.d):
 #   /policy/shell.janet     product entry (shell-check + audio-check)
 #   /policy/lib/*.janet     pure helpers for the entry
 #   /policy/packs.d/*.janet optional extra packs (compose deny > prompt > allow)

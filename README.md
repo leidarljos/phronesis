@@ -77,23 +77,23 @@ phronesis_check_shell(sup, shell_msg, shell_len, &out, &out_len);
 | checkPath | read/write under workspace | outside → deny; delete → prompt |
 | checkShell | cwd under workspace; content pack: python via uv+PEP723; deny sudo/curl\|sh/banned PMs/dangerous git | bare python / missing PEP 723 / danger runners → deny |
 | checkRisk | — | secretExport → deny; other risk → prompt |
-| checkAudio | `GROKOS_POLICYD_AUDIO_ALLOW` fixture (all `AudioAction`; CI/dogfood only — leave unset in production) | product pack (`audio-check`): micOpen/alwaysListen/networkStt/inject **deny**; listenArm **prompt**; unknown **deny**. Host: `DENY_ALL` wins over fixture. No PCM. meta #97 |
+| checkAudio | `PHRONESIS_AUDIO_ALLOW` fixture (all `AudioAction`; CI/dogfood only — leave unset in production) | product pack (`audio-check`): micOpen/alwaysListen/networkStt/inject **deny**; listenArm **prompt**; unknown **deny**. Host: `DENY_ALL` wins over fixture. No PCM. meta #97 |
 
 Lexical paths: absolute only; reject `//`, `.`, `..`. No `realpath`.
 
-`GROKOS_POLICYD_DENY_ALL` forces deny on every Cap'n method that returns
+`PHRONESIS_DENY_ALL` forces deny on every Cap'n method that returns
 `PolicyDecision` (checks, admits, `reloadShellPack`) and on the CLI/string
-eval path. It wins over `GROKOS_POLICYD_AUDIO_ALLOW`.
+eval path. It wins over `PHRONESIS_AUDIO_ALLOW`.
 
 `reloadShellPack` opens pack files under one pack-root directory: the
-compile-time install policy directory, or `GROKOS_POLICYD_PACK_ROOT` when
+compile-time install policy directory, or `PHRONESIS_PACK_ROOT` when
 set. That root cannot be `/` (including `//` and `/.`). Each file is opened
 beneath that directory (no symlink steps). Reload and
-`GROKOS_POLICYD_JANET_PACK` accept a colon list of files and directories.
-Each segment must sit under a trusted prefix (`/usr/local/share/grok-policyd`,
-`/usr/share/grok-policyd`, `$GROKOS_PREFIX/share/grok-policyd`, the
-compile-time default pack directory, or `GROKOS_POLICYD_PACK_ROOT`) unless
-`GROKOS_POLICYD_DEV_PACK=1`. Directory children are opened beneath that root
+`PHRONESIS_JANET_PACK` accept a colon list of files and directories.
+Each segment must sit under a trusted prefix (`/usr/local/share/phronesis`,
+`/usr/share/phronesis`, `$PHRONESIS_PREFIX/share/phronesis`, the
+compile-time default pack directory, or `PHRONESIS_PACK_ROOT`) unless
+`PHRONESIS_DEV_PACK=1`. Directory children are opened beneath that root
 before teardown.
 
 ## Build / test / coverage (pixi only)
@@ -158,11 +158,11 @@ Apache-2.0. See `LICENSE` and `NOTICE`.
 
 ## Deny-all and audio fixture (tests / lockdown)
 
-Set `GROKOS_POLICYD_DENY_ALL=1` (or `true`/`yes`) to force deny on every Cap'n
+Set `PHRONESIS_DENY_ALL=1` (or `true`/`yes`) to force deny on every Cap'n
 `PolicyDecision` entry (and the CLI/string `policy_check` path). Used to prove
 agent/sessiond fail closed under a hard seat. Unset for normal allowlists.
 
-Set `GROKOS_POLICYD_AUDIO_ALLOW=1` only in CI/dogfood to allow all `AudioAction` on `checkAudio`. Leave unset in production images. `DENY_ALL` still wins when both are set.
+Set `PHRONESIS_AUDIO_ALLOW=1` only in CI/dogfood to allow all `AudioAction` on `checkAudio`. Leave unset in production images. `DENY_ALL` still wins when both are set.
 
 ### Cap'n interface (Meson)
 
@@ -193,7 +193,7 @@ package) until that lock is rebuilt on conda-forge.
 Interactive probe for Cap'n `checkShell` / path / seat / risk with bit-identical
 WASM TCB, optional TRACE, and the **same multi-pack load path as product**:
 
-- Default `GROKOS_POLICYD_JANET_PACK=/policy/shell.janet:/policy/packs.d`
+- Default `PHRONESIS_JANET_PACK=/policy/shell.janet:/policy/packs.d`
 - Composition deny > prompt > allow across packs that define the entry
 - Author mode reloads a colon list (not a single file only)
 

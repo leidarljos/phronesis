@@ -168,7 +168,7 @@ int phronesis_env_truthy(const char *name)
 
 int phronesis_policy_deny_all(void)
 {
-	return phronesis_env_truthy("GROKOS_POLICYD_DENY_ALL");
+	return phronesis_env_truthy("PHRONESIS_DENY_ALL");
 }
 
 int phronesis_policy_require_running_agent(phronesis_supervisor_t *sup,
@@ -210,7 +210,7 @@ int phronesis_policy_eval(const char *workspace, const char *tool,
 		phronesis_policy_result_set(out, PHRONESIS_DECISION_DENY,
 				       PHRONESIS_REASON_DENY_ALL);
 		PD_TRACE_EVENT(PD_TRACE_LAYER_HOST, PD_TRACE_PHASE_DECIDE,
-			       "policy-eval/deny-all", "GROKOS_POLICYD_DENY_ALL",
+			       "policy-eval/deny-all", "PHRONESIS_DENY_ALL",
 			       (int)PHRONESIS_REASON_DENY_ALL, "deny", 1);
 		return PHRONESIS_OK;
 	}

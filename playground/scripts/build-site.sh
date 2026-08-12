@@ -7,12 +7,12 @@
 # Usage:
 #   bash playground/scripts/build-site.sh
 #   PUBLIC_BASE=/ bash playground/scripts/build-site.sh   # root-relative
-#   PUBLIC_BASE=/grok-policyd/ bash playground/scripts/build-site.sh
+#   PUBLIC_BASE=/phronesis/ bash playground/scripts/build-site.sh
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 ASTRO="$ROOT/playground/astro"
-export PUBLIC_BASE="${PUBLIC_BASE:-/grok-policyd/}"
+export PUBLIC_BASE="${PUBLIC_BASE:-/phronesis/}"
 
 cd "$ASTRO"
 if [[ ! -d node_modules ]]; then

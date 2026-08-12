@@ -7,7 +7,7 @@
 # Each method is zero-copy mappable Cap'n messages (params root in, result root
 # out). No CallEnvelope. No ok|err unions. No tool×action free Text.
 #
-# Speakers: phronesis (TCB); sessiond / grokos-agent / grokos-shell.
+# Speakers: phronesis (TCB); session / agent / shell.
 # Seat Cap'n (session.capnp) is a separate server — do not fold Goal here.
 #
 # Trust
@@ -17,7 +17,7 @@
 # - Policy outcome is always PolicyDecision (deny | allow | prompt). Protocol /
 #   parse failures are Decision.deny with a reason (fail closed) — not a second
 #   error channel.
-# - TCB does not authenticate agentId; seat joins it to GROKOS_RUN_ID by convention.
+# - TCB does not authenticate agentId; the seat joins it to the run id by convention.
 #
 # Design
 # ------
@@ -79,7 +79,7 @@ enum AgentState {
 }
 
 # Stable machine codes for PolicyDecision. TCB and packs set code.
-# Human/i18n labels live in viewers (grokos-agent, grokos-shell, sessiond),
+# Human/i18n labels live in viewers (agent, shell, session),
 # not in policyd. New outcomes extend this enum.
 enum PolicyReason {
   unspecified @0;
@@ -146,7 +146,7 @@ enum PolicyReason {
   audioInjectDeny @34;
   # Default deny for voicePushUtterance harness inject (production).
   audioFixtureAllow @35;
-  # Test/dogfood allow via GROKOS_POLICYD_AUDIO_ALLOW (all AudioAction).
+  # Test/dogfood allow via PHRONESIS_AUDIO_ALLOW (all AudioAction).
   audioUnknownAction @36;
   # Unknown / unmapped AudioAction → deny.
 }
@@ -313,7 +313,7 @@ interface Policyd {
   # Cap'n always linked. C entry points mirror methods: Cap'n params message
   # root in, Cap'n result message root out (zero-copy mappable segments).
   #
-  # Caller: sessiond, grokos-agent, grokos-shell.
+  # Caller: session, agent, shell.
   # Callee: phronesis. Same-uid / linked only.
 
   status @0 () -> PolicydStatus;
@@ -338,5 +338,5 @@ interface Policyd {
 
   checkAudio @10 AudioCheck -> PolicyDecision;
   # Voice/audio gates (meta #97). Default deny / prompt per AudioAction.
-  # No waveforms. Fixture allow: GROKOS_POLICYD_AUDIO_ALLOW (TCB env).
+  # No waveforms. Fixture allow: PHRONESIS_AUDIO_ALLOW (TCB env).
 }

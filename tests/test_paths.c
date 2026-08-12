@@ -68,15 +68,15 @@ static void test_env_action_log_override(void **state)
 	assert_int_equal(t_tmpdir(st, sizeof(st), "gp-env-st"), 0);
 	assert_int_equal(t_tmpdir(rt, sizeof(rt), "gp-env-rt"), 0);
 	snprintf(logpath, sizeof(logpath), "%s/custom.jsonl", st);
-	old = getenv("GROKOS_ACTION_LOG");
-	setenv("GROKOS_ACTION_LOG", logpath, 1);
+	old = getenv("PHRONESIS_ACTION_LOG");
+	setenv("PHRONESIS_ACTION_LOG", logpath, 1);
 	assert_int_equal(phronesis_supervisor_open(&s, st, rt), PHRONESIS_OK);
 	assert_string_equal(phronesis_supervisor_action_log_path(s), logpath);
 	phronesis_supervisor_close(s);
 	if (old)
-		setenv("GROKOS_ACTION_LOG", old, 1);
+		setenv("PHRONESIS_ACTION_LOG", old, 1);
 	else
-		unsetenv("GROKOS_ACTION_LOG");
+		unsetenv("PHRONESIS_ACTION_LOG");
 	t_rm_rf(st);
 	t_rm_rf(rt);
 }
@@ -131,22 +131,22 @@ static void test_env_state_runtime_override(void **state)
 	(void)state;
 	assert_int_equal(t_tmpdir(st, sizeof(st), "gp-env2-st"), 0);
 	assert_int_equal(t_tmpdir(rt, sizeof(rt), "gp-env2-rt"), 0);
-	os = getenv("GROKOS_STATE_DIR");
-	orun = getenv("GROKOS_RUNTIME_DIR");
-	setenv("GROKOS_STATE_DIR", st, 1);
-	setenv("GROKOS_RUNTIME_DIR", rt, 1);
+	os = getenv("PHRONESIS_STATE_DIR");
+	orun = getenv("PHRONESIS_RUNTIME_DIR");
+	setenv("PHRONESIS_STATE_DIR", st, 1);
+	setenv("PHRONESIS_RUNTIME_DIR", rt, 1);
 	assert_int_equal(phronesis_supervisor_open(&s, NULL, NULL), PHRONESIS_OK);
 	assert_string_equal(phronesis_supervisor_state_dir(s), st);
 	assert_string_equal(phronesis_supervisor_runtime_dir(s), rt);
 	phronesis_supervisor_close(s);
 	if (os)
-		setenv("GROKOS_STATE_DIR", os, 1);
+		setenv("PHRONESIS_STATE_DIR", os, 1);
 	else
-		unsetenv("GROKOS_STATE_DIR");
+		unsetenv("PHRONESIS_STATE_DIR");
 	if (orun)
-		setenv("GROKOS_RUNTIME_DIR", orun, 1);
+		setenv("PHRONESIS_RUNTIME_DIR", orun, 1);
 	else
-		unsetenv("GROKOS_RUNTIME_DIR");
+		unsetenv("PHRONESIS_RUNTIME_DIR");
 	t_rm_rf(st);
 	t_rm_rf(rt);
 }

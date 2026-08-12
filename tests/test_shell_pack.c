@@ -204,7 +204,7 @@ static void assert_bare_python_allowed(struct shell_fix *f)
 }
 
 /*
- * Build $root/prefix/share/grok-policyd/allow_all.janet. Sets PACK_ROOT to
+ * Build $root/prefix/share/phronesis/allow_all.janet. Sets PACK_ROOT to
  * that share directory so pack-root open and the prefix allowlist agree.
  */
 static void write_trusted_prefix_pack(const char *root, char *prefix, size_t pn,
@@ -217,12 +217,12 @@ static void write_trusted_prefix_pack(const char *root, char *prefix, size_t pn,
 	assert_true(snprintf(share, sizeof(share), "%s/share", prefix) <
 		    (int)sizeof(share));
 	assert_int_equal(mkdir(share, 0700), 0);
-	assert_true(snprintf(dest, sizeof(dest), "%s/grok-policyd", share) <
+	assert_true(snprintf(dest, sizeof(dest), "%s/phronesis", share) <
 		    (int)sizeof(dest));
 	assert_int_equal(mkdir(dest, 0700), 0);
 	assert_true(snprintf(pack, pk, "%s/allow_all.janet", dest) < (int)pk);
 	write_allow_all_pack(pack);
-	setenv("GROKOS_POLICYD_PACK_ROOT", dest, 1);
+	setenv("PHRONESIS_PACK_ROOT", dest, 1);
 }
 
 static int shell_setup(void **state)
@@ -247,11 +247,11 @@ static int shell_setup(void **state)
 	src = getenv("PHRONESIS_SOURCE_ROOT");
 	if (!src || !src[0])
 		src = ".";
-	setenv("GROKOS_POLICYD_DEV_PACK", "1", 1);
-	setenv("GROKOS_POLICYD_JANET_PACK", pack, 1);
+	setenv("PHRONESIS_DEV_PACK", "1", 1);
+	setenv("PHRONESIS_JANET_PACK", pack, 1);
 	assert_true(snprintf(root, sizeof(root), "%s/policy", src) <
 		    (int)sizeof(root));
-	setenv("GROKOS_POLICYD_PACK_ROOT", root, 1);
+	setenv("PHRONESIS_PACK_ROOT", root, 1);
 
 	*state = f;
 	return 0;
@@ -263,13 +263,13 @@ static int shell_teardown(void **state)
 	const char *src = getenv("PHRONESIS_SOURCE_ROOT");
 	char root[PHRONESIS_PATH_MAX];
 
-	unsetenv("GROKOS_POLICYD_JANET_PACK");
-	unsetenv("GROKOS_POLICYD_DEV_PACK");
-	unsetenv("GROKOS_PREFIX");
+	unsetenv("PHRONESIS_JANET_PACK");
+	unsetenv("PHRONESIS_DEV_PACK");
+	unsetenv("PHRONESIS_PREFIX");
 	if (!src || !src[0])
 		src = ".";
 	snprintf(root, sizeof(root), "%s/policy", src);
-	setenv("GROKOS_POLICYD_PACK_ROOT", root, 1);
+	setenv("PHRONESIS_PACK_ROOT", root, 1);
 	if (f) {
 		if (f->sup)
 			phronesis_supervisor_close(f->sup);
@@ -467,8 +467,8 @@ static void test_cwd_pack_not_loaded(void **state)
 
 	assert_non_null(getcwd(oldcwd, sizeof(oldcwd)));
 	assert_int_equal(chdir(f->rt), 0);
-	unsetenv("GROKOS_POLICYD_JANET_PACK");
-	unsetenv("GROKOS_POLICYD_DEV_PACK");
+	unsetenv("PHRONESIS_JANET_PACK");
+	unsetenv("PHRONESIS_DEV_PACK");
 	phronesis_policy_pack_reset();
 
 	build_shell_check(f->ws, argv, 2, &in, &in_len);
@@ -481,8 +481,8 @@ static void test_cwd_pack_not_loaded(void **state)
 	assert_int_equal(dec, Decision_deny);
 	assert_int_not_equal(code, PolicyReason_shellExecAllow);
 
-	setenv("GROKOS_POLICYD_DEV_PACK", "1", 1);
-	setenv("GROKOS_POLICYD_JANET_PACK", srcpack, 1);
+	setenv("PHRONESIS_DEV_PACK", "1", 1);
+	setenv("PHRONESIS_JANET_PACK", srcpack, 1);
 	assert_int_equal(phronesis_policy_shell_pack_reload(srcpack), PHRONESIS_OK);
 }
 
@@ -523,7 +523,7 @@ static void test_reload_shell_pack_hot_load(void **state)
 
 /*
  * Adversarial: workspace-written allow-all pack must not replace product
- * law when GROKOS_POLICYD_DEV_PACK is unset (same allowlist as JANET_PACK).
+ * law when PHRONESIS_DEV_PACK is unset (same allowlist as JANET_PACK).
  */
 static void test_reload_untrusted_workspace_pack_denied(void **state)
 {
@@ -540,7 +540,7 @@ static void test_reload_untrusted_workspace_pack_denied(void **state)
 	snprintf(evil, sizeof(evil), "%s/allow_all.janet", f->ws);
 	write_allow_all_pack(evil);
 
-	unsetenv("GROKOS_POLICYD_DEV_PACK");
+	unsetenv("PHRONESIS_DEV_PACK");
 
 	rc = phronesis_policy_shell_pack_reload(evil);
 	assert_int_equal(rc, PHRONESIS_ERR_INVAL);
@@ -558,12 +558,12 @@ static void test_reload_untrusted_workspace_pack_denied(void **state)
 
 	assert_bare_python_still_denied(f);
 
-	setenv("GROKOS_POLICYD_DEV_PACK", "1", 1);
+	setenv("PHRONESIS_DEV_PACK", "1", 1);
 }
 
 /*
  * Allow path with DEV_PACK unset: file and directory under
- * GROKOS_PREFIX/share/grok-policyd. Cap'n reload on a fresh handle
+ * PHRONESIS_PREFIX/share/phronesis. Cap'n reload on a fresh handle
  * (product agent: open, no start/bind).
  */
 static void test_reload_trusted_prefix_without_dev_pack(void **state)
@@ -582,11 +582,11 @@ static void test_reload_trusted_prefix_without_dev_pack(void **state)
 
 	write_trusted_prefix_pack(f->rt, prefix, sizeof(prefix), pack,
 				  sizeof(pack));
-	assert_true(snprintf(dir, sizeof(dir), "%s/share/grok-policyd",
+	assert_true(snprintf(dir, sizeof(dir), "%s/share/phronesis",
 			     prefix) < (int)sizeof(dir));
 
-	unsetenv("GROKOS_POLICYD_DEV_PACK");
-	setenv("GROKOS_PREFIX", prefix, 1);
+	unsetenv("PHRONESIS_DEV_PACK");
+	setenv("PHRONESIS_PREFIX", prefix, 1);
 
 	rc = phronesis_policy_shell_pack_reload(pack);
 	assert_int_equal(rc, PHRONESIS_OK);
@@ -606,8 +606,8 @@ static void test_reload_trusted_prefix_without_dev_pack(void **state)
 	t_rm_rf(st);
 	t_rm_rf(rt);
 
-	unsetenv("GROKOS_PREFIX");
-	setenv("GROKOS_POLICYD_DEV_PACK", "1", 1);
+	unsetenv("PHRONESIS_PREFIX");
+	setenv("PHRONESIS_DEV_PACK", "1", 1);
 	{
 		const char *src = getenv("PHRONESIS_SOURCE_ROOT");
 		char root[PHRONESIS_PATH_MAX];
@@ -616,7 +616,7 @@ static void test_reload_trusted_prefix_without_dev_pack(void **state)
 			src = ".";
 		assert_true(snprintf(root, sizeof(root), "%s/policy", src) <
 			    (int)sizeof(root));
-		setenv("GROKOS_POLICYD_PACK_ROOT", root, 1);
+		setenv("PHRONESIS_PACK_ROOT", root, 1);
 	}
 	assert_int_equal(phronesis_policy_shell_pack_reload(product), PHRONESIS_OK);
 }
@@ -637,8 +637,8 @@ static void test_reload_reject_keeps_trusted_allow_pack(void **state)
 
 	write_trusted_prefix_pack(f->rt, prefix, sizeof(prefix), trusted,
 				  sizeof(trusted));
-	unsetenv("GROKOS_POLICYD_DEV_PACK");
-	setenv("GROKOS_PREFIX", prefix, 1);
+	unsetenv("PHRONESIS_DEV_PACK");
+	setenv("PHRONESIS_PREFIX", prefix, 1);
 	assert_int_equal(phronesis_policy_shell_pack_reload(trusted), PHRONESIS_OK);
 	assert_bare_python_allowed(f);
 
@@ -663,8 +663,8 @@ static void test_reload_reject_keeps_trusted_allow_pack(void **state)
 	assert_int_equal(rc, PHRONESIS_ERR_INVAL);
 	assert_bare_python_allowed(f);
 
-	unsetenv("GROKOS_PREFIX");
-	setenv("GROKOS_POLICYD_DEV_PACK", "1", 1);
+	unsetenv("PHRONESIS_PREFIX");
+	setenv("PHRONESIS_DEV_PACK", "1", 1);
 }
 
 /* Multi-pack: allow-all + deny-true compose to deny (fail-closed). */
@@ -680,7 +680,7 @@ static void test_multi_pack_compose_deny(void **state)
 	enum PolicyReason code;
 	int rc;
 
-	setenv("GROKOS_POLICYD_PACK_ROOT", f->ws, 1);
+	setenv("PHRONESIS_PACK_ROOT", f->ws, 1);
 	snprintf(pack_allow, sizeof(pack_allow), "%s/allow_all.janet", f->ws);
 	snprintf(pack_deny, sizeof(pack_deny), "%s/deny_true.janet", f->ws);
 	write_file(pack_allow,
@@ -730,7 +730,7 @@ static void test_multi_pack_dir(void **state)
 	int rc;
 	char p1[PHRONESIS_PATH_MAX], p2[PHRONESIS_PATH_MAX], pdoc[PHRONESIS_PATH_MAX];
 
-	setenv("GROKOS_POLICYD_PACK_ROOT", f->ws, 1);
+	setenv("PHRONESIS_PACK_ROOT", f->ws, 1);
 	snprintf(dir, sizeof(dir), "%s/packs.d", f->ws);
 	assert_int_equal(mkdir(dir, 0700), 0);
 	snprintf(p1, sizeof(p1), "%s/01-allow.janet", dir);
@@ -872,8 +872,8 @@ static void test_reload_pack_root_allows_swap(void **state)
 	char pack_b[PHRONESIS_PATH_MAX];
 	int rc;
 
-	unsetenv("GROKOS_POLICYD_DEV_PACK");
-	setenv("GROKOS_POLICYD_PACK_ROOT", f->ws, 1);
+	unsetenv("PHRONESIS_DEV_PACK");
+	setenv("PHRONESIS_PACK_ROOT", f->ws, 1);
 	snprintf(pack_b, sizeof(pack_b), "%s/allow_all.janet", f->ws);
 	write_allow_all_pack(pack_b);
 	rc = phronesis_policy_shell_pack_reload(pack_b);
@@ -882,7 +882,7 @@ static void test_reload_pack_root_allows_swap(void **state)
 }
 
 /*
- * GROKOS_POLICYD_JANET_PACK colon list (file + directory) is the documented
+ * PHRONESIS_JANET_PACK colon list (file + directory) is the documented
  * env form. First load after reset must honor both segments.
  */
 static void test_janet_pack_colon_list_first_load(void **state)
@@ -896,8 +896,8 @@ static void test_janet_pack_colon_list_first_load(void **state)
 	enum Decision dec;
 	enum PolicyReason code;
 
-	unsetenv("GROKOS_POLICYD_DEV_PACK");
-	setenv("GROKOS_POLICYD_PACK_ROOT", f->ws, 1);
+	unsetenv("PHRONESIS_DEV_PACK");
+	setenv("PHRONESIS_PACK_ROOT", f->ws, 1);
 	snprintf(pack_allow, sizeof(pack_allow), "%s/allow_all.janet", f->ws);
 	snprintf(dir, sizeof(dir), "%s/packs.d", f->ws);
 	assert_int_equal(mkdir(dir, 0700), 0);
@@ -909,7 +909,7 @@ static void test_janet_pack_colon_list_first_load(void **state)
 		   "    @[[:u16 0 0] [:u16 2 25] [:text 0 \"deny pack\"]]))\n");
 	assert_true(snprintf(spec, sizeof(spec), "%s:%s", pack_allow, dir) <
 		    (int)sizeof(spec));
-	setenv("GROKOS_POLICYD_JANET_PACK", spec, 1);
+	setenv("PHRONESIS_JANET_PACK", spec, 1);
 	phronesis_policy_pack_reset();
 
 	build_shell_check(f->ws, argv, 1, &in, &in_len);
@@ -943,8 +943,8 @@ static void test_reload_dir_symlink_child_keeps_law(void **state)
 	write_allow_all_pack(ok);
 	assert_int_equal(symlink(product, sneak), 0);
 
-	unsetenv("GROKOS_POLICYD_DEV_PACK");
-	setenv("GROKOS_POLICYD_PACK_ROOT", f->ws, 1);
+	unsetenv("PHRONESIS_DEV_PACK");
+	setenv("PHRONESIS_PACK_ROOT", f->ws, 1);
 	rc = phronesis_policy_shell_pack_reload(dir);
 	assert_int_equal(rc, PHRONESIS_ERR_INVAL);
 	assert_bare_python_denied(f);
@@ -959,7 +959,7 @@ static void test_reload_rejects_pack_root_slash(void **state)
 	(void)state;
 	product_pack_path(pack_a, sizeof(pack_a));
 	for (i = 0; i < sizeof(roots) / sizeof(roots[0]); i++) {
-		setenv("GROKOS_POLICYD_PACK_ROOT", roots[i], 1);
+		setenv("PHRONESIS_PACK_ROOT", roots[i], 1);
 		assert_int_equal(phronesis_policy_shell_pack_reload(pack_a),
 				 PHRONESIS_ERR_INVAL);
 	}
@@ -973,7 +973,7 @@ static void test_reload_rejects_symlink(void **state)
 	product_pack_path(pack_a, sizeof(pack_a));
 	snprintf(linkp, sizeof(linkp), "%s/sneak.janet", f->ws);
 	assert_int_equal(symlink(pack_a, linkp), 0);
-	setenv("GROKOS_POLICYD_PACK_ROOT", f->ws, 1);
+	setenv("PHRONESIS_PACK_ROOT", f->ws, 1);
 	assert_int_equal(phronesis_policy_shell_pack_reload(linkp), PHRONESIS_ERR_INVAL);
 }
 

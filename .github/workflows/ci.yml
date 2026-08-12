@@ -39,8 +39,8 @@ jobs:
           cp -f schema/SCHEMA_PIN schema/policy.capnp schema/util.capnp dist/
           python3 scripts/publish_static_lib.py
         env:
-          POLICYD_STATIC_LIB: ${{ github.workspace }}/dist/libphronesis.a
-          POLICYD_PUBLISH_DRY_RUN: "1"
+          PHRONESIS_STATIC_LIB: ${{ github.workspace }}/dist/libphronesis.a
+          PHRONESIS_PUBLISH_DRY_RUN: "1"
       - uses: actions/upload-artifact@v4
         with:
           name: phronesis

@@ -44,7 +44,7 @@ cc -Ibuild -Iinclude playground/scripts/export_shell_msg.c \
 
 ## Multi-pack (product)
 
-Default evaluator loads `GROKOS_POLICYD_JANET_PACK=/policy/shell.janet:/policy/packs.d`.
+Default evaluator loads `PHRONESIS_JANET_PACK=/policy/shell.janet:/policy/packs.d`.
 
 - Product entry: `/policy/shell.janet` + `/policy/lib/*.janet`
 - Extra packs: `/policy/packs.d/*.janet` (seeded `extra-canary.janet`)
