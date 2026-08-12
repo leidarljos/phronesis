@@ -1,8 +1,8 @@
 ---
 version: alpha
-name: policyd-playground
+name: phronesis-playground
 description: >
-  Forensic policy playground (regex101-class) for grok-policyd. Dark, product-tool
+  Forensic policy playground (regex101-class) for phronesis. Dark, product-tool
   chrome: near-black Linear canvas, Raycast-style semantic status colors for
   DENY/ALLOW/PROMPT, Warp/Resend monospace for argv and Cap'n traces, Mintlify-like
   encyclopedia density for PolicyReason docs. One lavender accent for focus and
@@ -12,7 +12,7 @@ provenance:
   - product: Cap'n PolicyDecision + TraceEvent forensic UX
 ---
 
-# policyd playground DESIGN.md
+# phronesis playground DESIGN.md
 
 ## 1. Visual Theme & Atmosphere
 

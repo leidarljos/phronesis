@@ -7,7 +7,7 @@
 # Each method is zero-copy mappable Cap'n messages (params root in, result root
 # out). No CallEnvelope. No ok|err unions. No tool×action free Text.
 #
-# Speakers: grok-policyd (TCB); sessiond / grokos-agent / grokos-shell.
+# Speakers: phronesis (TCB); sessiond / grokos-agent / grokos-shell.
 # Seat Cap'n (session.capnp) is a separate server — do not fold Goal here.
 #
 # Trust
@@ -314,7 +314,7 @@ interface Policyd {
   # root in, Cap'n result message root out (zero-copy mappable segments).
   #
   # Caller: sessiond, grokos-agent, grokos-shell.
-  # Callee: grok-policyd. Same-uid / linked only.
+  # Callee: phronesis. Same-uid / linked only.
 
   status @0 () -> PolicydStatus;
   # Snapshot of open supervisor.

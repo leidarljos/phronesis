@@ -1,8 +1,8 @@
 [workspace]
-name = "grok-policyd"
+name = "phronesis"
 version = "0.1.0"
-description = "GrokOS multi-agent policy TCB — Cap'n FFI + C ABI"
-authors = ["GrokOS contributors"]
+description = "In-process policy library — Cap'n FFI + C ABI"
+authors = ["indynull", "HaoZeke"]
 channels = ["https://repo.prefix.dev/rg-forge", "conda-forge"]
 platforms = ["linux-64"]
 
@@ -30,11 +30,11 @@ clean = "rm -rf build build-cov coverage-out"
 setup = { cmd = "bash -c 'opts=\"${POLICYD_MESON_OPTS:-}\"; if [ -f build/build.ninja ]; then meson setup build --reconfigure $opts; else meson setup build $opts; fi'" }
 compile = { cmd = "meson compile -C build", depends-on = ["setup"] }
 # Both shared + static (default_library=both); name disambiguated for Meson.
-lib = { cmd = "meson compile -C build grok_policyd:shared_library grok_policyd:static_library", depends-on = ["setup"] }
+lib = { cmd = "meson compile -C build phronesis:shared_library phronesis:static_library", depends-on = ["setup"] }
 test = { cmd = "meson compile -C build && meson test -C build --print-errorlogs", depends-on = ["setup"] }
 example = { cmd = "meson compile -C build example_minimal", depends-on = ["setup"] }
 build = { depends-on = ["test", "example"] }
-cli = { cmd = "meson compile -C build grok-policyd", depends-on = ["setup"] }
+cli = { cmd = "meson compile -C build phronesis", depends-on = ["setup"] }
 install = { cmd = "meson install -C build", depends-on = ["compile"] }
 coverage = "bash scripts/coverage.sh"
 ci = { depends-on = ["build"] }
@@ -46,7 +46,7 @@ playground-smoke = { cmd = "node playground/scripts/wasm-smoke.mjs", depends-on 
 playground-parity = "node playground/scripts/parity-node.mjs"
 playground-dev = "bash -c 'cd playground/astro && npm ci && npm run dev'"
 playground-build = "bash playground/scripts/build-site.sh"
-# JS quality (Biome + tsc); no emcc. From packages/grok-policyd:
+# JS quality (Biome + tsc); no emcc. From this repo root:
 #   pixi run playground-check
 playground-check = "bash -c 'cd playground/astro && npm ci && npm run check'"
 

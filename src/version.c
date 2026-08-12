@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: Apache-2.0 */
-#include "grok-policyd/supervisor.h"
+#include "phronesis/supervisor.h"
 
 const char *policyd_version_string(void)
 {

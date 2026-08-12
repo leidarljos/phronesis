@@ -98,7 +98,7 @@ static int ensure_state_tree(const char *state)
 		return POLICYD_ERR_INVAL;
 	if (policyd_paths_ensure_dir(buf, 0700) != POLICYD_OK)
 		return POLICYD_ERR_IO;
-	if (join3(buf, sizeof(buf), state, "policyd", NULL) != POLICYD_OK)
+	if (join3(buf, sizeof(buf), state, "phronesis", NULL) != POLICYD_OK)
 		return POLICYD_ERR_INVAL;
 	if (policyd_paths_ensure_dir(buf, 0700) != POLICYD_OK)
 		return POLICYD_ERR_IO;

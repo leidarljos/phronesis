@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://grokos.local/policyd-playground-fixture.schema.json",
-  "title": "grok-policyd playground fixture",
+  "title": "phronesis playground fixture",
   "type": "object",
   "required": ["id", "method", "expect"],
   "additionalProperties": false,

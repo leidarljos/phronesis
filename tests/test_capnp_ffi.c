@@ -3,7 +3,7 @@
  * Policyd Cap'n methods: params root in, PolicyDecision root out (no unions).
  */
 #include "harness.h"
-#include "grok-policyd/supervisor.h"
+#include "phronesis/supervisor.h"
 #include "internal.h"
 #include "policy.capnp.h"
 #include "util.capnp.h"

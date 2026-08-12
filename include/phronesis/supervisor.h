@@ -1,11 +1,11 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /**
  * @file supervisor.h
- * @brief Stable C ABI for the grok-policyd multi-agent supervisor.
+ * @brief Stable C ABI for the phronesis multi-agent supervisor.
  *
  * @par Source of truth
  * This header is hand-maintained C. Unlike rgpot / featomic / metatensor
- * (Rust core + cbindgen), policyd is implemented in C; the public API is
+ * (Rust core + cbindgen), phronesis is implemented in C; the public API is
  * this file, not a generated binding. Document with Doxygen; Sphinx
  * (breathe) renders the reference.
  *
@@ -15,7 +15,7 @@
  *   @ref POLICYD_API_VERSION generation. Additive symbols are allowed;
  *   renames/removals/layout changes require an API version bump.
  * - Fixed-size char buffers in public structs are part of the ABI.
- * - ELF SONAME uses **package major** (``libgrok_policyd.so.0`` while major is
+ * - ELF SONAME uses **package major** (``libphronesis.so.0`` while major is
  *   0), not API_VERSION. Embedders key on @ref POLICYD_API_VERSION for
  *   link-compat; SONAME is the distro package major.
  * - Single source: repo ``VERSION`` + ``API_VERSION`` files

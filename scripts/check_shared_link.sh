@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Product link-line contract for libgrok_policyd.so (not an inventory dump).
+# Product link-line contract for libphronesis.so (not an inventory dump).
 #
 # Embedders open this shared object and call Cap'n Policyd methods
 # (policyd_check_shell, …). The .so must:
@@ -15,10 +15,10 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 BUILD="${POLICYD_BUILD_DIR:-$ROOT/build}"
 
 SO=
-if [[ -e "$BUILD/libgrok_policyd.so" ]]; then
-	SO="$BUILD/libgrok_policyd.so"
-elif compgen -G "$BUILD/libgrok_policyd.so.*" >/dev/null; then
-	SO=$(ls -1 "$BUILD"/libgrok_policyd.so.* | head -1)
+if [[ -e "$BUILD/libphronesis.so" ]]; then
+	SO="$BUILD/libphronesis.so"
+elif compgen -G "$BUILD/libphronesis.so.*" >/dev/null; then
+	SO=$(ls -1 "$BUILD"/libphronesis.so.* | head -1)
 fi
 if [[ -L "${SO:-}" ]]; then
 	target=$(readlink "$SO")
@@ -29,7 +29,7 @@ if [[ -L "${SO:-}" ]]; then
 	fi
 fi
 if [[ -z "${SO:-}" || ! -f "$SO" ]]; then
-	echo "error: no libgrok_policyd shared library under $BUILD" >&2
+	echo "error: no libphronesis shared library under $BUILD" >&2
 	exit 1
 fi
 

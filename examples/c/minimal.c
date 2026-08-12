@@ -1,9 +1,9 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /*
- * Minimal C consumer of the grok-policyd stable ABI.
- * Build: pixi run example  (links build/libgrok_policyd.a)
+ * Minimal C consumer of the phronesis stable ABI.
+ * Build: pixi run example  (links build/libphronesis.a)
  */
-#include "grok-policyd/supervisor.h"
+#include "phronesis/supervisor.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -57,7 +57,7 @@ int main(void)
 	int rc;
 	int exit_code = 0;
 
-	printf("grok-policyd %s (api %d)\n",
+	printf("phronesis %s (api %d)\n",
 	       policyd_version_string(),
 	       policyd_api_version());
 

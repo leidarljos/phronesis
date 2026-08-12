@@ -2,7 +2,7 @@
 #ifndef POLICYD_INTERNAL_H
 #define POLICYD_INTERNAL_H
 
-#include "grok-policyd/supervisor.h"
+#include "phronesis/supervisor.h"
 
 #include <stdint.h>
 

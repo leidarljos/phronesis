@@ -107,7 +107,7 @@ build:pixi:
   before_script: *pixi_prepare
   script:
     - export PATH="${CI_PROJECT_DIR}/.pixi/envs/ci/bin:${PIXI_HOME}/bin:${PATH}"
-    - export POLICYD_BIN="${CI_PROJECT_DIR}/build/grok-policyd"
+    - export POLICYD_BIN="${CI_PROJECT_DIR}/build/phronesis"
     - just build
   after_script:
     - df -h || true
@@ -220,9 +220,9 @@ mutation:mull:
     - meson compile -C build-mull mutation
     # IDE reporter is a file; echo survivors into the job log (no triage script).
     - |
-      if [ -f build-mull/mull-report/grok-policyd.txt ]; then
+      if [ -f build-mull/mull-report/phronesis.txt ]; then
         echo "======== Mull survivors ========"
-        cat build-mull/mull-report/grok-policyd.txt
+        cat build-mull/mull-report/phronesis.txt
         echo "======== end Mull survivors ========"
       fi
   artifacts:
