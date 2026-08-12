@@ -2,7 +2,15 @@ name: ci
 
 on:
   push:
+    branches:
+      - "**"
+    tags:
+      - "v*"
   pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   meson-test:
@@ -22,3 +30,53 @@ jobs:
         run: meson compile -C build
       - name: Test
         run: meson test -C build --print-errorlogs
+      - name: Stage library artifacts
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          test -f build/libphronesis.a
+          cp -f build/libphronesis.a dist/libphronesis.a
+          cp -f schema/SCHEMA_PIN schema/policy.capnp schema/util.capnp dist/
+          python3 scripts/publish_static_lib.py
+        env:
+          POLICYD_STATIC_LIB: ${{ github.workspace }}/dist/libphronesis.a
+          POLICYD_PUBLISH_DRY_RUN: "1"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: phronesis
+          path: dist/
+          if-no-files-found: error
+
+  release:
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    needs: meson-test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Require tag to match VERSION
+        run: |
+          set -euo pipefail
+          ver="$(tr -d '[:space:]' < VERSION)"
+          tag="${GITHUB_REF_NAME}"
+          if [[ "${tag}" != "v${ver}" ]]; then
+            echo "error: tag ${tag} does not match VERSION ${ver} (want v${ver})" >&2
+            exit 1
+          fi
+      - uses: actions/download-artifact@v4
+        with:
+          name: phronesis
+          path: dist
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release create "${GITHUB_REF_NAME}" \
+            --title "phronesis ${GITHUB_REF_NAME}" \
+            --generate-notes \
+            dist/libphronesis.a \
+            dist/SCHEMA_PIN \
+            dist/policy.capnp \
+            dist/util.capnp
