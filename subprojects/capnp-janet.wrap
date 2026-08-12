@@ -1,7 +1,7 @@
 [wrap-git]
 directory = capnp-janet
 url = https://github.com/HaoZeke/capnp-janet.git
-revision = main
+revision = af57bbdde0832c35d346f6ba4d7d28c7e23f5ec6
 depth = 1
 
 [provide]

@@ -5,6 +5,17 @@ mod? tools "../grokos-tools"
 default:
     @just --list
 
+# Meson only (no pixi, no private channels). Needs capnp + cmocka on PATH.
+meson-test:
+    #!/usr/bin/env bash
+    if [[ -f build/build.ninja ]]; then
+      meson setup build --reconfigure
+    else
+      meson setup build
+    fi
+    meson compile -C build
+    meson test -C build --print-errorlogs
+
 # Package native tasks (pixi).
 test:
     pixi run test
