@@ -70,7 +70,7 @@ static void build_shell_check(const char *cwd, char **argv, int argc,
 	list = capn_new_ptr_list(capn_root(&c).seg, argc);
 	for (i = 0; i < argc; i++)
 		capn_set_text(list, i, ctext(argv[i]));
-	sc.argv = list;
+	sc.argv.p = list;
 	root = new_ShellCheck(capn_root(&c).seg);
 	write_ShellCheck(&sc, root);
 	assert_int_equal(capn_setp(capn_root(&c), 0, root.p), 0);
