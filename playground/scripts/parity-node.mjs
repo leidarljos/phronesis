@@ -134,7 +134,7 @@ function readDecision(Module, outPtr, outLen) {
   return { decision, code };
 }
 
-const jsPath = join(dist, "policyd-playground.js");
+const jsPath = join(dist, "phronesis-playground.js");
 if (!existsSync(jsPath)) {
   fail(
     `missing ${jsPath}\n` +
