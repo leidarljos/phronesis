@@ -18,7 +18,7 @@
 
 #include "janet.h"
 
-#include "grok-policyd/supervisor.h"
+#include "phronesis/supervisor.h"
 
 #include <capnp_c.h>
 #include <dirent.h>
@@ -58,12 +58,12 @@ static int pack_spec_set;
 
 /*
  * Product default pack path (absolute). Meson sets this to
- * $prefix/share/grok-policyd/policy/shell.janet so installed seats load the
+ * $prefix/share/phronesis/policy/shell.janet so installed seats load the
  * product pack with no env. Overridable at compile time.
  */
 #ifndef GROKOS_POLICYD_DEFAULT_JANET_PACK
 #define GROKOS_POLICYD_DEFAULT_JANET_PACK \
-	"/usr/local/share/grok-policyd/policy/shell.janet"
+	"/usr/local/share/phronesis/policy/shell.janet"
 #endif
 
 static int path_is_file(const char *path);
@@ -94,11 +94,11 @@ static const char *default_pack_spec(void)
 	prefix = getenv("GROKOS_PREFIX");
 	if (prefix && prefix[0] &&
 	    snprintf(prefix_buf, sizeof(prefix_buf),
-		     "%s/share/grok-policyd/policy/shell.janet",
+		     "%s/share/phronesis/policy/shell.janet",
 		     prefix) < (int)sizeof(prefix_buf))
 		cands[n++] = prefix_buf;
-	cands[n++] = "/usr/local/share/grok-policyd/policy/shell.janet";
-	cands[n++] = "/usr/share/grok-policyd/policy/shell.janet";
+	cands[n++] = "/usr/local/share/phronesis/policy/shell.janet";
+	cands[n++] = "/usr/share/phronesis/policy/shell.janet";
 	cands[n++] = "policy/shell.janet"; /* monorepo / meson test workdir */
 
 	for (i = 0; i < n; i++) {

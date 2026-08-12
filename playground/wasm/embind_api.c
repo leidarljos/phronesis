@@ -4,7 +4,7 @@
  * Name is historical (embind); pure C + EMSCRIPTEN_KEEPALIVE is enough.
  */
 #include <emscripten.h>
-#include <grok-policyd/supervisor.h>
+#include <phronesis/supervisor.h>
 
 #include "policy.capnp.h"
 #include "policy_trace.h"

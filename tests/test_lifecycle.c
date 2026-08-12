@@ -122,7 +122,7 @@ static void test_exec_failure_child(void **state)
 	grok_supervisor_t *s = NULL;
 	char st[GROK_PATH_MAX], rt[GROK_PATH_MAX];
 	grok_agent_status_t stt;
-	char *argv[] = { "/no/such/grok-policyd-agent-bin-xyz", NULL };
+	char *argv[] = { "/no/such/phronesis-agent-bin-xyz", NULL };
 	int tries;
 
 	(void)state;

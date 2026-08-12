@@ -68,7 +68,7 @@ static int ensure_state_tree(const char *state)
 		return GROK_ERR_INVAL;
 	if (grok_paths_ensure_dir(buf, 0700) != GROK_OK)
 		return GROK_ERR_IO;
-	if (join3(buf, sizeof(buf), state, "policyd", NULL) != GROK_OK)
+	if (join3(buf, sizeof(buf), state, "phronesis", NULL) != GROK_OK)
 		return GROK_ERR_INVAL;
 	if (grok_paths_ensure_dir(buf, 0700) != GROK_OK)
 		return GROK_ERR_IO;

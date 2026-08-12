@@ -2,7 +2,7 @@
 #ifndef GROK_POLICYD_TEST_HARNESS_H
 #define GROK_POLICYD_TEST_HARNESS_H
 
-#include "grok-policyd/supervisor.h"
+#include "phronesis/supervisor.h"
 
 #include <stddef.h>
 #include <stdint.h>

@@ -3,7 +3,7 @@ import type { TraceEvent } from "@lib/wasm";
 interface Props {
   events: TraceEvent[];
   emptyHint?: string;
-  /** Site base (e.g. /grok-policyd/) for encyclopedia deep-links */
+  /** Site base (e.g. /phronesis/) for encyclopedia deep-links */
   baseUrl?: string;
 }
 

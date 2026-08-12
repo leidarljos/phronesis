@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: MIT */
-#include "grok-policyd/supervisor.h"
+#include "phronesis/supervisor.h"
 
 #include <stdio.h>
 #include <stdlib.h>

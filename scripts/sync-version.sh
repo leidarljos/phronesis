@@ -7,7 +7,7 @@ cd "$ROOT"
 ver="$(tr -d '[:space:]' < VERSION)"
 api="$(tr -d '[:space:]' < API_VERSION)"
 IFS=. read -r major minor patch <<<"$ver"
-hdr="include/grok-policyd/supervisor.h"
+hdr="include/phronesis/supervisor.h"
 tmp="$(mktemp)"
 # shellcheck disable=SC2016
 sed -E \

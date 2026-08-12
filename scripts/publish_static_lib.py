@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Verify and optionally upload build/libgrok_policyd.a to the package registry.
+"""Verify and optionally upload build/libphronesis.a to the package registry.
 
 Host entry: ``just publish-lib`` (builds the archive first).
 
@@ -16,9 +16,9 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-LIB = Path(os.environ.get("POLICYD_STATIC_LIB", ROOT / "build" / "libgrok_policyd.a"))
-PACKAGE = "libgrok_policyd"
-FILE = "libgrok_policyd.a"
+LIB = Path(os.environ.get("POLICYD_STATIC_LIB", ROOT / "build" / "libphronesis.a"))
+PACKAGE = "libphronesis"
+FILE = "libphronesis.a"
 # Flat Cap'n product surface (API_VERSION 2) + supervisor lifecycle.
 NEED_SYMS = (
     "grok_supervisor_open",
