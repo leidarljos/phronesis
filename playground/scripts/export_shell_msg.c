@@ -80,7 +80,7 @@ static int emit_shell_check(const char *cwd, const char *const *words, int nword
 	list = capn_new_ptr_list(capn_root(&c).seg, nwords);
 	for (i = 0; i < nwords; i++)
 		capn_set_text(list, i, ctext(words[i]));
-	sc.argv = list;
+	sc.argv.p = list;
 	root = new_ShellCheck(capn_root(&c).seg);
 	write_ShellCheck(&sc, root);
 	if (capn_setp(capn_root(&c), 0, root.p) != 0) {
