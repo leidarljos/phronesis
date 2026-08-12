@@ -94,8 +94,8 @@ export async function loadEvaluator(
     // static only — import() of them fails in dev).
     const jsUrl =
       typeof window !== "undefined"
-        ? new URL(`${root}policyd-playground.js`, window.location.href).href
-        : `${root}policyd-playground.js`;
+        ? new URL(`${root}phronesis-playground.js`, window.location.href).href
+        : `${root}phronesis-playground.js`;
     type ModularizeFactory = (opts: {
       locateFile: (path: string) => string;
     }) => Promise<EmscriptenModule>;
