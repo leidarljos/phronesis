@@ -2,7 +2,7 @@
 name = "phronesis"
 version = "0.1.0"
 description = "In-process policy library — Cap'n FFI + C ABI"
-authors = ["<ENTER-GROUP-NAME-HERE>"]
+authors = ["indynull", "HaoZeke"]
 channels = ["https://repo.prefix.dev/rg-forge", "conda-forge"]
 platforms = ["linux-64"]
 
