@@ -124,8 +124,9 @@ flag or set Mull’s `--mutation-score-threshold`.
 ### Continuous integration
 
 GitHub job **`meson-test`** builds, runs `meson test`, and uploads `libphronesis.a`
-plus `schema/SCHEMA_PIN`, `policy.capnp`, and `util.capnp`. A tag `vX.Y.Z` that
-matches `VERSION` publishes those files as a GitHub release.
+plus `schema/SCHEMA_PIN`, `policy.capnp`, and `util.capnp` on every run. Pushes
+to `main` refresh the `snapshot` pre-release. A tag `vX.Y.Z` that matches
+`VERSION` publishes a versioned GitHub release.
 
 Job **`mutation:mull`**: Ubuntu 24.04, system Clang + Mull, pixi for deps only
 (`CC=/usr/bin/clang-19`). Path-triggered on policy/Cap'n changes and on

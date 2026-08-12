@@ -46,6 +46,39 @@ jobs:
           name: phronesis
           path: dist/
           if-no-files-found: error
+          retention-days: 30
+
+  snapshot:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: meson-test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: phronesis
+          path: dist
+      - name: Publish snapshot release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          notes="Snapshot from ${GITHUB_SHA} on main."
+          if gh release view snapshot >/dev/null 2>&1; then
+            gh release edit snapshot --notes "${notes}" --prerelease
+          else
+            gh release create snapshot \
+              --prerelease \
+              --title "phronesis snapshot" \
+              --notes "${notes}"
+          fi
+          gh release upload snapshot --clobber \
+            dist/libphronesis.a \
+            dist/SCHEMA_PIN \
+            dist/policy.capnp \
+            dist/util.capnp
 
   release:
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
