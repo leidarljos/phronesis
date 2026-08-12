@@ -40,7 +40,7 @@ static void test_deny_all_env(void **state)
 	assert_int_equal(phronesis_supervisor_open(&s, state_dir, run_dir), PHRONESIS_OK);
 	assert_non_null(s);
 
-	setenv("GROKOS_POLICYD_DENY_ALL", "1", 1);
+	setenv("PHRONESIS_DENY_ALL", "1", 1);
 	assert_int_equal(
 		phronesis_policy_check(s, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "model", "start",
 				  "/bin/true", &pr),
@@ -54,7 +54,7 @@ static void test_deny_all_env(void **state)
 		PHRONESIS_OK);
 	assert_int_equal(pr.decision, PHRONESIS_DECISION_DENY);
 
-	unsetenv("GROKOS_POLICYD_DENY_ALL");
+	unsetenv("PHRONESIS_DENY_ALL");
 	assert_int_equal(
 		phronesis_policy_check(s, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "model", "start",
 				  "/bin/true", &pr),

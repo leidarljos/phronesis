@@ -54,7 +54,7 @@ static int load_lib_file(const char *name)
 
 static int pack_lib_setup(void **state)
 {
-	const char *src = getenv("POLICYD_SOURCE_ROOT");
+	const char *src = getenv("PHRONESIS_SOURCE_ROOT");
 	Janet resolved = janet_wrap_nil();
 	(void)state;
 

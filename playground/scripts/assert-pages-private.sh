@@ -42,7 +42,7 @@ cat <<'EOF'
    (API field: pages_access_level == "private")
 
 2. Do not publish the playground behind a public custom domain.
-   Package path (base) is enough: /grok-policyd/ under the group Pages host.
+   Package path (base) is enough: /phronesis/ under the group Pages host.
    Custom domains that make the site world-readable defeat members-only.
 
 3. CI job `pages` publishes public/ from playground/astro/dist after

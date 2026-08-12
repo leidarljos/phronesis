@@ -138,11 +138,11 @@ static int shell_setup(void **state)
 				      NULL, f->ws, argv0),
 		PHRONESIS_OK);
 
-	src = getenv("POLICYD_SOURCE_ROOT");
+	src = getenv("PHRONESIS_SOURCE_ROOT");
 	if (!src || !src[0])
 		src = ".";
 	snprintf(pack, sizeof(pack), "%s/policy/shell.janet", src);
-	setenv("GROKOS_POLICYD_JANET_PACK", pack, 1);
+	setenv("PHRONESIS_JANET_PACK", pack, 1);
 
 	*state = f;
 	return 0;
@@ -152,7 +152,7 @@ static int shell_teardown(void **state)
 {
 	struct shell_fix *f = *state;
 
-	unsetenv("GROKOS_POLICYD_JANET_PACK");
+	unsetenv("PHRONESIS_JANET_PACK");
 	if (f) {
 		if (f->sup)
 			phronesis_supervisor_close(f->sup);
@@ -328,7 +328,7 @@ static void test_reload_shell_pack_hot_load(void **state)
 	size_t in_len = 0, out_len = 0;
 	enum Decision dec;
 	enum PolicyReason code;
-	const char *src = getenv("POLICYD_SOURCE_ROOT");
+	const char *src = getenv("PHRONESIS_SOURCE_ROOT");
 	struct capn c;
 	struct ReloadShellPack rp;
 	ReloadShellPack_ptr root;

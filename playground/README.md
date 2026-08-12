@@ -12,7 +12,7 @@ CSS tokens live in `astro/src/styles/global.css`.
 ## Multi-pack (product parity)
 
 The WASM evaluator uses the same colon-list / `packs.d` multi-pack host as
-product `GROKOS_POLICYD_JANET_PACK` and Cap'n `reloadShellPack`:
+product `PHRONESIS_JANET_PACK` and Cap'n `reloadShellPack`:
 
 | MEMFS path | Role |
 |------------|------|
@@ -84,9 +84,9 @@ Job **`playground:check`** runs the same on playground path changes. Astro
 
 ```bash
 # from this repo root
-PUBLIC_BASE=/grok-policyd/ bash playground/scripts/build-site.sh
+PUBLIC_BASE=/phronesis/ bash playground/scripts/build-site.sh
 python3 -m http.server 8765 --directory playground/astro/dist
-# if base is /grok-policyd/, serve a parent dir that contains grok-policyd/ as
+# if base is /phronesis/, serve a parent dir that contains phronesis/ as
 # the dist tree, or use PUBLIC_BASE=/ for a root-relative static preview:
 PUBLIC_BASE=/ bash playground/scripts/build-site.sh
 python3 -m http.server 8765 --directory playground/astro/dist
@@ -206,7 +206,7 @@ exist) document the terra build path. Product `pixi run test` is unchanged.
 | `/ws/ok.py` | PEP 723 script for path probes |
 | `/pd-state/…` | Supervisor state (not `/tmp`) |
 | `/pd-runtime/agents/<id>.slot` | Agent with workspace `/ws` |
-| `GROKOS_POLICYD_JANET_PACK` | Default `/policy/shell.janet` |
+| `PHRONESIS_JANET_PACK` | Default `/policy/shell.janet` |
 
 ### KEEPALIVE API (`wasm/embind_api.c`)
 
@@ -221,11 +221,11 @@ exist) document the terra build path. Product `pixi run test` is unchanged.
 | `pd_reload_shell_pack` | Cap'n `ReloadShellPack` → `PolicyDecision` |
 | `pd_reload_pack_path` | Absolute path string → 0 / -1 / -2 (no Cap'n) |
 | `pd_read_decision` | Decode decision + code for JS |
-| `pd_clear_trace` | Clear TRACE ring (no-op without `GROKOS_POLICYD_TRACE`) |
+| `pd_clear_trace` | Clear TRACE ring (no-op without `PHRONESIS_TRACE`) |
 | `pd_take_trace_json` | Malloc JSON array of TraceEvents; clears ring; free with `pd_free` |
 | `pd_free` | Free malloc'd out buffers |
 
-Playground `build.sh` always sets `-DGROKOS_POLICYD_TRACE=1`. Product meson never
+Playground `build.sh` always sets `-DPHRONESIS_TRACE=1`. Product meson never
 does; product `.so` has no TRACE dynamic exports.
 
 ### Meson options (product tree)
@@ -265,13 +265,13 @@ dynamic-import `public/wasm/policyd-playground.js` (copied from
 
 ### Base path (GitLab Pages)
 
-Default local `base` is `/grok-policyd/`. CI derives `PUBLIC_BASE` from
+Default local `base` is `/phronesis/`. CI derives `PUBLIC_BASE` from
 `CI_PAGES_URL` so nested-group path Pages and unique-domain Pages both work.
 Override:
 
 ```bash
 PUBLIC_BASE=/ npm run build          # site at domain root
-PUBLIC_BASE=/grokos-packages/grok-policyd/ npm run build
+PUBLIC_BASE=/phronesis/ npm run build
 ```
 
 ### GitLab Pages (members-only)

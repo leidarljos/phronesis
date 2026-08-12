@@ -9,11 +9,11 @@ const root = path.dirname(fileURLToPath(import.meta.url));
 
 /**
  * GitLab Pages for a package often lives at
- *   https://<group>.pages.../grok-policyd/
+ *   https://<group>.pages.../phronesis/
  * Override with PUBLIC_BASE (must end with / when non-root).
  * Local dev / plain static: PUBLIC_BASE=/ or leave unset for relative-friendly.
  */
-const base = process.env.PUBLIC_BASE ?? "/grok-policyd/";
+const base = process.env.PUBLIC_BASE ?? "/phronesis/";
 
 // https://astro.build/config
 export default defineConfig({

@@ -166,7 +166,7 @@ typedef enum {
 
 /**
  * Machine codes for @ref phronesis_policy_result_t — mirrors Cap'n PolicyReason
- * in policy.capnp (grokos-schema). Keep ordinals identical.
+ * in policy.capnp. Keep ordinals identical.
  */
 typedef enum {
 	PHRONESIS_REASON_UNSPECIFIED = 0,
@@ -444,8 +444,8 @@ PHRONESIS_API void phronesis_check_risk(phronesis_supervisor_t *sup,
  *
  * Product defaults (Janet pack @c audio-check / voice-law): micOpen /
  * alwaysListen / networkStt / inject deny; listenArm prompt; unknown deny.
- * Host TCB: truthy @c GROKOS_POLICYD_AUDIO_ALLOW allows all actions
- * (fixture/CI only; leave unset in production); @c GROKOS_POLICYD_DENY_ALL
+ * Host TCB: truthy @c PHRONESIS_AUDIO_ALLOW allows all actions
+ * (fixture/CI only; leave unset in production); @c PHRONESIS_DENY_ALL
  * still wins. No waveforms / PCM on the wire.
  */
 PHRONESIS_API void phronesis_check_audio(phronesis_supervisor_t *sup,

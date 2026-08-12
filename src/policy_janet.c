@@ -6,7 +6,7 @@
  * Audio: Cap'n AudioCheck → pack audio-check → Cap'n PolicyDecision.
  * Pack authors reason text + code. Host may re-stamp agentId on audio.
  *
- * Multi-pack: GROKOS_POLICYD_JANET_PACK is a colon-separated list of pack
+ * Multi-pack: PHRONESIS_JANET_PACK is a colon-separated list of pack
  * files and/or directories of top-level *.janet files. Each pack loads into
  * its own sealed env. checkShell / checkAudio run every pack that defines
  * the entry and compose fail-closed (deny > prompt > allow).
@@ -61,8 +61,8 @@ static int pack_spec_set;
  * $prefix/share/phronesis/policy/shell.janet so installed seats load the
  * product pack with no env. Overridable at compile time.
  */
-#ifndef GROKOS_POLICYD_DEFAULT_JANET_PACK
-#define GROKOS_POLICYD_DEFAULT_JANET_PACK \
+#ifndef PHRONESIS_DEFAULT_JANET_PACK
+#define PHRONESIS_DEFAULT_JANET_PACK \
 	"/usr/local/share/phronesis/policy/shell.janet"
 #endif
 
@@ -70,8 +70,8 @@ static int path_is_file(const char *path);
 
 /**
  * First existing pack path among product defaults.
- * Order: env GROKOS_POLICYD_JANET_PACK → compile-time install path →
- * GROKOS_PREFIX/share/... → common FHS paths → CWD-relative dev path.
+ * Order: env PHRONESIS_JANET_PACK → compile-time install path →
+ * PHRONESIS_PREFIX/share/... → common FHS paths → CWD-relative dev path.
  */
 static const char *default_pack_spec(void)
 {
@@ -84,14 +84,14 @@ static const char *default_pack_spec(void)
 	if (pack_spec_set && pack_spec_buf[0])
 		return pack_spec_buf;
 	{
-		const char *e = getenv("GROKOS_POLICYD_JANET_PACK");
+		const char *e = getenv("PHRONESIS_JANET_PACK");
 
 		if (e && e[0])
 			return e;
 	}
 
-	cands[n++] = GROKOS_POLICYD_DEFAULT_JANET_PACK;
-	prefix = getenv("GROKOS_PREFIX");
+	cands[n++] = PHRONESIS_DEFAULT_JANET_PACK;
+	prefix = getenv("PHRONESIS_PREFIX");
 	if (prefix && prefix[0] &&
 	    snprintf(prefix_buf, sizeof(prefix_buf),
 		     "%s/share/phronesis/policy/shell.janet",
@@ -106,7 +106,7 @@ static const char *default_pack_spec(void)
 			return cands[i];
 	}
 	/* Last resort: compile-time path (fail closed at load if missing). */
-	return GROKOS_POLICYD_DEFAULT_JANET_PACK;
+	return PHRONESIS_DEFAULT_JANET_PACK;
 }
 
 static void seal_pack_env(JanetTable *env)
@@ -653,7 +653,7 @@ int phronesis_shell_pack_reload_internal(const char *path)
 		return rc;
 	}
 	/* Keep env in sync for subprocesses / diagnostics. */
-	if (setenv("GROKOS_POLICYD_JANET_PACK", pack_spec_buf, 1) != 0) {
+	if (setenv("PHRONESIS_JANET_PACK", pack_spec_buf, 1) != 0) {
 		/* Non-fatal: pack_spec_buf is source of truth for this process. */
 	}
 	return 0;

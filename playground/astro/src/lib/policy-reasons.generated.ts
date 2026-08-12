@@ -198,7 +198,7 @@ export const POLICY_REASONS: PolicyReasonEntry[] = [
   {
     code: 35,
     name: "audioFixtureAllow",
-    comment: "Test/dogfood allow via GROKOS_POLICYD_AUDIO_ALLOW (all AudioAction).",
+    comment: "Test/dogfood allow via PHRONESIS_AUDIO_ALLOW (all AudioAction).",
     group:
       "checkAudio (voice plane gates; meta #97 Track E / epic #92) TCB only — no waveforms / PCM. sessiond checks before voiceArm / inject.",
   },

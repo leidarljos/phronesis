@@ -12,7 +12,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-BUILD="${POLICYD_BUILD_DIR:-$ROOT/build}"
+BUILD="${PHRONESIS_BUILD_DIR:-$ROOT/build}"
 
 SO=
 if [[ -e "$BUILD/libphronesis.so" ]]; then
