@@ -1,6 +1,6 @@
-# grok-policyd
+# phronesis
 
-In-process policy library for a multi-agent seat. Callers link `libgrok_policyd`
+In-process policy library for a multi-agent seat. Callers link `libphronesis`
 and send Cap'n messages into `grok_policyd_handle_capnp` or the typed C
 entry points (`checkShell`, `checkPath`, `checkSeat`, …). Every check returns
 a Cap'n `PolicyDecision` (`deny` / `allow` / `prompt`) plus a `PolicyReason`
@@ -10,7 +10,7 @@ code. Protocol failures deny.
 |--|--|
 | **Language** | Cap'n interface: `schema/policy.capnp` + `schema/util.capnp` in this tree |
 | **Product API** | `grok_policyd_handle_capnp()` (in-process FFI) |
-| **C helpers** | `include/grok-policyd/supervisor.h` |
+| **C helpers** | `include/phronesis/supervisor.h` |
 | **License** | MIT (`LICENSE`); third-party notes in `NOTICE` |
 
 ## Build (no private remotes)
@@ -26,7 +26,7 @@ meson test -C build --print-errorlogs
 ```
 
 Or `just meson-test`. Embedders find the interface at
-`pkg-config --variable=schemadir grok-policyd` after install.
+`pkg-config --variable=schemadir phronesis` after install.
 
 `pixi install --locked` still uses a private conda channel for
 `c-capnproto`. The Meson path above is the standalone door.
@@ -57,7 +57,7 @@ sessiond, shell.
 - C entry points are `void` and always write a Cap'n result message (or NULL on OOM).
 
 ```c
-#include <grok-policyd/supervisor.h>
+#include <phronesis/supervisor.h>
 
 /* in: Cap'n ShellCheck root; out: Cap'n PolicyDecision root */
 uint8_t *out = NULL;
@@ -160,7 +160,7 @@ Optional: `-Dschema_dir=/path` to point codegen at another directory that
 contains both files.
 
 `scripts/gen-capnp-c.sh` reads both files from one directory (no mixed
-sources). Staged IDL installs under `$prefix/share/grok-policyd/`.
+sources). Staged IDL installs under `$prefix/share/phronesis/`.
 
 A stranger with `meson`, `ninja`, `capnp`, `capnpc-c`, `c-capnproto`, and
 `cmocka` can build from this tree without private remotes. `pixi install

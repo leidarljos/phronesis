@@ -1,4 +1,4 @@
-# grok-policyd playground (WASM)
+# phronesis playground (WASM)
 
 Browser/Node playground for Cap'n policy checks against the product TCB sources.
 **Not** part of the product default CI / meson path.
@@ -29,7 +29,7 @@ Prebuilt WASM is committed under `playground/dist-wasm/`. You only need **Node 2
 (and optionally `pixi` for the product suite).
 
 ```bash
-# from packages/grok-policyd (this repo root)
+# from this repo root
 git fetch origin
 git checkout feat/policyd-playground   # or the MR source branch
 
@@ -64,7 +64,7 @@ integration use **Biome** (lint + format) and **`tsc --noEmit`** on
 `playground/astro` + `playground/scripts`:
 
 ```bash
-# from packages/grok-policyd
+# from this repo root
 cd playground/astro && npm ci && npm run check
 # or: pixi run playground-check
 ```
@@ -83,7 +83,7 @@ Job **`playground:check`** runs the same on playground path changes. Astro
 ### Static site (Pages-shaped, optional)
 
 ```bash
-# from packages/grok-policyd
+# from this repo root
 PUBLIC_BASE=/grok-policyd/ bash playground/scripts/build-site.sh
 python3 -m http.server 8765 --directory playground/astro/dist
 # if base is /grok-policyd/, serve a parent dir that contains grok-policyd/ as

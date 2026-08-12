@@ -17,7 +17,7 @@ mkdir -p \
 	"$MEMFS/policy/lib" \
 	"$MEMFS/policy/packs.d" \
 	"$MEMFS/pd-state/log" \
-	"$MEMFS/pd-state/policyd" \
+	"$MEMFS/pd-state/phronesis" \
 	"$MEMFS/pd-runtime/agents" \
 	"$MEMFS/ws"
 

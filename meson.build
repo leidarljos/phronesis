@@ -1,10 +1,10 @@
 # SPDX-License-Identifier: MIT
 #
-# grok-policyd: Cap'n language in-process (lib) + cmocka.
-# No nng policyd.sock server. Callers FFI with policy.capnp bodies.
+# phronesis: Cap'n language in-process (lib) + cmocka.
+# Callers FFI with policy.capnp bodies.
 
 project(
-  'grok-policyd',
+  'phronesis',
   'c',
   version: run_command(
     'bash',
@@ -159,8 +159,8 @@ schema_gen = custom_target(
     false,
     false,
     false,
-    get_option('datadir') / 'grok-policyd',
-    get_option('datadir') / 'grok-policyd',
+    get_option('datadir') / 'phronesis',
+    get_option('datadir') / 'phronesis',
   ],
 )
 
@@ -237,10 +237,10 @@ thread_dep = dependency('threads')
 # Product Janet packs (shell-check + audio-check + pure lib/). Installed so
 # seats load law with no GROKOS_POLICYD_JANET_PACK env. Default path is baked
 # into the library as GROKOS_POLICYD_DEFAULT_JANET_PACK.
-policy_pack_install = get_option('datadir') / 'grok-policyd' / 'policy'
+policy_pack_install = get_option('datadir') / 'phronesis' / 'policy'
 install_data(
   'schema/SCHEMA_PIN',
-  install_dir: get_option('datadir') / 'grok-policyd',
+  install_dir: get_option('datadir') / 'phronesis',
 )
 install_data(
   'policy/shell.janet',
@@ -257,8 +257,8 @@ message('Default Janet pack: @0@'.format(default_janet_pack))
 # Default-hidden visibility: only GROK_POLICYD_API symbols leave the .so.
 # Tests link the static archive so they can exercise internal helpers without
 # exporting those helpers to embedders.
-policyd_lib = library(
-  'grok_policyd',
+phronesis_lib = library(
+  'phronesis',
   lib_srcs,
   include_directories: [inc, schema_inc, janet_inc],
   dependencies: [capn_c_dep, capnp_janet_dep, m_dep, dl_dep, thread_dep],
@@ -274,27 +274,27 @@ policyd_lib = library(
 )
 
 install_headers(
-  'include/grok-policyd/supervisor.h',
-  subdir: 'grok-policyd',
+  'include/phronesis/supervisor.h',
+  subdir: 'phronesis',
 )
 
 # Cap'n IDL for embedders: installed from schema_gen staged outputs (above).
 
 pkg.generate(
-  policyd_lib,
-  name: 'grok-policyd',
+  phronesis_lib,
+  name: 'phronesis',
   description: 'In-process policy library (Cap\'n FFI + C ABI)',
-  filebase: 'grok-policyd',
+  filebase: 'phronesis',
   subdirs: '.',
   requires: 'c-capnproto, capnp-janet',
-  variables: ['schemadir=${prefix}/share/grok-policyd'],
+  variables: ['schemadir=${prefix}/share/phronesis'],
 )
 
 cli = executable(
-  'grok-policyd',
-  files('src/grok-policyd.c'),
+  'phronesis',
+  files('src/phronesis.c'),
   include_directories: inc,
-  link_with: policyd_lib,
+  link_with: phronesis_lib,
   dependencies: [capn_c_dep],
   install: true,
 )
@@ -303,7 +303,7 @@ example = executable(
   'example_minimal',
   files('examples/c/minimal.c'),
   include_directories: inc,
-  link_with: policyd_lib,
+  link_with: phronesis_lib,
   dependencies: [capn_c_dep],
   install: false,
 )
@@ -326,7 +326,7 @@ supervisor_test = executable(
   ),
   include_directories: [inc, schema_inc, janet_inc],
   # Static so tests can use a few internal helpers without exporting them on the .so.
-  link_with: [policyd_lib.get_static_lib(), janet_amalg],
+  link_with: [phronesis_lib.get_static_lib(), janet_amalg],
   dependencies: [cmocka_dep, capn_c_dep, capnp_janet_dep, m_dep, dl_dep, thread_dep],
   c_args: ['-Wno-format-truncation', '-DJANET_API='] + mull_c_args,
   install: false,
@@ -351,7 +351,7 @@ test(
   bash,
   args: [meson.project_source_root() / 'scripts/check_shared_link.sh'],
   env: {'POLICYD_BUILD_DIR': meson.project_build_root()},
-  depends: [policyd_lib],
+  depends: [phronesis_lib],
   workdir: meson.project_source_root(),
 )
 
@@ -365,7 +365,7 @@ if get_option('mutation')
       mull_runner,
       '--timeout', '15000',
       '--allow-surviving',
-      '--report-name', 'grok-policyd',
+      '--report-name', 'phronesis',
       '--report-dir', mull_report_dir,
       '--reporters', 'Elements',
       '--reporters', 'IDE',
@@ -381,7 +381,7 @@ if get_option('mutation')
   )
 endif
 
-alias_target('lib', policyd_lib)
+alias_target('lib', phronesis_lib)
 alias_target('cli', cli)
 alias_target('example', example)
 alias_target('tests', supervisor_test)

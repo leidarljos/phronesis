@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: MIT */
-#include "grok-policyd/supervisor.h"
+#include "phronesis/supervisor.h"
 
 const char *grok_policyd_version_string(void)
 {

@@ -44,7 +44,7 @@ static void test_creates_state_tree_and_modes(void **state)
 	assert_int_equal(stat(path, &sb), 0);
 	assert_true(S_ISDIR(sb.st_mode));
 	assert_int_equal(sb.st_mode & 0777, 0700);
-	snprintf(path, sizeof(path), "%s/policyd", st);
+	snprintf(path, sizeof(path), "%s/phronesis", st);
 	assert_int_equal(stat(path, &sb), 0);
 	snprintf(path, sizeof(path), "%s/agents", rt);
 	assert_int_equal(stat(path, &sb), 0);

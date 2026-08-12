@@ -2,10 +2,10 @@ prefix=@PREFIX@
 exec_prefix=${prefix}
 libdir=${prefix}/lib
 includedir=${prefix}/include
-schemadir=${prefix}/share/grok-policyd
+schemadir=${prefix}/share/phronesis
 
-Name: grok-policyd
+Name: phronesis
 Description: In-process policy library (stable C ABI)
 Version: @VERSION@
-Libs: -L${libdir} -lgrok_policyd
+Libs: -L${libdir} -lphronesis
 Cflags: -I${includedir}

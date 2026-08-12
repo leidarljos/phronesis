@@ -1,9 +1,9 @@
-# AGENTS.md — grok-policyd
+# AGENTS.md — phronesis
 
 1. **Cap'n is the language.** Product API is `grok_policyd_handle_capnp` (FFI).
 2. Public Cap'n interface: `schema/policy.capnp` + `schema/util.capnp`. Do not invent parallel DTOs.
 3. Link **c-capnproto** (`libcapnp_c`); wrap is public GitHub if pkg-config is missing.
-4. **Consumers** must **link this library** (`pkg-config grok-policyd` / install). Never re-vendor `src/` into consumer trees.
+4. **Consumers** must **link this library** (`pkg-config phronesis` / install). Never re-vendor `src/` into consumer trees.
 5. cmocka only: one `supervisor_test`; only `tests/test_main.c` has `main`.
 6. Fail closed on policy paths.
 
