@@ -362,19 +362,17 @@ void grok_policyd_check_shell(grok_supervisor_t *sup, const uint8_t *in,
 		return;
 	}
 	/*
-	 * Generated read_ShellCheck uses capn_getp(..., 0): argv may be an
-	 * unresolved far pointer with len==0. Resolve before testing length
-	 * (same idea as c-capnproto's capn_len macro).
+	 * Generated ShellCheck.argv is capn_ptr_list. capn_len resolves a
+	 * far pointer (read_ShellCheck uses capn_getp(..., 0)).
 	 */
-	capn_resolve(&sc.argv);
-	if (sc.argv.type != CAPN_NULL && sc.argv.len > 0) {
+	if (capn_len(sc.argv) > 0) {
 		uint8_t *pack_out = NULL;
 		size_t pack_len = 0;
 
 		PD_TRACE_EVENT(PD_TRACE_LAYER_HOST, PD_TRACE_PHASE_ENTER,
 			       "checkShell/pack", "multi-pack shell-check compose", -1,
 			       NULL, 0);
-		grok_policy_shell_pack(ws, cwd, sc.argv, &pack_out, &pack_len);
+		grok_policy_shell_pack(ws, cwd, sc.argv.p, &pack_out, &pack_len);
 		capn_free(&c);
 		if (pack_out && pack_len) {
 			/* Passthrough pack Cap'n PolicyDecision (reason from pack). */
