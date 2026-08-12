@@ -1,14 +1,35 @@
 # grok-policyd
 
-Policy and multi-agent supervisor (security-critical core) for [GrokOS](https://nova.teachx.ai/trace-analysis/grokos).
+In-process policy library for a multi-agent seat. Callers link `libgrok_policyd`
+and send Cap'n messages into `grok_policyd_handle_capnp` or the typed C
+entry points (`checkShell`, `checkPath`, `checkSeat`, …). Every check returns
+a Cap'n `PolicyDecision` (`deny` / `allow` / `prompt`) plus a `PolicyReason`
+code. Protocol failures deny.
 
 | | |
 |--|--|
-| **Meta** | https://nova.teachx.ai/trace-analysis/grokos |
-| **Issues** | https://nova.teachx.ai/trace-analysis/grokos/-/issues |
 | **Language** | Cap'n interface: `schema/policy.capnp` + `schema/util.capnp` in this tree |
 | **Product API** | `grok_policyd_handle_capnp()` (in-process FFI) |
 | **C helpers** | `include/grok-policyd/supervisor.h` |
+| **License** | MIT (`LICENSE`); third-party notes in `NOTICE` |
+
+## Build (no private remotes)
+
+Needs: `meson` ≥ 1.3, `ninja`, `pkg-config`, `capnp` (compiler), `cmocka`.
+If `c-capnproto` / `capnpc-c` are not installed, Meson fetches
+https://github.com/HaoZeke/c-capnproto. `capnp-janet` is the same via wrap.
+
+```bash
+meson setup build
+meson compile -C build
+meson test -C build --print-errorlogs
+```
+
+Or `just meson-test`. Embedders find the interface at
+`pkg-config --variable=schemadir grok-policyd` after install.
+
+`pixi install --locked` still uses a private conda channel for
+`c-capnproto`. The Meson path above is the standalone door.
 
 ## Cap'n product API (`interface Policyd`)
 

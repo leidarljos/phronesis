@@ -39,11 +39,25 @@ inc = include_directories(
 
 # cmocka for unit tests (CI + Mull). Library itself only needs c-capnproto.
 cmocka_dep = dependency('cmocka', required: true)
-# Cap'n pure-C runtime from the c-capnproto package (libcapnp_c). Do not
-# vendor/static-compile capn-malloc into the TCB — that path bit-rotted.
-capn_c_dep = dependency('c-capnproto', required: true)
+# Cap'n C runtime: system pkg-config, else public wrap (HaoZeke/c-capnproto).
+capn_c_dep = dependency('c-capnproto', required: false)
+capnpc_c = find_program('capnpc-c', required: false)
+if not capn_c_dep.found() or not capnpc_c.found()
+  capn_sp = subproject(
+    'c-capnproto',
+    default_options: ['enable_tests=false', 'fuzz=false'],
+  )
+  if not capn_c_dep.found()
+    capn_c_dep = capn_sp.get_variable('libcapnp_dep')
+  endif
+  if not capnpc_c.found()
+    capnpc_c = capn_sp.get_variable('capnpc_c')
+  endif
+  message('c-capnproto via wrap')
+else
+  message('c-capnproto via pkg-config')
+endif
 capnp = find_program('capnp', required: true)
-capnpc_c = find_program('capnpc-c', required: true)
 gen_capnp = find_program('scripts/gen-capnp-c.sh', required: true)
 
 check_version = find_program('scripts/check-version.sh', required: true)
@@ -273,6 +287,7 @@ pkg.generate(
   filebase: 'grok-policyd',
   subdirs: '.',
   requires: 'c-capnproto, capnp-janet',
+  variables: ['schemadir=${prefix}/share/grok-policyd'],
 )
 
 cli = executable(
