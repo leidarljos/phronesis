@@ -60,7 +60,9 @@ grok_policyd_check_shell(sup, shell_msg, shell_len, &out, &out_len);
 
 Lexical paths: absolute only; reject `//`, `.`, `..`. No `realpath`.
 
-`GROKOS_POLICYD_DENY_ALL` forces deny on the CLI/string eval path and on `checkAudio` (it wins over `GROKOS_POLICYD_AUDIO_ALLOW`). Not all Cap'n methods consult it yet.
+`GROKOS_POLICYD_DENY_ALL` forces deny on every Cap'n method that returns
+`PolicyDecision` (checks, admits, `reloadShellPack`) and on the CLI/string
+eval path. It wins over `GROKOS_POLICYD_AUDIO_ALLOW`.
 
 ## Build / test / coverage (pixi only)
 
@@ -118,7 +120,9 @@ Apache-2.0. See `LICENSE` and `third_party/NOTICE`.
 
 ## Deny-all and audio fixture (tests / lockdown)
 
-Set `GROKOS_POLICYD_DENY_ALL=1` (or `true`/`yes`) to force deny on the CLI/string `policy_check` path and on Cap'n `checkAudio`. Used to prove agent/sessiond fail closed under a hard seat. Unset for normal allowlists.
+Set `GROKOS_POLICYD_DENY_ALL=1` (or `true`/`yes`) to force deny on every Cap'n
+`PolicyDecision` entry (and the CLI/string `policy_check` path). Used to prove
+agent/sessiond fail closed under a hard seat. Unset for normal allowlists.
 
 Set `GROKOS_POLICYD_AUDIO_ALLOW=1` only in CI/dogfood to allow all `AudioAction` on `checkAudio`. Leave unset in production images. `DENY_ALL` still wins when both are set.
 

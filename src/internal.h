@@ -42,6 +42,12 @@ int grok_policy_eval(const char *workspace,
 		     const char *path,
 		     grok_policy_result_t *out);
 
+/** Truthy env for TCB gates: 1 / true / yes (any case of true/yes). */
+int grok_env_truthy(const char *name);
+
+/** Truthy GROKOS_POLICYD_DENY_ALL — hard deny for Cap'n PolicyDecision entries. */
+int grok_policy_deny_all(void);
+
 #include <capnp_c.h>
 
 /** Resolve script path against cwd (workspace-bound callers only). */
