@@ -298,110 +298,99 @@ static void test_check_risk_deny_all(void **state)
 	unsetenv("GROKOS_POLICYD_DENY_ALL");
 }
 
-static capn_text ctext_lit(const char *s)
-{
-	capn_text t;
-
-	t.len = s ? (int)strlen(s) : 0;
-	t.str = s ? s : "";
-	t.seg = NULL;
-	return t;
-}
-
-static void start_hex_agent(grok_supervisor_t *sup, uint64_t hi, uint64_t lo,
-			    const char *ws)
-{
-	char id[GROK_ID_MAX];
-	char *argv[] = { "true", NULL };
-
-	grok_agent_id_to_hex(hi, lo, id);
-	assert_true(id[0] != '\0');
-	assert_int_equal(grok_supervisor_start(sup, id, NULL, ws, argv), GROK_OK);
-}
-
-static void check_risk_action(grok_supervisor_t *sup, enum RiskAction action,
-			      enum Decision want_dec, enum PolicyReason want_code)
-{
-	struct capn c;
-	struct RiskCheck rc;
-	RiskCheck_ptr rp;
-	uint8_t *in = NULL, *out = NULL;
-	size_t in_len = 0, out_len = 0;
-
-	memset(&c, 0, sizeof(c));
-	capn_init_malloc(&c);
-	memset(&rc, 0, sizeof(rc));
-	rc.agentId = mk_agent(capn_root(&c).seg, 11, 12);
-	rc.action = action;
-	rp = new_RiskCheck(capn_root(&c).seg);
-	write_RiskCheck(&rc, rp);
-	assert_int_equal(capn_setp(capn_root(&c), 0, rp.p), 0);
-	assert_int_equal(write_msg(&c, &in, &in_len), 0);
-	capn_free(&c);
-
-	grok_policyd_check_risk(sup, in, in_len, &out, &out_len);
-	free(in);
-	expect_decision_code(out, out_len, want_dec, want_code, 11, 12);
-	free(out);
-}
-
-static void check_path_action(grok_supervisor_t *sup, uint64_t hi, uint64_t lo,
-			      enum PathAction action, const char *path,
-			      enum Decision want_dec, enum PolicyReason want_code)
-{
-	struct capn c;
-	struct PathCheck pc;
-	PathCheck_ptr pp;
-	uint8_t *in = NULL, *out = NULL;
-	size_t in_len = 0, out_len = 0;
-
-	memset(&c, 0, sizeof(c));
-	capn_init_malloc(&c);
-	memset(&pc, 0, sizeof(pc));
-	pc.agentId = mk_agent(capn_root(&c).seg, hi, lo);
-	pc.action = action;
-	pc.path = ctext_lit(path);
-	pp = new_PathCheck(capn_root(&c).seg);
-	write_PathCheck(&pc, pp);
-	assert_int_equal(capn_setp(capn_root(&c), 0, pp.p), 0);
-	assert_int_equal(write_msg(&c, &in, &in_len), 0);
-	capn_free(&c);
-
-	grok_policyd_check_path(sup, in, in_len, &out, &out_len);
-	free(in);
-	expect_decision_code(out, out_len, want_dec, want_code, hi, lo);
-	free(out);
-}
-
-/* Cap'n secretExport must deny (not fall through to high-risk prompt). */
 static void test_check_risk_secret_export_deny(void **state)
 {
 	struct capn_fix *f = *state;
+	struct {
+		enum RiskAction action;
+		enum Decision dec;
+		enum PolicyReason code;
+	} cases[] = {
+		{ RiskAction_secretExport, Decision_deny,
+		  PolicyReason_secretExportDenied },
+		{ RiskAction_network, Decision_prompt,
+		  PolicyReason_highRiskPrompt },
+	};
+	size_t i;
 
 	unsetenv("GROKOS_POLICYD_DENY_ALL");
-	check_risk_action(f->sup, RiskAction_secretExport, Decision_deny,
-			  PolicyReason_secretExportDenied);
-	/* Control: other risk stays prompt so the secretExport arm is isolated. */
-	check_risk_action(f->sup, RiskAction_network, Decision_prompt,
-			  PolicyReason_highRiskPrompt);
+	for (i = 0; i < sizeof(cases) / sizeof(cases[0]); i++) {
+		struct capn c;
+		struct RiskCheck rc;
+		RiskCheck_ptr rp;
+		uint8_t *in = NULL, *out = NULL;
+		size_t in_len = 0, out_len = 0;
+
+		memset(&c, 0, sizeof(c));
+		capn_init_malloc(&c);
+		memset(&rc, 0, sizeof(rc));
+		rc.agentId = mk_agent(capn_root(&c).seg, 11, 12);
+		rc.action = cases[i].action;
+		rp = new_RiskCheck(capn_root(&c).seg);
+		write_RiskCheck(&rc, rp);
+		assert_int_equal(capn_setp(capn_root(&c), 0, rp.p), 0);
+		assert_int_equal(write_msg(&c, &in, &in_len), 0);
+		capn_free(&c);
+
+		grok_policyd_check_risk(f->sup, in, in_len, &out, &out_len);
+		free(in);
+		expect_decision_code(out, out_len, cases[i].dec, cases[i].code,
+				     11, 12);
+		free(out);
+	}
 }
 
-/*
- * PathAction_delete under the workspace must prompt. Mapping it as read would
- * allow. Write stays allow so the delete arm is the one that must match.
- */
 static void test_check_path_write_vs_delete(void **state)
 {
 	struct capn_fix *f = *state;
 	char id[GROK_ID_MAX];
+	char *argv[] = { "true", NULL };
+	const char *path = "/ws/proj/out";
+	struct {
+		enum PathAction action;
+		enum Decision dec;
+		enum PolicyReason code;
+	} cases[] = {
+		{ PathAction_write, Decision_allow,
+		  PolicyReason_pathUnderWorkspaceAllow },
+		{ PathAction_delete, Decision_prompt,
+		  PolicyReason_highRiskPrompt },
+	};
+	size_t i;
 
 	unsetenv("GROKOS_POLICYD_DENY_ALL");
-	start_hex_agent(f->sup, 13, 14, "/ws/proj");
-	check_path_action(f->sup, 13, 14, PathAction_write, "/ws/proj/out",
-			  Decision_allow, PolicyReason_pathUnderWorkspaceAllow);
-	check_path_action(f->sup, 13, 14, PathAction_delete, "/ws/proj/out",
-			  Decision_prompt, PolicyReason_highRiskPrompt);
 	grok_agent_id_to_hex(13, 14, id);
+	assert_int_equal(
+		grok_supervisor_start(f->sup, id, NULL, "/ws/proj", argv),
+		GROK_OK);
+
+	for (i = 0; i < sizeof(cases) / sizeof(cases[0]); i++) {
+		struct capn c;
+		struct PathCheck pc;
+		PathCheck_ptr pp;
+		uint8_t *in = NULL, *out = NULL;
+		size_t in_len = 0, out_len = 0;
+
+		memset(&c, 0, sizeof(c));
+		capn_init_malloc(&c);
+		memset(&pc, 0, sizeof(pc));
+		pc.agentId = mk_agent(capn_root(&c).seg, 13, 14);
+		pc.action = cases[i].action;
+		pc.path.len = (int)strlen(path);
+		pc.path.str = path;
+		pc.path.seg = NULL;
+		pp = new_PathCheck(capn_root(&c).seg);
+		write_PathCheck(&pc, pp);
+		assert_int_equal(capn_setp(capn_root(&c), 0, pp.p), 0);
+		assert_int_equal(write_msg(&c, &in, &in_len), 0);
+		capn_free(&c);
+
+		grok_policyd_check_path(f->sup, in, in_len, &out, &out_len);
+		free(in);
+		expect_decision_code(out, out_len, cases[i].dec, cases[i].code,
+				     13, 14);
+		free(out);
+	}
 	assert_int_equal(grok_supervisor_stop(f->sup, id), GROK_OK);
 }
 

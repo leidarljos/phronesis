@@ -64,59 +64,40 @@ static void test_deny_all_env(void **state)
 	grok_supervisor_close(s);
 }
 
-static void expect_deny_all_spelling(grok_supervisor_t *s, const char *spelling)
-{
-	grok_policy_result_t pr;
-
-	setenv("GROKOS_POLICYD_DENY_ALL", spelling, 1);
-	assert_int_equal(
-		grok_policy_check(s, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "model",
-				  "start", "/bin/true", &pr),
-		GROK_OK);
-	assert_int_equal(pr.decision, GROK_DECISION_DENY);
-	assert_int_equal(pr.code, GROK_REASON_DENY_ALL);
-	unsetenv("GROKOS_POLICYD_DENY_ALL");
-}
-
 static void test_deny_all_truthy_spellings(void **state)
 {
 	grok_supervisor_t *s = NULL;
+	char st[GROK_PATH_MAX], rt[GROK_PATH_MAX];
 	grok_policy_result_t pr;
-	char tmpl_s[] = "/tmp/gpd-denys-XXXXXX";
-	char tmpl_r[] = "/tmp/gpd-denyr-XXXXXX";
-	char *state_dir;
-	char *run_dir;
+	const char *deny_vals[] = { "true", "yes", "TRUE", "YES" };
+	const char *allow_vals[] = { "0", "false" };
+	size_t i;
+
 	(void)state;
-
-	state_dir = mkdtemp(tmpl_s);
-	run_dir = mkdtemp(tmpl_r);
-	assert_non_null(state_dir);
-	assert_non_null(run_dir);
-	assert_int_equal(grok_supervisor_open(&s, state_dir, run_dir), GROK_OK);
-	assert_non_null(s);
-
-	expect_deny_all_spelling(s, "true");
-	expect_deny_all_spelling(s, "yes");
-	expect_deny_all_spelling(s, "TRUE");
-	expect_deny_all_spelling(s, "YES");
-
-	setenv("GROKOS_POLICYD_DENY_ALL", "0", 1);
-	assert_int_equal(
-		grok_policy_check(s, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "model",
-				  "start", "/bin/true", &pr),
-		GROK_OK);
-	assert_int_equal(pr.decision, GROK_DECISION_ALLOW);
-	unsetenv("GROKOS_POLICYD_DENY_ALL");
-
-	setenv("GROKOS_POLICYD_DENY_ALL", "false", 1);
-	assert_int_equal(
-		grok_policy_check(s, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "model",
-				  "start", "/bin/true", &pr),
-		GROK_OK);
-	assert_int_equal(pr.decision, GROK_DECISION_ALLOW);
-	unsetenv("GROKOS_POLICYD_DENY_ALL");
-
+	assert_int_equal(t_open_pair(&s, st, sizeof(st), rt, sizeof(rt), "denyt"),
+			 GROK_OK);
+	for (i = 0; i < sizeof(deny_vals) / sizeof(deny_vals[0]); i++) {
+		setenv("GROKOS_POLICYD_DENY_ALL", deny_vals[i], 1);
+		assert_int_equal(
+			grok_policy_check(s, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+					  "model", "start", "/bin/true", &pr),
+			GROK_OK);
+		assert_int_equal(pr.decision, GROK_DECISION_DENY);
+		assert_int_equal(pr.code, GROK_REASON_DENY_ALL);
+		unsetenv("GROKOS_POLICYD_DENY_ALL");
+	}
+	for (i = 0; i < sizeof(allow_vals) / sizeof(allow_vals[0]); i++) {
+		setenv("GROKOS_POLICYD_DENY_ALL", allow_vals[i], 1);
+		assert_int_equal(
+			grok_policy_check(s, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+					  "model", "start", "/bin/true", &pr),
+			GROK_OK);
+		assert_int_equal(pr.decision, GROK_DECISION_ALLOW);
+		unsetenv("GROKOS_POLICYD_DENY_ALL");
+	}
 	grok_supervisor_close(s);
+	t_rm_rf(st);
+	t_rm_rf(rt);
 }
 
 static void test_seat_board_actions(void **state)
@@ -154,40 +135,36 @@ static void test_seat_board_actions(void **state)
 	t_rm_rf(rt);
 }
 
-static void expect_sensitive_deny(grok_supervisor_t *s, const char *action,
-				  const char *path)
-{
-	grok_policy_result_t pr;
-
-	assert_int_equal(grok_policy_check(s, "agent-a", "fs", action, path, &pr),
-			 GROK_OK);
-	assert_int_equal(pr.decision, GROK_DECISION_DENY);
-	assert_int_equal(pr.code, GROK_REASON_PATH_SENSITIVE_DENY);
-}
-
 static void test_sensitive_path_deny(void **state)
 {
 	grok_supervisor_t *s = NULL;
 	char st[GROK_PATH_MAX], rt[GROK_PATH_MAX];
+	grok_policy_result_t pr;
 	char *argv[] = { "true", NULL };
-	const char *suffixes[] = {
+	const char *paths[] = {
+		"/ws/proj/.env",
 		"/ws/proj/cert.pem",
 		"/ws/proj/id.key",
 		"/ws/proj/store.p12",
 		"/ws/proj/store.pfx",
 	};
-	size_t i;
+	const char *acts[] = { "read", "write" };
+	size_t i, j;
 
 	(void)state;
 	assert_int_equal(t_open_pair(&s, st, sizeof(st), rt, sizeof(rt), "sens"),
 			 GROK_OK);
 	assert_int_equal(grok_supervisor_start(s, "agent-a", NULL, "/ws/proj", argv),
 			 GROK_OK);
-	expect_sensitive_deny(s, "read", "/ws/proj/.env");
-	expect_sensitive_deny(s, "write", "/ws/proj/.env");
-	for (i = 0; i < sizeof(suffixes) / sizeof(suffixes[0]); i++) {
-		expect_sensitive_deny(s, "read", suffixes[i]);
-		expect_sensitive_deny(s, "write", suffixes[i]);
+	for (i = 0; i < sizeof(paths) / sizeof(paths[0]); i++) {
+		for (j = 0; j < sizeof(acts) / sizeof(acts[0]); j++) {
+			assert_int_equal(
+				grok_policy_check(s, "agent-a", "fs", acts[j],
+						  paths[i], &pr),
+				GROK_OK);
+			assert_int_equal(pr.decision, GROK_DECISION_DENY);
+			assert_int_equal(pr.code, GROK_REASON_PATH_SENSITIVE_DENY);
+		}
 	}
 	wait_stopped(s, "agent-a");
 	grok_supervisor_close(s);
