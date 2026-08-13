@@ -32,10 +32,23 @@ git_ci() {
 }
 
 dest="${CI_PROJECT_DIR}/subprojects/grokos-schema"
+# Reuse only if tree exists AND matches wrap revision (stale cache must not win).
+wrap_rev=""
+if [[ -f subprojects/grokos-schema.wrap ]]; then
+  wrap_rev=$(grep -E '^revision' subprojects/grokos-schema.wrap | awk '{print $3}' | tr -d '[:space:]' || true)
+fi
 if [[ -f "${dest}/schema/policy.capnp" && -f "${dest}/meson.build" ]]; then
-  echo "schema SoT already present at ${dest}"
-  git -C "${dest}" rev-parse --short HEAD || true
-  exit 0
+  got="$(git -C "${dest}" rev-parse HEAD 2>/dev/null || true)"
+  want=""
+  if [[ -n "${wrap_rev}" ]]; then
+    want="$(git -C "${dest}" rev-parse "${wrap_rev}^{commit}" 2>/dev/null || echo "${wrap_rev}")"
+  fi
+  if [[ -n "${got}" && -n "${want}" && ( "${got}" == "${want}" || "${got}" == "${wrap_rev}" ) ]]; then
+    echo "schema SoT already present at ${dest} sha=${got} wrap=${wrap_rev}"
+    exit 0
+  fi
+  echo "ci-seed-schema: removing stale SoT at ${dest} (HEAD=${got:-?} wrap=${wrap_rev:-?})"
+  rm -rf "${dest}"
 fi
 : "${CI_JOB_TOKEN:?CI_JOB_TOKEN required}"
 : "${CI_SERVER_HOST:?CI_SERVER_HOST required}"

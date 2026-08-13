@@ -253,6 +253,7 @@ playground:wasm:
         echo "PLAYGROUND_WASM_SKIPPED=1" > playground-wasm.env
         exit 0
       fi
+      bash scripts/ci-seed-schema.sh
       pixi run playground-wasm
       echo "PLAYGROUND_WASM_SKIPPED=0" > playground-wasm.env
   artifacts:
