@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: Apache-2.0
-"""Generate PolicyReason encyclopedia maps from schema/policy.capnp.
+"""Generate PolicyReason encyclopedia maps from policy.capnp.
+
+Prefers seeded wrap (`subprojects/grokos-schema/schema`, `GROKOS_SCHEMA_DIR`)
+over a committed `schema/policy.capnp` (pin-only; meta #142).
 
 Parses the Cap'n enum PolicyReason (authoritative ordinals + names + nearby
 comments) and writes:
@@ -18,12 +21,12 @@ Usage:
 from __future__ import annotations
 
 import json
+import os
 import re
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-SCHEMA = ROOT / "schema" / "policy.capnp"
 ASTRO_LIB = ROOT / "playground" / "astro" / "src" / "lib"
 STUB_DIR = (
     ROOT / "playground" / "astro" / "src" / "data" / "encyclopedia" / "generated"
@@ -32,6 +35,29 @@ STUB_DIR = (
 ENUM_OPEN = re.compile(r"^enum\s+PolicyReason\s*\{")
 FIELD = re.compile(r"^(\w+)\s+@(\d+)\s*;\s*(?:#\s*(.*))?$")
 COMMENT = re.compile(r"^#\s?(.*)$")
+
+
+def resolve_schema() -> Path:
+    """Seeded wrap first (meta #142). Do not require committed schema/*.capnp."""
+    env = Path(os.environ.get("GROKOS_SCHEMA_DIR", "") or "")
+    candidates = []
+    if env.name == "policy.capnp":
+        candidates.append(env)
+    elif str(env):
+        candidates.append(env / "policy.capnp")
+    candidates.extend(
+        [
+            ROOT / "subprojects" / "grokos-schema" / "schema" / "policy.capnp",
+            ROOT / "schema" / "policy.capnp",
+        ]
+    )
+    for path in candidates:
+        if path.is_file():
+            return path
+    raise FileNotFoundError(
+        "missing policy.capnp (seed via scripts/ci-seed-schema.sh "
+        "or set GROKOS_SCHEMA_DIR)"
+    )
 
 
 def parse_policy_reason(text: str) -> list[dict]:
@@ -210,10 +236,12 @@ def write_stubs(entries: list[dict], stub_dir: Path) -> None:
 
 
 def main() -> int:
-    if not SCHEMA.is_file():
-        print(f"error: missing schema {SCHEMA}", file=sys.stderr)
+    try:
+        schema = resolve_schema()
+    except FileNotFoundError as exc:
+        print(f"error: {exc}", file=sys.stderr)
         return 1
-    text = SCHEMA.read_text(encoding="utf-8")
+    text = schema.read_text(encoding="utf-8")
     entries = parse_policy_reason(text)
     if not entries:
         print("error: no PolicyReason entries parsed", file=sys.stderr)

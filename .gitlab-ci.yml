@@ -348,7 +348,7 @@ pages:
       set -euo pipefail
       export DEBIAN_FRONTEND=noninteractive
       apt-get update -qq
-      apt-get install -y -qq --no-install-recommends python3 ca-certificates
+      apt-get install -y -qq --no-install-recommends python3 ca-certificates git
       node -v
       npm -v
       test -f playground/dist-wasm/policyd-playground.js
@@ -356,6 +356,9 @@ pages:
   script:
     - |
       set -euo pipefail
+      # Pin-only tree: seed wrap SoT the same way build:pixi does (meta #142).
+      bash scripts/ci-seed-schema.sh
+      test -f subprojects/grokos-schema/schema/policy.capnp
       # CI_PAGES_URL is the live Pages origin for this project (path or unique domain).
       # Derive PUBLIC_BASE so Astro asset paths match whatever host form the instance uses.
       if [[ -n "${CI_PAGES_URL:-}" ]]; then
@@ -378,6 +381,9 @@ pages:
       - public
   rules:
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      when: manual
+      allow_failure: true
     - if: $CI_PIPELINE_SOURCE == "web"
       when: manual
       allow_failure: true
