@@ -383,6 +383,7 @@ test(
   env: {
     'POLICYD_BUILD_DIR': meson.project_build_root(),
     'POLICYD_SOURCE_ROOT': meson.project_source_root(),
+    'GROKOS_POLICYD_PACK_ROOT': meson.project_source_root() / 'policy',
   },
 )
 
@@ -419,6 +420,7 @@ if get_option('mutation')
       'POLICYD_BUILD_DIR': meson.project_build_root(),
       # Shell pack tests resolve policy/shell.janet via POLICYD_SOURCE_ROOT.
       'POLICYD_SOURCE_ROOT': meson.project_source_root(),
+      'GROKOS_POLICYD_PACK_ROOT': meson.project_source_root() / 'policy',
     },
   )
 endif

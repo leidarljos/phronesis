@@ -10,6 +10,8 @@
  * files and/or directories of top-level *.janet files. Each pack loads into
  * its own sealed env. checkShell / checkAudio run every pack that defines
  * the entry and compose fail-closed (deny > prompt > allow).
+ * Cap'n reload only accepts segments under the install policy directory or
+ * GROKOS_POLICYD_PACK_ROOT.
  */
 #include "policy_janet.h"
 #include "internal.h"
@@ -237,6 +239,70 @@ static int path_has_dotdot(const char *path)
 	return 0;
 }
 
+/* Lexical prefix: path == root or path is root + "/...". Both absolute. */
+static int path_under_root(const char *root, const char *path)
+{
+	size_t rl;
+
+	if (!root || root[0] != '/' || !path || path[0] != '/')
+		return 0;
+	rl = strlen(root);
+	while (rl > 1 && root[rl - 1] == '/')
+		rl--;
+	if (strncmp(path, root, rl) != 0)
+		return 0;
+	return path[rl] == '\0' || path[rl] == '/';
+}
+
+static int default_pack_dir(char *out, size_t n)
+{
+	const char *p = GROKOS_POLICYD_DEFAULT_JANET_PACK;
+	const char *slash = strrchr(p, '/');
+	size_t len;
+
+	if (!out || n == 0 || !slash || slash == p)
+		return -1;
+	len = (size_t)(slash - p);
+	if (len + 1 > n)
+		return -1;
+	memcpy(out, p, len);
+	out[len] = '\0';
+	return 0;
+}
+
+/*
+ * Reload (Cap'n / mailbox / tool) only loads packs under an install policy
+ * directory or GROKOS_POLICYD_PACK_ROOT. Workspace and /tmp are not roots.
+ * The segment must be a regular file or directory (lstat; no symlink).
+ */
+static int pack_reload_path_allowed(const char *path)
+{
+	struct stat st;
+	char defdir[PACK_PATH_MAX];
+	const char *env_root;
+
+	if (!path || path[0] != '/' || path_has_dotdot(path))
+		return 0;
+	if (lstat(path, &st) != 0)
+		return 0;
+	if (S_ISLNK(st.st_mode))
+		return 0;
+	if (!S_ISREG(st.st_mode) && !S_ISDIR(st.st_mode))
+		return 0;
+	if (default_pack_dir(defdir, sizeof(defdir)) == 0 &&
+	    path_under_root(defdir, path))
+		return 1;
+	if (path_under_root("/usr/local/share/grok-policyd/policy", path))
+		return 1;
+	if (path_under_root("/usr/share/grok-policyd/policy", path))
+		return 1;
+	env_root = getenv("GROKOS_POLICYD_PACK_ROOT");
+	if (env_root && env_root[0] == '/' && !path_has_dotdot(env_root) &&
+	    path_under_root(env_root, path))
+		return 1;
+	return 0;
+}
+
 static int path_is_absolute_file(const char *path)
 {
 	struct stat st;
@@ -401,6 +467,8 @@ static int parse_pack_spec(const char *spec, char out[][PACK_PATH_MAX],
 		if (!tok[0])
 			continue;
 		if (require_absolute && tok[0] != '/')
+			return -1;
+		if (require_absolute && !pack_reload_path_allowed(tok))
 			return -1;
 		if (path_is_dir(tok) ||
 		    (require_absolute && path_is_absolute_dir(tok))) {

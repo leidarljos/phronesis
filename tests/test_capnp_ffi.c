@@ -42,6 +42,12 @@ static int capn_setup(void **state)
 	snprintf(pack, sizeof(pack), "%s/policy/shell.janet", src);
 	setenv("GROKOS_POLICYD_DEV_PACK", "1", 1);
 	setenv("GROKOS_POLICYD_JANET_PACK", pack, 1);
+	{
+		char root[POLICYD_PATH_MAX];
+
+		snprintf(root, sizeof(root), "%s/policy", src);
+		setenv("GROKOS_POLICYD_PACK_ROOT", root, 1);
+	}
 	assert_int_equal(policyd_policy_shell_pack_reload(pack), POLICYD_OK);
 	*state = f;
 	return 0;

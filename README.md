@@ -64,6 +64,11 @@ Lexical paths: absolute only; reject `//`, `.`, `..`. No `realpath`.
 `PolicyDecision` (checks, admits, `reloadShellPack`) and on the CLI/string
 eval path. It wins over `GROKOS_POLICYD_AUDIO_ALLOW`.
 
+`reloadShellPack` loads packs from the install policy directory
+(`/usr/local/share/grok-policyd/policy`, `/usr/share/grok-policyd/policy`,
+or the compile-time default pack's directory) or from
+`GROKOS_POLICYD_PACK_ROOT`. Each path must be a regular file or directory.
+
 ## Build / test / coverage (pixi only)
 
 ```bash
