@@ -143,12 +143,27 @@ static void test_sensitive_path_deny(void **state)
 	char *argv[] = { "true", NULL };
 	const char *paths[] = {
 		"/ws/proj/.env",
+		"/ws/proj/.env.local",
+		"/ws/proj/.netrc",
+		"/ws/proj/.npmrc",
+		"/ws/proj/.pypirc",
+		"/home/u/.ssh/id_rsa",
+		"/home/u/.ssh/id_ed25519",
+		"/home/u/.ssh/id_ecdsa",
+		"/home/u/.ssh/id_dsa",
+		"/ws/proj/credentials",
+		"/ws/proj/credentials.json",
+		"/ws/proj/service-account.json",
+		"/ws/proj/token",
+		"/ws/proj/secrets.yaml",
+		"/ws/proj/secrets.yml",
+		"/ws/proj/secrets.json",
 		"/ws/proj/cert.pem",
 		"/ws/proj/id.key",
 		"/ws/proj/store.p12",
 		"/ws/proj/store.pfx",
 	};
-	const char *acts[] = { "read", "write" };
+	const char *fs_acts[] = { "read", "write", "delete" };
 	size_t i, j;
 
 	(void)state;
@@ -157,14 +172,20 @@ static void test_sensitive_path_deny(void **state)
 	assert_int_equal(grok_supervisor_start(s, "agent-a", NULL, "/ws/proj", argv),
 			 GROK_OK);
 	for (i = 0; i < sizeof(paths) / sizeof(paths[0]); i++) {
-		for (j = 0; j < sizeof(acts) / sizeof(acts[0]); j++) {
+		for (j = 0; j < sizeof(fs_acts) / sizeof(fs_acts[0]); j++) {
 			assert_int_equal(
-				grok_policy_check(s, "agent-a", "fs", acts[j],
+				grok_policy_check(s, "agent-a", "fs", fs_acts[j],
 						  paths[i], &pr),
 				GROK_OK);
 			assert_int_equal(pr.decision, GROK_DECISION_DENY);
 			assert_int_equal(pr.code, GROK_REASON_PATH_SENSITIVE_DENY);
 		}
+		assert_int_equal(
+			grok_policy_check(s, "agent-a", "shell", "exec",
+					  paths[i], &pr),
+			GROK_OK);
+		assert_int_equal(pr.decision, GROK_DECISION_DENY);
+		assert_int_equal(pr.code, GROK_REASON_PATH_SENSITIVE_DENY);
 	}
 	wait_stopped(s, "agent-a");
 	grok_supervisor_close(s);
