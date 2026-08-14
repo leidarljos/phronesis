@@ -220,6 +220,7 @@ mutation:mull:
     - export PKG_CONFIG_PATH="${PIXI_ENV}/lib/pkgconfig${PKG_CONFIG_PATH:+:${PKG_CONFIG_PATH}}"
     - export LD_LIBRARY_PATH="${PIXI_ENV}/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
     - export CC=/usr/bin/clang-19
+    - bash scripts/ci-seed-schema.sh
     - rm -rf build-mull
     - meson setup build-mull -Dmutation=true -Dbuildtype=debug
     - meson compile -C build-mull mutation
