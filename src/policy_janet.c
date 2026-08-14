@@ -790,11 +790,13 @@ static int build_shell_view(const char *workspace, const char *cwd,
 	if (argv.type != CAPN_NULL && argv.len > 0) {
 		n = argv.len;
 		if (n > 256)
-			n = 256;
+			return -2;
 		for (i = 0; i < n; i++) {
 			capn_text t = capn_get_text(argv, i, empty);
 
-			if (t.len > 0 && t.str && (size_t)t.len < GROK_PATH_MAX) {
+			if ((size_t)t.len >= GROK_PATH_MAX)
+				return -2;
+			if (t.len > 0 && t.str) {
 				memcpy(argv_store[argv_n], t.str, (size_t)t.len);
 				argv_store[argv_n][t.len] = '\0';
 			} else {
@@ -1066,11 +1068,21 @@ void grok_policy_shell_pack(const char *workspace, const char *cwd,
 		return;
 	}
 
-	if (build_shell_view(workspace, cwd, argv, &view_flat, &view_len) != 0 ||
-	    !view_flat) {
-		(void)build_policy_decision_code(
-			0, GROK_REASON_SHELL_VIEW_BUILD_FAILED, out, out_len);
-		return;
+	{
+		int view_rc = build_shell_view(workspace, cwd, argv, &view_flat,
+					       &view_len);
+
+		if (view_rc == -2) {
+			(void)build_policy_decision_code(
+				0, GROK_REASON_FIELD_TOO_LONG, out, out_len);
+			return;
+		}
+		if (view_rc != 0 || !view_flat) {
+			(void)build_policy_decision_code(
+				0, GROK_REASON_SHELL_VIEW_BUILD_FAILED, out,
+				out_len);
+			return;
+		}
 	}
 
 	compose_pack_entry("shell-check", 1, view_flat, view_len, out, out_len);
