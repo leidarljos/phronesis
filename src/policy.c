@@ -222,16 +222,17 @@ int grok_policy_eval(const char *workspace, const char *tool,
 				       GROK_REASON_SECRET_EXPORT_DENIED);
 		return GROK_OK;
 	}
+	if (path && path[0] && path_is_sensitive(path) &&
+	    (strcmp(action, "read") == 0 || strcmp(action, "write") == 0 ||
+	     strcmp(action, "delete") == 0 || strcmp(action, "exec") == 0)) {
+		grok_policy_result_set(out, GROK_DECISION_DENY,
+				       GROK_REASON_PATH_SENSITIVE_DENY);
+		return GROK_OK;
+	}
 	if (strcmp(action, "delete") == 0 || strcmp(action, "network") == 0 ||
 	    strcmp(action, "sudo") == 0) {
 		grok_policy_result_set(out, GROK_DECISION_PROMPT,
 				       GROK_REASON_HIGH_RISK_PROMPT);
-		return GROK_OK;
-	}
-	if ((strcmp(action, "read") == 0 || strcmp(action, "write") == 0) &&
-	    path && path[0] && path_is_sensitive(path)) {
-		grok_policy_result_set(out, GROK_DECISION_DENY,
-				       GROK_REASON_PATH_SENSITIVE_DENY);
 		return GROK_OK;
 	}
 	if ((strcmp(action, "read") == 0 || strcmp(action, "write") == 0) &&
