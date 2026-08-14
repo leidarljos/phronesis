@@ -40,6 +40,7 @@ static int capn_setup(void **state)
 	if (!src || !src[0])
 		src = ".";
 	snprintf(pack, sizeof(pack), "%s/policy/shell.janet", src);
+	setenv("GROKOS_POLICYD_DEV_PACK", "1", 1);
 	setenv("GROKOS_POLICYD_JANET_PACK", pack, 1);
 	assert_int_equal(grok_policy_shell_pack_reload(pack), GROK_OK);
 	*state = f;
@@ -51,6 +52,7 @@ static int capn_teardown(void **state)
 	struct capn_fix *f = *state;
 
 	unsetenv("GROKOS_POLICYD_JANET_PACK");
+	unsetenv("GROKOS_POLICYD_DEV_PACK");
 	if (f) {
 		if (f->sup)
 			grok_supervisor_close(f->sup);

@@ -26,6 +26,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <sys/stat.h>
 
 #define SHELL_HEAD_MAX 8192
@@ -67,11 +68,73 @@ static int pack_spec_set;
 #endif
 
 static int path_is_file(const char *path);
+static int path_is_absolute_file(const char *path);
+
+static int env_flag_on(const char *name)
+{
+	const char *e = getenv(name);
+
+	if (!e || !e[0])
+		return 0;
+	return strcasecmp(e, "1") == 0 || strcasecmp(e, "true") == 0 ||
+	       strcasecmp(e, "yes") == 0;
+}
+
+static int path_under_prefix(const char *path, const char *prefix)
+{
+	size_t n;
+
+	if (!path || !prefix || path[0] != '/' || !prefix[0])
+		return 0;
+	n = strlen(prefix);
+	while (n > 0 && prefix[n - 1] == '/')
+		n--;
+	if (strncmp(path, prefix, n) != 0)
+		return 0;
+	return path[n] == '\0' || path[n] == '/';
+}
+
+static int pack_env_allowed(const char *path)
+{
+	static char prefix_root[PACK_PATH_MAX];
+	const char *prefix;
+	const char *def;
+	const char *slash;
+	char dir[PACK_PATH_MAX];
+	size_t n;
+
+	if (!path_is_absolute_file(path))
+		return 0;
+	if (env_flag_on("GROKOS_POLICYD_DEV_PACK"))
+		return 1;
+	if (path_under_prefix(path, "/usr/local/share/grok-policyd") ||
+	    path_under_prefix(path, "/usr/share/grok-policyd"))
+		return 1;
+	prefix = getenv("GROKOS_PREFIX");
+	if (prefix && prefix[0] &&
+	    snprintf(prefix_root, sizeof(prefix_root), "%s/share/grok-policyd",
+		     prefix) < (int)sizeof(prefix_root) &&
+	    path_under_prefix(path, prefix_root))
+		return 1;
+	def = GROKOS_POLICYD_DEFAULT_JANET_PACK;
+	slash = def ? strrchr(def, '/') : NULL;
+	if (slash && slash > def) {
+		n = (size_t)(slash - def);
+		if (n < sizeof(dir)) {
+			memcpy(dir, def, n);
+			dir[n] = '\0';
+			if (path_under_prefix(path, dir))
+				return 1;
+		}
+	}
+	return 0;
+}
 
 /**
  * First existing pack path among product defaults.
- * Order: env GROKOS_POLICYD_JANET_PACK → compile-time install path →
- * GROKOS_PREFIX/share/... → common FHS paths → CWD-relative dev path.
+ * Env override must be an absolute file under an allowlisted prefix
+ * (or GROKOS_POLICYD_DEV_PACK=1). CWD-relative policy/shell.janet is
+ * only a candidate when that dev flag is set.
  */
 static const char *default_pack_spec(void)
 {
@@ -86,7 +149,7 @@ static const char *default_pack_spec(void)
 	{
 		const char *e = getenv("GROKOS_POLICYD_JANET_PACK");
 
-		if (e && e[0])
+		if (e && e[0] && pack_env_allowed(e))
 			return e;
 	}
 
@@ -99,7 +162,8 @@ static const char *default_pack_spec(void)
 		cands[n++] = prefix_buf;
 	cands[n++] = "/usr/local/share/grok-policyd/policy/shell.janet";
 	cands[n++] = "/usr/share/grok-policyd/policy/shell.janet";
-	cands[n++] = "policy/shell.janet"; /* monorepo / meson test workdir */
+	if (env_flag_on("GROKOS_POLICYD_DEV_PACK"))
+		cands[n++] = "policy/shell.janet";
 
 	for (i = 0; i < n; i++) {
 		if (cands[i] && cands[i][0] && path_is_file(cands[i]))
@@ -120,6 +184,16 @@ static void seal_pack_env(JanetTable *env)
  * Drop loaded pack state so the next load re-reads disk.
  * Prior Janet envs are abandoned for GC (reload is rare; no janet_deinit).
  */
+static void unload_packs(void);
+
+void grok_policy_pack_reset(void)
+{
+	unload_packs();
+	pack_failed = 0;
+	pack_spec_set = 0;
+	pack_spec_buf[0] = '\0';
+}
+
 static void unload_packs(void)
 {
 	int i;
@@ -635,7 +709,7 @@ static int load_pack_once(void)
 	if (pack_loaded)
 		return 0;
 	spec = default_pack_spec();
-	/* Env/default may be relative; do not require absolute. */
+	/* Relative only when GROKOS_POLICYD_DEV_PACK selected the cwd candidate. */
 	return load_packs_from_spec(spec, 0) == 0 ? 0 : -1;
 }
 

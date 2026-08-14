@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 #include "harness.h"
+#include "internal.h"
 #include "policy.capnp.h"
 #include "util.capnp.h"
 
@@ -142,6 +143,7 @@ static int shell_setup(void **state)
 	if (!src || !src[0])
 		src = ".";
 	snprintf(pack, sizeof(pack), "%s/policy/shell.janet", src);
+	setenv("GROKOS_POLICYD_DEV_PACK", "1", 1);
 	setenv("GROKOS_POLICYD_JANET_PACK", pack, 1);
 
 	*state = f;
@@ -153,6 +155,7 @@ static int shell_teardown(void **state)
 	struct shell_fix *f = *state;
 
 	unsetenv("GROKOS_POLICYD_JANET_PACK");
+	unsetenv("GROKOS_POLICYD_DEV_PACK");
 	if (f) {
 		if (f->sup)
 			grok_supervisor_close(f->sup);
@@ -317,6 +320,56 @@ uint8_t *in = NULL, *out = NULL;
 	assert_int_equal(dec, Decision_deny);
 	assert_int_equal(code, PolicyReason_shellSecretInArgv);
 	free(out);
+}
+
+static void test_cwd_pack_not_loaded(void **state)
+{
+	struct shell_fix *f = *state;
+	char pdir[GROK_PATH_MAX], pack[GROK_PATH_MAX], oldcwd[GROK_PATH_MAX];
+	char srcpack[GROK_PATH_MAX];
+	char *argv[] = { "python3", "x.py", NULL };
+	uint8_t *in = NULL, *out = NULL;
+	size_t in_len = 0, out_len = 0;
+	enum Decision dec;
+	enum PolicyReason code;
+	const char *src = getenv("POLICYD_SOURCE_ROOT");
+
+	if (!src || !src[0])
+		src = ".";
+	snprintf(srcpack, sizeof(srcpack), "%s/policy/shell.janet", src);
+	snprintf(pdir, sizeof(pdir), "%s/policy", f->rt);
+	assert_int_equal(mkdir(pdir, 0700), 0);
+	snprintf(pack, sizeof(pack), "%s/shell.janet", pdir);
+	{
+		FILE *fp = fopen(pack, "w");
+
+		assert_non_null(fp);
+		fputs("(defn shell-check [buf]\n"
+		      "  (capnp/build-message 1 2\n"
+		      "    @[[:u16 0 1] [:u16 2 20] [:text 0 \"cwd pack\"]]))\n",
+		      fp);
+		fclose(fp);
+	}
+
+	assert_non_null(getcwd(oldcwd, sizeof(oldcwd)));
+	assert_int_equal(chdir(f->rt), 0);
+	unsetenv("GROKOS_POLICYD_JANET_PACK");
+	unsetenv("GROKOS_POLICYD_DEV_PACK");
+	grok_policy_pack_reset();
+
+	build_shell_check(f->ws, argv, 2, &in, &in_len);
+	grok_policyd_check_shell(f->sup, in, in_len, &out, &out_len);
+	free(in);
+	read_decision(out, out_len, &dec, &code, NULL, 0);
+	free(out);
+	assert_int_equal(chdir(oldcwd), 0);
+
+	assert_int_equal(dec, Decision_deny);
+	assert_int_not_equal(code, PolicyReason_shellExecAllow);
+
+	setenv("GROKOS_POLICYD_DEV_PACK", "1", 1);
+	setenv("GROKOS_POLICYD_JANET_PACK", srcpack, 1);
+	assert_int_equal(grok_policy_shell_pack_reload(srcpack), GROK_OK);
 }
 
 static void test_reload_shell_pack_hot_load(void **state)
@@ -500,6 +553,8 @@ int run_shell_pack_tests(void)
 		cmocka_unit_test_setup_teardown(test_python_dash_c_deny,
 						shell_setup, shell_teardown),
 		cmocka_unit_test_setup_teardown(test_glpat_in_argv_deny,
+						shell_setup, shell_teardown),
+		cmocka_unit_test_setup_teardown(test_cwd_pack_not_loaded,
 						shell_setup, shell_teardown),
 		cmocka_unit_test_setup_teardown(test_reload_shell_pack_hot_load,
 						shell_setup, shell_teardown),
