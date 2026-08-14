@@ -709,6 +709,19 @@ static void test_reload_pack_root_allows_swap(void **state)
 	assert_int_equal(code, PolicyReason_shellExecAllow);
 }
 
+static void test_reload_rejects_pack_root_slash(void **state)
+{
+	const char *src = getenv("POLICYD_SOURCE_ROOT");
+	char pack_a[GROK_PATH_MAX];
+
+	(void)state;
+	if (!src || !src[0])
+		src = ".";
+	snprintf(pack_a, sizeof(pack_a), "%s/policy/shell.janet", src);
+	setenv("GROKOS_POLICYD_PACK_ROOT", "/", 1);
+	assert_int_equal(grok_policy_shell_pack_reload(pack_a), GROK_ERR_INVAL);
+}
+
 static void test_reload_rejects_symlink(void **state)
 {
 	struct shell_fix *f = *state;
@@ -759,6 +772,8 @@ int run_shell_pack_tests(void)
 		cmocka_unit_test_setup_teardown(test_reload_pack_root_allows_swap,
 						shell_setup, shell_teardown),
 		cmocka_unit_test_setup_teardown(test_reload_rejects_symlink,
+						shell_setup, shell_teardown),
+		cmocka_unit_test_setup_teardown(test_reload_rejects_pack_root_slash,
 						shell_setup, shell_teardown),
 	};
 	return cmocka_run_group_tests_name("shell_pack", tests, NULL, NULL);

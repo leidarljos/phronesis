@@ -243,6 +243,7 @@ endif
 
 lib_srcs = files(
   'src/paths.c',
+  'src/beneath.c',
   'src/action_log.c',
   'src/cgroup.c',
   'src/policy.c',
