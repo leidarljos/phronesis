@@ -484,6 +484,54 @@ static void test_multi_pack_dir(void **state)
 	assert_int_equal(code, 25);
 }
 
+static void test_overlong_argv_denies(void **state)
+{
+	struct shell_fix *f = *state;
+	char longarg[601];
+	char *argv[3];
+	uint8_t *in = NULL, *out = NULL;
+	size_t in_len = 0, out_len = 0;
+	enum Decision dec;
+	enum PolicyReason code;
+
+	memset(longarg, 'A', 600);
+	longarg[600] = '\0';
+	argv[0] = "true";
+	argv[1] = longarg;
+	argv[2] = NULL;
+	build_shell_check(f->ws, argv, 2, &in, &in_len);
+	grok_policyd_check_shell(f->sup, in, in_len, &out, &out_len);
+	free(in);
+	read_decision(out, out_len, &dec, &code, NULL, 0);
+	free(out);
+	assert_int_equal(dec, Decision_deny);
+	assert_int_equal(code, PolicyReason_fieldTooLong);
+}
+
+static void test_overcount_argv_denies(void **state)
+{
+	struct shell_fix *f = *state;
+	char *argv[258];
+	char tok[] = "x";
+	int i;
+	uint8_t *in = NULL, *out = NULL;
+	size_t in_len = 0, out_len = 0;
+	enum Decision dec;
+	enum PolicyReason code;
+
+	argv[0] = "true";
+	for (i = 1; i < 257; i++)
+		argv[i] = tok;
+	argv[257] = NULL;
+	build_shell_check(f->ws, argv, 257, &in, &in_len);
+	grok_policyd_check_shell(f->sup, in, in_len, &out, &out_len);
+	free(in);
+	read_decision(out, out_len, &dec, &code, NULL, 0);
+	free(out);
+	assert_int_equal(dec, Decision_deny);
+	assert_int_equal(code, PolicyReason_fieldTooLong);
+}
+
 int run_shell_pack_tests(void)
 {
 	const struct CMUnitTest tests[] = {
@@ -500,6 +548,10 @@ int run_shell_pack_tests(void)
 		cmocka_unit_test_setup_teardown(test_python_dash_c_deny,
 						shell_setup, shell_teardown),
 		cmocka_unit_test_setup_teardown(test_glpat_in_argv_deny,
+						shell_setup, shell_teardown),
+		cmocka_unit_test_setup_teardown(test_overlong_argv_denies,
+						shell_setup, shell_teardown),
+		cmocka_unit_test_setup_teardown(test_overcount_argv_denies,
 						shell_setup, shell_teardown),
 		cmocka_unit_test_setup_teardown(test_reload_shell_pack_hot_load,
 						shell_setup, shell_teardown),
