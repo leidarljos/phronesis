@@ -98,6 +98,8 @@ variables:
   - subprojects/grokos-schema.wrap
 
 build:pixi:
+  tags:
+    - grokos-heavy
   stage: build
   image: debian:bookworm-slim
   interruptible: true
@@ -118,6 +120,8 @@ build:pixi:
 
 # Full static lib for package registry. MR: symbol dry-run. main: upload.
 publish:lib:
+  tags:
+    - grokos-heavy
   stage: build
   image: debian:bookworm-slim
   interruptible: false
@@ -139,6 +143,8 @@ publish:lib:
 
 # Meson -Db_coverage + gcovr. No percentage gate.
 coverage:pixi:
+  tags:
+    - grokos-heavy
   stage: build
   image: debian:bookworm-slim
   interruptible: true
@@ -170,6 +176,8 @@ coverage:pixi:
 # Mull on policy/Cap'n. Soft on survivors via mull-runner --allow-surviving
 # (Meson run_target); job fails only on install/build/tool errors.
 mutation:mull:
+  tags:
+    - grokos-heavy
   stage: build
   # Mull Cloudsmith packages are Ubuntu-only (not Debian bookworm).
   image: ubuntu:24.04
@@ -238,6 +246,8 @@ mutation:mull:
     - if: $CI_PIPELINE_SOURCE == "schedule"
 
 playground:wasm:
+  tags:
+    - grokos-heavy
   stage: build
   image: debian:bookworm-slim
   interruptible: true
@@ -273,6 +283,8 @@ playground:wasm:
       allow_failure: true
 
 playground:parity:
+  tags:
+    - grokos-heavy
   stage: build
   image: debian:bookworm-slim
   interruptible: true
@@ -304,6 +316,8 @@ playground:parity:
 
 # Biome + TypeScript for playground Astro/TS/JS (no emcc, no WASM).
 playground:check:
+  tags:
+    - grokos-heavy
   stage: build
   image: node:22-bookworm-slim
   interruptible: true
@@ -322,6 +336,8 @@ playground:check:
 # Always deploy on default branch (do not gate on rules:changes — merge-commit
 # path filters skipped the first publish after !30 despite playground landing).
 pages:
+  tags:
+    - grokos-heavy
   stage: deploy
   # Astro 5 needs Node >=20.3; debian bookworm apt node is 18.x and dies mid-build.
   image: node:20-bookworm-slim
