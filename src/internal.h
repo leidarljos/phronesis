@@ -13,6 +13,9 @@ int grok_paths_resolve(char *state_dir, size_t state_len,
 		       const char *runtime_override);
 int grok_paths_ensure_dir(const char *path, int mode);
 
+/** Drop loaded Janet packs so the next check re-reads default_pack_spec(). */
+void grok_policy_pack_reset(void);
+
 int grok_action_log_append(const char *path,
 			   const char *agent_id,
 			   const char *kind,
