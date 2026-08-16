@@ -67,4 +67,13 @@ int grok_policy_require_running_agent(grok_supervisor_t *sup,
 int grok_policy_resolve_script(const char *cwd, const char *script, char *out,
 			       size_t out_n);
 
+/**
+ * Build Cap'n ShellView bytes (malloc *flat_out).
+ * Returns 0 on success, -2 if argc > 256 or an arg is >= GROK_PATH_MAX,
+ * -1 on other failure. Callers free *flat_out.
+ */
+int grok_policy_build_shell_view(const char *workspace, const char *cwd,
+				 capn_ptr argv, uint8_t **flat_out,
+				 size_t *flat_len);
+
 #endif

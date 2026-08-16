@@ -5,6 +5,7 @@
 #include "util.capnp.h"
 
 #include <capnp_c.h>
+#include <pthread.h>
 #include <setjmp.h>
 #include <stdarg.h>
 #include <stddef.h>
@@ -585,6 +586,66 @@ static void test_overcount_argv_denies(void **state)
 	assert_int_equal(code, PolicyReason_fieldTooLong);
 }
 
+#define SHELL_VIEW_STACK (128 * 1024)
+
+struct view_stack_job {
+	const char *ws;
+	const char *cwd;
+	capn_ptr argv;
+	uint8_t *flat;
+	size_t flat_len;
+	int rc;
+};
+
+static void *view_stack_thread(void *arg)
+{
+	struct view_stack_job *j = arg;
+
+	j->rc = grok_policy_build_shell_view(j->ws, j->cwd, j->argv, &j->flat,
+					     &j->flat_len);
+	return NULL;
+}
+
+static void test_shell_view_256_args_fits_128k_stack(void **state)
+{
+	struct shell_fix *f = *state;
+	char tok[] = "true";
+	char *argv[256];
+	int i;
+	struct capn c;
+	capn_ptr list;
+	pthread_attr_t attr;
+	pthread_t th;
+	struct view_stack_job job;
+
+	for (i = 0; i < 256; i++)
+		argv[i] = tok;
+
+	memset(&c, 0, sizeof(c));
+	capn_init_malloc(&c);
+	list = capn_new_ptr_list(capn_root(&c).seg, 256);
+	for (i = 0; i < 256; i++)
+		capn_set_text(list, i, ctext(argv[i]));
+
+	memset(&job, 0, sizeof(job));
+	job.ws = f->ws;
+	job.cwd = f->ws;
+	job.argv = list;
+	job.rc = -99;
+
+	assert_int_equal(pthread_attr_init(&attr), 0);
+	assert_int_equal(pthread_attr_setstacksize(&attr, SHELL_VIEW_STACK), 0);
+	assert_int_equal(pthread_create(&th, &attr, view_stack_thread, &job), 0);
+	assert_int_equal(pthread_join(th, NULL), 0);
+	pthread_attr_destroy(&attr);
+
+	assert_int_equal(job.rc, 0);
+	assert_non_null(job.flat);
+	assert_true(job.flat_len > 0);
+	free(job.flat);
+	capn_free(&c);
+}
+
 int run_shell_pack_tests(void)
 {
 	const struct CMUnitTest tests[] = {
@@ -608,6 +669,9 @@ int run_shell_pack_tests(void)
 						shell_setup, shell_teardown),
 		cmocka_unit_test_setup_teardown(test_overcount_argv_denies,
 						shell_setup, shell_teardown),
+		cmocka_unit_test_setup_teardown(
+			test_shell_view_256_args_fits_128k_stack, shell_setup,
+			shell_teardown),
 		cmocka_unit_test_setup_teardown(test_reload_shell_pack_hot_load,
 						shell_setup, shell_teardown),
 		cmocka_unit_test_setup_teardown(test_multi_pack_compose_deny,
