@@ -29,6 +29,8 @@
 #include <sys/stat.h>
 
 #define SHELL_HEAD_MAX 8192
+#define SHELL_ARGV_MAX 256
+#define SHELL_PROBE_MAX 32
 #define PACK_PATH_MAX 4096
 #define PACK_FILE_MAX (512 * 1024)
 #define PACK_LIB_MAX_FILES 32
@@ -758,30 +760,36 @@ static int build_policy_decision_code(uint16_t decision, uint16_t code,
 	return 0;
 }
 
-static int build_shell_view(const char *workspace, const char *cwd,
-			    capn_ptr argv, uint8_t **flat_out, size_t *flat_len)
+struct shell_path_probe {
+	char arg[PHRONESIS_PATH_MAX];
+	char resolved[PHRONESIS_PATH_MAX];
+	int exists;
+	char head[SHELL_HEAD_MAX];
+};
+
+int phronesis_build_shell_view(const char *workspace, const char *cwd,
+			       capn_ptr argv, uint8_t **flat_out,
+			       size_t *flat_len)
 {
 	struct capn c;
 	struct ShellView view;
 	ShellView_ptr root;
 	int under;
 	int n, i, pcount = 0;
+	int probe_cap = 0;
+	int rc = -1;
+	int capn_live = 0;
 	capn_text empty = { 0, "", NULL };
 	char abs[PHRONESIS_PATH_MAX];
-	struct {
-		char arg[PHRONESIS_PATH_MAX];
-		char resolved[PHRONESIS_PATH_MAX];
-		int exists;
-		char head[SHELL_HEAD_MAX];
-	} probes[32];
-	char argv_store[256][PHRONESIS_PATH_MAX];
+	/* Heap: musl default thread stacks are 128 KB. */
+	struct shell_path_probe *probes = NULL;
+	char (*argv_store)[PHRONESIS_PATH_MAX] = NULL;
 	int argv_n = 0;
 
 	if (!flat_out || !flat_len)
 		return -1;
 	*flat_out = NULL;
 	*flat_len = 0;
-	memset(probes, 0, sizeof(probes));
 
 	under = cwd && cwd[0] && path_under_workspace(workspace, cwd);
 
@@ -789,22 +797,36 @@ static int build_shell_view(const char *workspace, const char *cwd,
 	capn_resolve(&argv);
 	if (argv.type != CAPN_NULL && argv.len > 0) {
 		n = argv.len;
-		if (n > 256)
-			n = 256;
+		if (n > SHELL_ARGV_MAX) {
+			rc = -2;
+			goto out;
+		}
+		argv_store = calloc((size_t)n, sizeof(*argv_store));
+		if (!argv_store)
+			goto out;
 		for (i = 0; i < n; i++) {
 			capn_text t = capn_get_text(argv, i, empty);
 
-			if (t.len > 0 && t.str && (size_t)t.len < PHRONESIS_PATH_MAX) {
-				memcpy(argv_store[argv_n], t.str, (size_t)t.len);
-				argv_store[argv_n][t.len] = '\0';
-			} else {
-				argv_store[argv_n][0] = '\0';
+			if ((size_t)t.len >= PHRONESIS_PATH_MAX) {
+				rc = -2;
+				goto out;
+			}
+			if (t.len > 0 && t.str) {
+				memcpy(argv_store[i], t.str, (size_t)t.len);
+				argv_store[i][t.len] = '\0';
 			}
 			argv_n++;
 		}
 	}
 
-	for (i = 0; i < argv_n && pcount < 32; i++) {
+	if (argv_n > 0) {
+		probe_cap = argv_n < SHELL_PROBE_MAX ? argv_n : SHELL_PROBE_MAX;
+		probes = calloc((size_t)probe_cap, sizeof(*probes));
+		if (!probes)
+			goto out;
+	}
+
+	for (i = 0; i < argv_n && pcount < probe_cap; i++) {
 		const char *tok = argv_store[i];
 		FILE *f;
 		size_t nr;
@@ -835,6 +857,7 @@ static int build_shell_view(const char *workspace, const char *cwd,
 
 	memset(&c, 0, sizeof(c));
 	capn_init_malloc(&c);
+	capn_live = 1;
 	memset(&view, 0, sizeof(view));
 	view.underWorkspace = under ? 1 : 0;
 	view.cwd = ctext(cwd ? cwd : "");
@@ -857,16 +880,17 @@ static int build_shell_view(const char *workspace, const char *cwd,
 
 	root = new_ShellView(capn_root(&c).seg);
 	write_ShellView(&view, root);
-	if (capn_setp(capn_root(&c), 0, root.p) != 0) {
+	if (capn_setp(capn_root(&c), 0, root.p) != 0)
+		goto out;
+	if (write_flat(&c, flat_out, flat_len) != 0)
+		goto out;
+	rc = 0;
+out:
+	if (capn_live)
 		capn_free(&c);
-		return -1;
-	}
-	if (write_flat(&c, flat_out, flat_len) != 0) {
-		capn_free(&c);
-		return -1;
-	}
-	capn_free(&c);
-	return 0;
+	free(probes);
+	free(argv_store);
+	return rc;
 }
 
 /**
@@ -1066,11 +1090,21 @@ void phronesis_shell_pack(const char *workspace, const char *cwd,
 		return;
 	}
 
-	if (build_shell_view(workspace, cwd, argv, &view_flat, &view_len) != 0 ||
-	    !view_flat) {
-		(void)build_policy_decision_code(
-			0, PHRONESIS_REASON_SHELL_VIEW_BUILD_FAILED, out, out_len);
-		return;
+	{
+		int view_rc = phronesis_build_shell_view(
+			workspace, cwd, argv, &view_flat, &view_len);
+
+		if (view_rc == -2) {
+			(void)build_policy_decision_code(
+				0, PHRONESIS_REASON_FIELD_TOO_LONG, out, out_len);
+			return;
+		}
+		if (view_rc != 0 || !view_flat) {
+			(void)build_policy_decision_code(
+				0, PHRONESIS_REASON_SHELL_VIEW_BUILD_FAILED, out,
+				out_len);
+			return;
+		}
 	}
 
 	compose_pack_entry("shell-check", 1, view_flat, view_len, out, out_len);
