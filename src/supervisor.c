@@ -477,6 +477,21 @@ int grok_policy_check(grok_supervisor_t *s,
 
 	if (!s || !out)
 		return GROK_ERR_INVAL;
+	if (!grok_policy_deny_all() && tool &&
+	    (strcmp(tool, "seat") == 0 || strcmp(tool, "model") == 0)) {
+		grok_policy_reason_t id_code;
+
+		if (grok_policy_require_running_agent(s, agent_id, &id_code) != 0) {
+			grok_policy_result_set(out, GROK_DECISION_DENY, id_code);
+			snprintf(detail, sizeof(detail),
+				 "tool=%s action=%s decision=%d",
+				 tool ? tool : "", action ? action : "",
+				 (int)out->decision);
+			(void)grok_action_log_append(s->action_log, agent_id,
+						     "policy", detail);
+			return GROK_OK;
+		}
+	}
 	if (agent_id && agent_id[0]) {
 		if (!valid_id(agent_id))
 			return GROK_ERR_INVAL;

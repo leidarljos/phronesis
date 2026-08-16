@@ -368,6 +368,8 @@ GROK_POLICYD_API int grok_supervisor_log_last(const grok_supervisor_t *s,
  * Tools default deny. High-risk actions → prompt. Path ops under the agent's
  * workspace root may allow (lexical allowlist: absolute paths only; rejects
  * `..` components; not realpath — symlink escape still open).
+ * Seat and model tools require @a agent_id to name a running supervisor slot
+ * (unset / unknown / non-running → deny).
  *
  * @param s         Open supervisor (used for agent workspace lookup).
  * @param agent_id  Agent whose workspace roots the check.

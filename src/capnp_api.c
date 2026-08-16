@@ -163,6 +163,28 @@ static int deny_if_all(struct AgentId agent, uint8_t **out, size_t *out_len)
 	return 1;
 }
 
+/**
+ * Deny unless AgentId is set and names a running supervisor slot.
+ * @return 1 if a deny decision was already written.
+ */
+static int deny_if_unbound(grok_supervisor_t *sup, struct AgentId agent,
+			   uint8_t **out, size_t *out_len)
+{
+	char hex[GROK_ID_MAX];
+	grok_policy_reason_t code;
+
+	if (agent.hi == 0 && agent.lo == 0) {
+		deny_msg(agent, GROK_REASON_INVALID_MESSAGE, out, out_len);
+		return 1;
+	}
+	grok_agent_id_to_hex(agent.hi, agent.lo, hex);
+	if (grok_policy_require_running_agent(sup, hex, &code) != 0) {
+		deny_msg(agent, code, out, out_len);
+		return 1;
+	}
+	return 0;
+}
+
 static int open_in(const uint8_t *in, size_t in_len, struct capn *c)
 {
 	if (!in || in_len == 0 || in_len > GROK_POLICY_CAPNP_MAX_BODY)
@@ -208,7 +230,6 @@ void grok_policyd_check_seat(grok_supervisor_t *sup, const uint8_t *in,
 	grok_policy_result_t pr;
 	SeatCheck_ptr root;
 
-	(void)sup;
 	memset(&agent, 0, sizeof(agent));
 	PD_TRACE_EVENT(PD_TRACE_LAYER_HOST, PD_TRACE_PHASE_ENTER, "checkSeat",
 		       "grok_policyd_check_seat", -1, NULL, 0);
@@ -223,6 +244,10 @@ void grok_policyd_check_seat(grok_supervisor_t *sup, const uint8_t *in,
 	read_SeatCheck(&sc, root);
 	read_agent(sc.agentId, &agent);
 	if (deny_if_all(agent, out, out_len)) {
+		capn_free(&c);
+		return;
+	}
+	if (deny_if_unbound(sup, agent, out, out_len)) {
 		capn_free(&c);
 		return;
 	}
@@ -252,7 +277,6 @@ void grok_policyd_check_model(grok_supervisor_t *sup, const uint8_t *in,
 	grok_policy_result_t pr;
 	ModelCheck_ptr root;
 
-	(void)sup;
 	memset(&agent, 0, sizeof(agent));
 	if (open_in(in, in_len, &c) != 0) {
 		deny_msg(agent, GROK_REASON_INVALID_MESSAGE, out, out_len);
@@ -262,6 +286,10 @@ void grok_policyd_check_model(grok_supervisor_t *sup, const uint8_t *in,
 	read_ModelCheck(&mc, root);
 	read_agent(mc.agentId, &agent);
 	if (deny_if_all(agent, out, out_len)) {
+		capn_free(&c);
+		return;
+	}
+	if (deny_if_unbound(sup, agent, out, out_len)) {
 		capn_free(&c);
 		return;
 	}
