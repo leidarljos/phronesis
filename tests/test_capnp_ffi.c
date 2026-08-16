@@ -96,18 +96,46 @@ static AgentId_ptr mk_agent(struct capn_segment *seg, uint64_t hi, uint64_t lo)
 	return p;
 }
 
-static void expect_decision(const uint8_t *msg, size_t len, enum Decision want)
+static void start_hex_agent(grok_supervisor_t *sup, uint64_t hi, uint64_t lo)
+{
+	char hex[GROK_ID_MAX];
+	char *argv[] = { "sleep", "30", NULL };
+
+	grok_agent_id_to_hex(hi, lo, hex);
+	assert_true(hex[0] != '\0');
+	assert_int_equal(grok_supervisor_start(sup, hex, NULL, "/ws/proj", argv),
+			 GROK_OK);
+}
+
+static void stop_hex_agent(grok_supervisor_t *sup, uint64_t hi, uint64_t lo)
+{
+	char hex[GROK_ID_MAX];
+
+	grok_agent_id_to_hex(hi, lo, hex);
+	assert_int_equal(grok_supervisor_stop(sup, hex), GROK_OK);
+}
+
+static void expect_decision_code(const uint8_t *msg, size_t len,
+				 enum Decision want_dec, enum PolicyReason want_code,
+				 uint64_t want_hi, uint64_t want_lo)
 {
 	struct capn c;
 	PolicyDecision_ptr root;
 	struct PolicyDecision d;
+	struct AgentId agent;
 
 	assert_non_null(msg);
 	memset(&c, 0, sizeof(c));
 	assert_int_equal(capn_init_mem(&c, msg, len, 0), 0);
 	root.p = capn_getp(capn_root(&c), 0, 1);
 	read_PolicyDecision(&d, root);
-	assert_int_equal(d.decision, want);
+	assert_int_equal(d.decision, want_dec);
+	assert_int_equal(d.code, want_code);
+	memset(&agent, 0, sizeof(agent));
+	if (d.agentId.p.type != CAPN_NULL)
+		read_AgentId(&agent, d.agentId);
+	assert_int_equal((int)agent.hi, (int)want_hi);
+	assert_int_equal((int)agent.lo, (int)want_lo);
 	capn_free(&c);
 }
 
@@ -140,6 +168,8 @@ static void test_check_seat_allow(void **state)
 	uint8_t *in = NULL, *out = NULL;
 	size_t in_len = 0, out_len = 0;
 
+	start_hex_agent(f->sup, 1, 2);
+
 	memset(&c, 0, sizeof(c));
 	capn_init_malloc(&c);
 	memset(&sc, 0, sizeof(sc));
@@ -153,8 +183,10 @@ static void test_check_seat_allow(void **state)
 
 	grok_policyd_check_seat(f->sup, in, in_len, &out, &out_len);
 	free(in);
-	expect_decision(out, out_len, Decision_allow);
+	expect_decision_code(out, out_len, Decision_allow,
+			     PolicyReason_seatBoardAllow, 1, 2);
 	free(out);
+	stop_hex_agent(f->sup, 1, 2);
 }
 
 static void test_admit_model_allow(void **state)
@@ -165,6 +197,8 @@ static void test_admit_model_allow(void **state)
 	AdmitModel_ptr ap;
 	uint8_t *in = NULL, *out = NULL;
 	size_t in_len = 0, out_len = 0;
+
+	start_hex_agent(f->sup, 3, 4);
 
 	memset(&c, 0, sizeof(c));
 	capn_init_malloc(&c);
@@ -181,32 +215,153 @@ static void test_admit_model_allow(void **state)
 
 	grok_policyd_admit_model(f->sup, in, in_len, &out, &out_len);
 	free(in);
-	expect_decision(out, out_len, Decision_allow);
+	expect_decision_code(out, out_len, Decision_allow,
+			     PolicyReason_modelStartAllow, 3, 4);
+	free(out);
+	stop_hex_agent(f->sup, 3, 4);
+}
+
+static void test_check_seat_null_id_deny(void **state)
+{
+	struct capn_fix *f = *state;
+	struct capn c;
+	struct SeatCheck sc;
+	SeatCheck_ptr sp;
+	uint8_t *in = NULL, *out = NULL;
+	size_t in_len = 0, out_len = 0;
+
+	memset(&c, 0, sizeof(c));
+	capn_init_malloc(&c);
+	memset(&sc, 0, sizeof(sc));
+	sc.action = SeatAction_publishRun;
+	sp = new_SeatCheck(capn_root(&c).seg);
+	write_SeatCheck(&sc, sp);
+	assert_int_equal(capn_setp(capn_root(&c), 0, sp.p), 0);
+	assert_int_equal(write_msg(&c, &in, &in_len), 0);
+	capn_free(&c);
+
+	grok_policyd_check_seat(f->sup, in, in_len, &out, &out_len);
+	free(in);
+	expect_decision_code(out, out_len, Decision_deny,
+			     PolicyReason_invalidMessage, 0, 0);
 	free(out);
 }
 
-static void expect_decision_code(const uint8_t *msg, size_t len,
-				 enum Decision want_dec, enum PolicyReason want_code,
-				 uint64_t want_hi, uint64_t want_lo)
+static void test_check_model_null_id_deny(void **state)
 {
+	struct capn_fix *f = *state;
 	struct capn c;
-	PolicyDecision_ptr root;
-	struct PolicyDecision d;
-	struct AgentId agent;
+	struct ModelCheck mc;
+	ModelCheck_ptr mp;
+	uint8_t *in = NULL, *out = NULL;
+	size_t in_len = 0, out_len = 0;
 
-	assert_non_null(msg);
 	memset(&c, 0, sizeof(c));
-	assert_int_equal(capn_init_mem(&c, msg, len, 0), 0);
-	root.p = capn_getp(capn_root(&c), 0, 1);
-	read_PolicyDecision(&d, root);
-	assert_int_equal(d.decision, want_dec);
-	assert_int_equal(d.code, want_code);
-	memset(&agent, 0, sizeof(agent));
-	if (d.agentId.p.type != CAPN_NULL)
-		read_AgentId(&agent, d.agentId);
-	assert_int_equal((int)agent.hi, (int)want_hi);
-	assert_int_equal((int)agent.lo, (int)want_lo);
+	capn_init_malloc(&c);
+	memset(&mc, 0, sizeof(mc));
+	mc.model.len = 0;
+	mc.model.str = "";
+	mc.model.seg = NULL;
+	mp = new_ModelCheck(capn_root(&c).seg);
+	write_ModelCheck(&mc, mp);
+	assert_int_equal(capn_setp(capn_root(&c), 0, mp.p), 0);
+	assert_int_equal(write_msg(&c, &in, &in_len), 0);
 	capn_free(&c);
+
+	grok_policyd_check_model(f->sup, in, in_len, &out, &out_len);
+	free(in);
+	expect_decision_code(out, out_len, Decision_deny,
+			     PolicyReason_invalidMessage, 0, 0);
+	free(out);
+}
+
+static void test_check_seat_unknown_id_deny(void **state)
+{
+	struct capn_fix *f = *state;
+	struct capn c;
+	struct SeatCheck sc;
+	SeatCheck_ptr sp;
+	uint8_t *in = NULL, *out = NULL;
+	size_t in_len = 0, out_len = 0;
+
+	memset(&c, 0, sizeof(c));
+	capn_init_malloc(&c);
+	memset(&sc, 0, sizeof(sc));
+	sc.agentId = mk_agent(capn_root(&c).seg, 1, 2);
+	sc.action = SeatAction_publishRun;
+	sp = new_SeatCheck(capn_root(&c).seg);
+	write_SeatCheck(&sc, sp);
+	assert_int_equal(capn_setp(capn_root(&c), 0, sp.p), 0);
+	assert_int_equal(write_msg(&c, &in, &in_len), 0);
+	capn_free(&c);
+
+	grok_policyd_check_seat(f->sup, in, in_len, &out, &out_len);
+	free(in);
+	expect_decision_code(out, out_len, Decision_deny,
+			     PolicyReason_toolsDefaultDeny, 1, 2);
+	free(out);
+}
+
+static void test_check_model_allow(void **state)
+{
+	struct capn_fix *f = *state;
+	struct capn c;
+	struct ModelCheck mc;
+	ModelCheck_ptr mp;
+	uint8_t *in = NULL, *out = NULL;
+	size_t in_len = 0, out_len = 0;
+
+	start_hex_agent(f->sup, 5, 6);
+
+	memset(&c, 0, sizeof(c));
+	capn_init_malloc(&c);
+	memset(&mc, 0, sizeof(mc));
+	mc.agentId = mk_agent(capn_root(&c).seg, 5, 6);
+	mc.model.len = 0;
+	mc.model.str = "";
+	mc.model.seg = NULL;
+	mp = new_ModelCheck(capn_root(&c).seg);
+	write_ModelCheck(&mc, mp);
+	assert_int_equal(capn_setp(capn_root(&c), 0, mp.p), 0);
+	assert_int_equal(write_msg(&c, &in, &in_len), 0);
+	capn_free(&c);
+
+	grok_policyd_check_model(f->sup, in, in_len, &out, &out_len);
+	free(in);
+	expect_decision_code(out, out_len, Decision_allow,
+			     PolicyReason_modelStartAllow, 5, 6);
+	free(out);
+	stop_hex_agent(f->sup, 5, 6);
+}
+
+static void test_check_seat_stopped_id_deny(void **state)
+{
+	struct capn_fix *f = *state;
+	struct capn c;
+	struct SeatCheck sc;
+	SeatCheck_ptr sp;
+	uint8_t *in = NULL, *out = NULL;
+	size_t in_len = 0, out_len = 0;
+
+	start_hex_agent(f->sup, 7, 8);
+	stop_hex_agent(f->sup, 7, 8);
+
+	memset(&c, 0, sizeof(c));
+	capn_init_malloc(&c);
+	memset(&sc, 0, sizeof(sc));
+	sc.agentId = mk_agent(capn_root(&c).seg, 7, 8);
+	sc.action = SeatAction_listRuns;
+	sp = new_SeatCheck(capn_root(&c).seg);
+	write_SeatCheck(&sc, sp);
+	assert_int_equal(capn_setp(capn_root(&c), 0, sp.p), 0);
+	assert_int_equal(write_msg(&c, &in, &in_len), 0);
+	capn_free(&c);
+
+	grok_policyd_check_seat(f->sup, in, in_len, &out, &out_len);
+	free(in);
+	expect_decision_code(out, out_len, Decision_deny,
+			     PolicyReason_toolsDefaultDeny, 7, 8);
+	free(out);
 }
 
 /* DENY_ALL must cover Cap'n PolicyDecision entries that skipped policy_eval. */
@@ -513,6 +668,16 @@ int run_capnp_ffi_tests(void)
 		cmocka_unit_test_setup_teardown(test_check_seat_allow,
 						capn_setup, capn_teardown),
 		cmocka_unit_test_setup_teardown(test_admit_model_allow,
+						capn_setup, capn_teardown),
+		cmocka_unit_test_setup_teardown(test_check_seat_null_id_deny,
+						capn_setup, capn_teardown),
+		cmocka_unit_test_setup_teardown(test_check_model_null_id_deny,
+						capn_setup, capn_teardown),
+		cmocka_unit_test_setup_teardown(test_check_seat_unknown_id_deny,
+						capn_setup, capn_teardown),
+		cmocka_unit_test_setup_teardown(test_check_model_allow,
+						capn_setup, capn_teardown),
+		cmocka_unit_test_setup_teardown(test_check_seat_stopped_id_deny,
 						capn_setup, capn_teardown),
 		cmocka_unit_test_setup_teardown(test_check_seat_deny_all,
 						capn_setup, capn_teardown),

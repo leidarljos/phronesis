@@ -51,6 +51,16 @@ int grok_env_truthy(const char *name);
 /** Truthy GROKOS_POLICYD_DENY_ALL — hard deny for Cap'n PolicyDecision entries. */
 int grok_policy_deny_all(void);
 
+/**
+ * Admit identity: @a agent_id must name a running supervisor slot.
+ * Unset / empty id → INVALID_MESSAGE. Missing supervisor, unknown slot, or
+ * non-running slot → TOOLS_DEFAULT_DENY. Writes the deny code into @a code.
+ * @return 0 if the slot is running, -1 if the caller must deny.
+ */
+int grok_policy_require_running_agent(grok_supervisor_t *sup,
+				      const char *agent_id,
+				      grok_policy_reason_t *code);
+
 #include <capnp_c.h>
 
 /** Resolve script path against cwd (workspace-bound callers only). */

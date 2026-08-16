@@ -33,12 +33,18 @@ static void test_deny_all_env(void **state)
 	char *run_dir;
 	(void)state;
 
+	char *argv[] = { "sleep", "30", NULL };
+
 	state_dir = mkdtemp(tmpl_s);
 	run_dir = mkdtemp(tmpl_r);
 	assert_non_null(state_dir);
 	assert_non_null(run_dir);
 	assert_int_equal(grok_supervisor_open(&s, state_dir, run_dir), GROK_OK);
 	assert_non_null(s);
+	assert_int_equal(grok_supervisor_start(s,
+					       "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+					       NULL, "/ws", argv),
+			 GROK_OK);
 
 	setenv("GROKOS_POLICYD_DENY_ALL", "1", 1);
 	assert_int_equal(
@@ -61,6 +67,9 @@ static void test_deny_all_env(void **state)
 		GROK_OK);
 	assert_int_equal(pr.decision, GROK_DECISION_ALLOW);
 
+	assert_int_equal(grok_supervisor_stop(s,
+					      "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
+			 GROK_OK);
 	grok_supervisor_close(s);
 }
 
@@ -73,8 +82,14 @@ static void test_deny_all_truthy_spellings(void **state)
 	const char *allow_vals[] = { "0", "false" };
 	size_t i;
 
+	char *argv[] = { "sleep", "30", NULL };
+
 	(void)state;
 	assert_int_equal(t_open_pair(&s, st, sizeof(st), rt, sizeof(rt), "denyt"),
+			 GROK_OK);
+	assert_int_equal(grok_supervisor_start(s,
+					       "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+					       NULL, "/ws", argv),
 			 GROK_OK);
 	for (i = 0; i < sizeof(deny_vals) / sizeof(deny_vals[0]); i++) {
 		setenv("GROKOS_POLICYD_DENY_ALL", deny_vals[i], 1);
@@ -95,6 +110,9 @@ static void test_deny_all_truthy_spellings(void **state)
 		assert_int_equal(pr.decision, GROK_DECISION_ALLOW);
 		unsetenv("GROKOS_POLICYD_DENY_ALL");
 	}
+	assert_int_equal(grok_supervisor_stop(s,
+					      "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
+			 GROK_OK);
 	grok_supervisor_close(s);
 	t_rm_rf(st);
 	t_rm_rf(rt);
@@ -111,10 +129,13 @@ static void test_seat_board_actions(void **state)
 		"list_runs",
 		"list_events",
 	};
+	char *argv[] = { "sleep", "30", NULL };
 	size_t i;
 
 	(void)state;
 	assert_int_equal(t_open_pair(&s, st, sizeof(st), rt, sizeof(rt), "seat"),
+			 GROK_OK);
+	assert_int_equal(grok_supervisor_start(s, "agent-a", NULL, "/ws", argv),
 			 GROK_OK);
 	for (i = 0; i < sizeof(actions) / sizeof(actions[0]); i++) {
 		assert_int_equal(
@@ -130,6 +151,55 @@ static void test_seat_board_actions(void **state)
 		GROK_OK);
 	assert_int_equal(pr.decision, GROK_DECISION_DENY);
 	assert_int_equal(pr.code, GROK_REASON_UNKNOWN_SEAT_ACTION);
+	assert_int_equal(grok_supervisor_stop(s, "agent-a"), GROK_OK);
+	grok_supervisor_close(s);
+	t_rm_rf(st);
+	t_rm_rf(rt);
+}
+
+static void test_seat_model_identity_deny(void **state)
+{
+	grok_supervisor_t *s = NULL;
+	char st[GROK_PATH_MAX], rt[GROK_PATH_MAX];
+	grok_policy_result_t pr;
+	char *argv[] = { "sleep", "30", NULL };
+
+	(void)state;
+	assert_int_equal(t_open_pair(&s, st, sizeof(st), rt, sizeof(rt), "idny"),
+			 GROK_OK);
+
+	assert_int_equal(grok_policy_check(s, NULL, "seat", "publish_run", NULL,
+					   &pr),
+			 GROK_OK);
+	assert_int_equal(pr.decision, GROK_DECISION_DENY);
+	assert_int_equal(pr.code, GROK_REASON_INVALID_MESSAGE);
+
+	assert_int_equal(grok_policy_check(s, "", "model", "start", NULL, &pr),
+			 GROK_OK);
+	assert_int_equal(pr.decision, GROK_DECISION_DENY);
+	assert_int_equal(pr.code, GROK_REASON_INVALID_MESSAGE);
+
+	assert_int_equal(grok_policy_check(s, "missing-slot", "seat",
+					   "publish_run", NULL, &pr),
+			 GROK_OK);
+	assert_int_equal(pr.decision, GROK_DECISION_DENY);
+	assert_int_equal(pr.code, GROK_REASON_TOOLS_DEFAULT_DENY);
+
+	assert_int_equal(grok_supervisor_start(s, "agent-a", NULL, "/ws", argv),
+			 GROK_OK);
+	assert_int_equal(grok_policy_check(s, "agent-a", "model", "start", NULL,
+					   &pr),
+			 GROK_OK);
+	assert_int_equal(pr.decision, GROK_DECISION_ALLOW);
+	assert_int_equal(pr.code, GROK_REASON_MODEL_START_ALLOW);
+
+	assert_int_equal(grok_supervisor_stop(s, "agent-a"), GROK_OK);
+	assert_int_equal(grok_policy_check(s, "agent-a", "seat", "list_runs",
+					   NULL, &pr),
+			 GROK_OK);
+	assert_int_equal(pr.decision, GROK_DECISION_DENY);
+	assert_int_equal(pr.code, GROK_REASON_TOOLS_DEFAULT_DENY);
+
 	grok_supervisor_close(s);
 	t_rm_rf(st);
 	t_rm_rf(rt);
@@ -377,6 +447,7 @@ int run_policy_tests(void)
 		cmocka_unit_test(test_deny_all_env),
 		cmocka_unit_test(test_deny_all_truthy_spellings),
 		cmocka_unit_test(test_seat_board_actions),
+		cmocka_unit_test(test_seat_model_identity_deny),
 		cmocka_unit_test(test_sensitive_path_deny),
 		cmocka_unit_test(test_tools_default_deny),
 		cmocka_unit_test(test_shell_exec_workspace_allow),

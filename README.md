@@ -51,8 +51,8 @@ grok_policyd_check_shell(sup, shell_msg, shell_len, &out, &out_len);
 
 | Method | allow when | deny / prompt |
 |--------|------------|---------------|
-| checkSeat | publishRun / readRun / listRuns / listEvents | unknown action → deny |
-| checkModel | always (admit plane) | — |
+| checkSeat | publishRun / readRun / listRuns / listEvents **and** a running supervisor slot | unknown action, unset AgentId, unknown or non-running id → deny |
+| checkModel | running supervisor slot (admit plane) | unset AgentId, unknown or non-running id → deny |
 | checkPath | read/write under workspace | outside → deny; delete → prompt |
 | checkShell | cwd under workspace; content pack: python via uv+PEP723; deny sudo/curl\|sh/banned PMs/dangerous git | bare python / missing PEP 723 / danger runners → deny |
 | checkRisk | — | secretExport → deny; other risk → prompt |

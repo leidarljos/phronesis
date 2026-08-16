@@ -171,6 +171,29 @@ int grok_policy_deny_all(void)
 	return grok_env_truthy("GROKOS_POLICYD_DENY_ALL");
 }
 
+int grok_policy_require_running_agent(grok_supervisor_t *sup,
+				      const char *agent_id,
+				      grok_policy_reason_t *code)
+{
+	grok_agent_status_t st;
+
+	if (!code)
+		return -1;
+	if (!agent_id || !agent_id[0]) {
+		*code = GROK_REASON_INVALID_MESSAGE;
+		return -1;
+	}
+	if (!sup || grok_supervisor_status(sup, agent_id, &st) != GROK_OK) {
+		*code = GROK_REASON_TOOLS_DEFAULT_DENY;
+		return -1;
+	}
+	if (st.state != GROK_AGENT_RUNNING) {
+		*code = GROK_REASON_TOOLS_DEFAULT_DENY;
+		return -1;
+	}
+	return 0;
+}
+
 int grok_policy_eval(const char *workspace, const char *tool,
 		     const char *action, const char *path,
 		     grok_policy_result_t *out)
@@ -199,6 +222,7 @@ int grok_policy_eval(const char *workspace, const char *tool,
 	}
 
 	if (strcmp(tool, "seat") == 0) {
+		/* Action table only; callers require a running supervisor slot. */
 		if (strcmp(action, "publish_run") == 0 ||
 		    strcmp(action, "read_run") == 0 ||
 		    strcmp(action, "list_runs") == 0 ||
@@ -212,6 +236,7 @@ int grok_policy_eval(const char *workspace, const char *tool,
 		return GROK_OK;
 	}
 	if (strcmp(tool, "model") == 0 && strcmp(action, "start") == 0) {
+		/* Action table only; callers require a running supervisor slot. */
 		grok_policy_result_set(out, GROK_DECISION_ALLOW,
 				       GROK_REASON_MODEL_START_ALLOW);
 		return GROK_OK;
