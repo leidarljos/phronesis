@@ -1,9 +1,11 @@
 /* SPDX-License-Identifier: MIT */
 #include "harness.h"
+#include "internal.h"
 #include "policy.capnp.h"
 #include "util.capnp.h"
 
 #include <capnp_c.h>
+#include <pthread.h>
 #include <setjmp.h>
 #include <stdarg.h>
 #include <stddef.h>
@@ -484,6 +486,114 @@ static void test_multi_pack_dir(void **state)
 	assert_int_equal(code, 25);
 }
 
+static void test_overlong_argv_denies(void **state)
+{
+	struct shell_fix *f = *state;
+	char longarg[601];
+	char *argv[3];
+	uint8_t *in = NULL, *out = NULL;
+	size_t in_len = 0, out_len = 0;
+	enum Decision dec;
+	enum PolicyReason code;
+
+	memset(longarg, 'A', 600);
+	longarg[600] = '\0';
+	argv[0] = "true";
+	argv[1] = longarg;
+	argv[2] = NULL;
+	build_shell_check(f->ws, argv, 2, &in, &in_len);
+	phronesis_check_shell(f->sup, in, in_len, &out, &out_len);
+	free(in);
+	read_decision(out, out_len, &dec, &code, NULL, 0);
+	free(out);
+	assert_int_equal(dec, Decision_deny);
+	assert_int_equal(code, PolicyReason_fieldTooLong);
+}
+
+static void test_overcount_argv_denies(void **state)
+{
+	struct shell_fix *f = *state;
+	char *argv[258];
+	char tok[] = "x";
+	int i;
+	uint8_t *in = NULL, *out = NULL;
+	size_t in_len = 0, out_len = 0;
+	enum Decision dec;
+	enum PolicyReason code;
+
+	argv[0] = "true";
+	for (i = 1; i < 257; i++)
+		argv[i] = tok;
+	argv[257] = NULL;
+	build_shell_check(f->ws, argv, 257, &in, &in_len);
+	phronesis_check_shell(f->sup, in, in_len, &out, &out_len);
+	free(in);
+	read_decision(out, out_len, &dec, &code, NULL, 0);
+	free(out);
+	assert_int_equal(dec, Decision_deny);
+	assert_int_equal(code, PolicyReason_fieldTooLong);
+}
+
+#define SHELL_VIEW_STACK (128 * 1024)
+
+struct view_stack_job {
+	const char *ws;
+	const char *cwd;
+	capn_ptr argv;
+	uint8_t *flat;
+	size_t flat_len;
+	int rc;
+};
+
+static void *view_stack_thread(void *arg)
+{
+	struct view_stack_job *j = arg;
+
+	j->rc = phronesis_build_shell_view(j->ws, j->cwd, j->argv, &j->flat,
+					   &j->flat_len);
+	return NULL;
+}
+
+static void test_shell_view_256_args_fits_128k_stack(void **state)
+{
+	struct shell_fix *f = *state;
+	char tok[] = "true";
+	char *argv[256];
+	int i;
+	struct capn c;
+	capn_ptr list;
+	pthread_attr_t attr;
+	pthread_t th;
+	struct view_stack_job job;
+
+	for (i = 0; i < 256; i++)
+		argv[i] = tok;
+
+	memset(&c, 0, sizeof(c));
+	capn_init_malloc(&c);
+	list = capn_new_ptr_list(capn_root(&c).seg, 256);
+	for (i = 0; i < 256; i++)
+		capn_set_text(list, i, ctext(argv[i]));
+
+	memset(&job, 0, sizeof(job));
+	job.ws = f->ws;
+	job.cwd = f->ws;
+	job.argv = list;
+	job.rc = -99;
+
+	assert_int_equal(pthread_attr_init(&attr), 0);
+	assert_int_equal(pthread_attr_setstacksize(&attr, SHELL_VIEW_STACK), 0);
+	assert_int_equal(pthread_create(&th, &attr, view_stack_thread, &job), 0);
+	assert_int_equal(pthread_join(th, NULL), 0);
+	pthread_attr_destroy(&attr);
+
+	assert_int_equal(job.rc, 0);
+	assert_non_null(job.flat);
+	assert_true(job.flat_len > 0);
+	free(job.flat);
+	capn_free(&c);
+}
+
 int run_shell_pack_tests(void)
 {
 	const struct CMUnitTest tests[] = {
@@ -501,6 +611,13 @@ int run_shell_pack_tests(void)
 						shell_setup, shell_teardown),
 		cmocka_unit_test_setup_teardown(test_glpat_in_argv_deny,
 						shell_setup, shell_teardown),
+		cmocka_unit_test_setup_teardown(test_overlong_argv_denies,
+						shell_setup, shell_teardown),
+		cmocka_unit_test_setup_teardown(test_overcount_argv_denies,
+						shell_setup, shell_teardown),
+		cmocka_unit_test_setup_teardown(
+			test_shell_view_256_args_fits_128k_stack, shell_setup,
+			shell_teardown),
 		cmocka_unit_test_setup_teardown(test_reload_shell_pack_hot_load,
 						shell_setup, shell_teardown),
 		cmocka_unit_test_setup_teardown(test_multi_pack_compose_deny,
