@@ -1,0 +1,8 @@
+{
+  "id": "publish_run_unknown_deny",
+  "description": "SeatAction.publishRun with no supervisor slot → toolsDefaultDeny (1).",
+  "method": "checkSeat",
+  "agentId": { "hi": 1, "lo": 2 },
+  "action": "publishRun",
+  "expect": { "decision": 0, "code": 1 }
+}

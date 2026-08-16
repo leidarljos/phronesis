@@ -16,6 +16,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 #include <cmocka.h>
 
 struct capn_fix {
@@ -84,6 +85,47 @@ static int write_msg(struct capn *c, uint8_t **out, size_t *out_len)
 	}
 }
 
+static void hex_agent(uint64_t hi, uint64_t lo, char out[PHRONESIS_ID_MAX])
+{
+	assert_int_not_equal(snprintf(out, PHRONESIS_ID_MAX, "%016llx%016llx",
+				      (unsigned long long)hi,
+				      (unsigned long long)lo),
+			     0);
+}
+
+static void wait_stopped(phronesis_supervisor_t *s, const char *id)
+{
+	phronesis_agent_status_t stt;
+	int i;
+
+	for (i = 0; i < 50; i++) {
+		phronesis_supervisor_status(s, id, &stt);
+		if (stt.state != PHRONESIS_AGENT_RUNNING)
+			return;
+		usleep(10 * 1000);
+	}
+}
+
+static void start_bits(phronesis_supervisor_t *sup, uint64_t hi, uint64_t lo,
+		       char *const argv[])
+{
+	char hex[PHRONESIS_ID_MAX];
+
+	hex_agent(hi, lo, hex);
+	assert_int_equal(phronesis_supervisor_start(sup, hex, "develop", "/ws",
+						    argv),
+			 PHRONESIS_OK);
+}
+
+static void stop_bits(phronesis_supervisor_t *sup, uint64_t hi, uint64_t lo)
+{
+	char hex[PHRONESIS_ID_MAX];
+
+	hex_agent(hi, lo, hex);
+	(void)phronesis_supervisor_stop(sup, hex);
+	wait_stopped(sup, hex);
+}
+
 static AgentId_ptr mk_agent(struct capn_segment *seg, uint64_t hi, uint64_t lo)
 {
 	struct AgentId id = { .hi = hi, .lo = lo };
@@ -136,6 +178,9 @@ static void test_check_seat_allow(void **state)
 	SeatCheck_ptr sp;
 	uint8_t *in = NULL, *out = NULL;
 	size_t in_len = 0, out_len = 0;
+	char *argv[] = { "sleep", "30", NULL };
+
+	start_bits(f->sup, 1, 2, argv);
 
 	memset(&c, 0, sizeof(c));
 	capn_init_malloc(&c);
@@ -152,6 +197,7 @@ static void test_check_seat_allow(void **state)
 	free(in);
 	expect_decision(out, out_len, Decision_allow);
 	free(out);
+	stop_bits(f->sup, 1, 2);
 }
 
 static void test_admit_model_allow(void **state)
@@ -162,6 +208,9 @@ static void test_admit_model_allow(void **state)
 	AdmitModel_ptr ap;
 	uint8_t *in = NULL, *out = NULL;
 	size_t in_len = 0, out_len = 0;
+	char *argv[] = { "sleep", "30", NULL };
+
+	start_bits(f->sup, 3, 4, argv);
 
 	memset(&c, 0, sizeof(c));
 	capn_init_malloc(&c);
@@ -180,6 +229,7 @@ static void test_admit_model_allow(void **state)
 	free(in);
 	expect_decision(out, out_len, Decision_allow);
 	free(out);
+	stop_bits(f->sup, 3, 4);
 }
 
 static void expect_decision_code(const uint8_t *msg, size_t len,
@@ -204,6 +254,217 @@ static void expect_decision_code(const uint8_t *msg, size_t len,
 	assert_int_equal((int)agent.hi, (int)want_hi);
 	assert_int_equal((int)agent.lo, (int)want_lo);
 	capn_free(&c);
+}
+
+static void test_check_seat_null_id_deny(void **state)
+{
+	struct capn_fix *f = *state;
+	struct capn c;
+	struct SeatCheck sc;
+	SeatCheck_ptr sp;
+	uint8_t *in = NULL, *out = NULL;
+	size_t in_len = 0, out_len = 0;
+
+	memset(&c, 0, sizeof(c));
+	capn_init_malloc(&c);
+	memset(&sc, 0, sizeof(sc));
+	sc.agentId = mk_agent(capn_root(&c).seg, 0, 0);
+	sc.action = SeatAction_publishRun;
+	sp = new_SeatCheck(capn_root(&c).seg);
+	write_SeatCheck(&sc, sp);
+	assert_int_equal(capn_setp(capn_root(&c), 0, sp.p), 0);
+	assert_int_equal(write_msg(&c, &in, &in_len), 0);
+	capn_free(&c);
+
+	phronesis_check_seat(f->sup, in, in_len, &out, &out_len);
+	free(in);
+	expect_decision_code(out, out_len, Decision_deny,
+			     PolicyReason_invalidMessage, 0, 0);
+	free(out);
+}
+
+static void test_check_seat_unknown_deny(void **state)
+{
+	struct capn_fix *f = *state;
+	struct capn c;
+	struct SeatCheck sc;
+	SeatCheck_ptr sp;
+	uint8_t *in = NULL, *out = NULL;
+	size_t in_len = 0, out_len = 0;
+
+	memset(&c, 0, sizeof(c));
+	capn_init_malloc(&c);
+	memset(&sc, 0, sizeof(sc));
+	sc.agentId = mk_agent(capn_root(&c).seg, 1, 2);
+	sc.action = SeatAction_publishRun;
+	sp = new_SeatCheck(capn_root(&c).seg);
+	write_SeatCheck(&sc, sp);
+	assert_int_equal(capn_setp(capn_root(&c), 0, sp.p), 0);
+	assert_int_equal(write_msg(&c, &in, &in_len), 0);
+	capn_free(&c);
+
+	phronesis_check_seat(f->sup, in, in_len, &out, &out_len);
+	free(in);
+	expect_decision_code(out, out_len, Decision_deny,
+			     PolicyReason_toolsDefaultDeny, 1, 2);
+	free(out);
+}
+
+static void test_check_seat_stopped_deny(void **state)
+{
+	struct capn_fix *f = *state;
+	struct capn c;
+	struct SeatCheck sc;
+	SeatCheck_ptr sp;
+	uint8_t *in = NULL, *out = NULL;
+	size_t in_len = 0, out_len = 0;
+	char *argv[] = { "true", NULL };
+
+	start_bits(f->sup, 7, 8, argv);
+	stop_bits(f->sup, 7, 8);
+
+	memset(&c, 0, sizeof(c));
+	capn_init_malloc(&c);
+	memset(&sc, 0, sizeof(sc));
+	sc.agentId = mk_agent(capn_root(&c).seg, 7, 8);
+	sc.action = SeatAction_listRuns;
+	sp = new_SeatCheck(capn_root(&c).seg);
+	write_SeatCheck(&sc, sp);
+	assert_int_equal(capn_setp(capn_root(&c), 0, sp.p), 0);
+	assert_int_equal(write_msg(&c, &in, &in_len), 0);
+	capn_free(&c);
+
+	phronesis_check_seat(f->sup, in, in_len, &out, &out_len);
+	free(in);
+	expect_decision_code(out, out_len, Decision_deny,
+			     PolicyReason_toolsDefaultDeny, 7, 8);
+	free(out);
+}
+
+static void test_check_model_unknown_deny(void **state)
+{
+	struct capn_fix *f = *state;
+	struct capn c;
+	struct ModelCheck mc;
+	ModelCheck_ptr mp;
+	uint8_t *in = NULL, *out = NULL;
+	size_t in_len = 0, out_len = 0;
+
+	memset(&c, 0, sizeof(c));
+	capn_init_malloc(&c);
+	memset(&mc, 0, sizeof(mc));
+	mc.agentId = mk_agent(capn_root(&c).seg, 5, 6);
+	mc.model.len = 0;
+	mc.model.str = "";
+	mc.model.seg = NULL;
+	mp = new_ModelCheck(capn_root(&c).seg);
+	write_ModelCheck(&mc, mp);
+	assert_int_equal(capn_setp(capn_root(&c), 0, mp.p), 0);
+	assert_int_equal(write_msg(&c, &in, &in_len), 0);
+	capn_free(&c);
+
+	phronesis_check_model(f->sup, in, in_len, &out, &out_len);
+	free(in);
+	expect_decision_code(out, out_len, Decision_deny,
+			     PolicyReason_toolsDefaultDeny, 5, 6);
+	free(out);
+}
+
+static void test_admit_model_null_id_deny(void **state)
+{
+	struct capn_fix *f = *state;
+	struct capn c;
+	struct AdmitModel am;
+	AdmitModel_ptr ap;
+	uint8_t *in = NULL, *out = NULL;
+	size_t in_len = 0, out_len = 0;
+
+	memset(&c, 0, sizeof(c));
+	capn_init_malloc(&c);
+	memset(&am, 0, sizeof(am));
+	am.agentId = mk_agent(capn_root(&c).seg, 0, 0);
+	am.detail.len = 0;
+	am.detail.str = "";
+	am.detail.seg = NULL;
+	ap = new_AdmitModel(capn_root(&c).seg);
+	write_AdmitModel(&am, ap);
+	assert_int_equal(capn_setp(capn_root(&c), 0, ap.p), 0);
+	assert_int_equal(write_msg(&c, &in, &in_len), 0);
+	capn_free(&c);
+
+	phronesis_admit_model(f->sup, in, in_len, &out, &out_len);
+	free(in);
+	expect_decision_code(out, out_len, Decision_deny,
+			     PolicyReason_invalidMessage, 0, 0);
+	free(out);
+}
+
+static void test_check_seat_deny_all(void **state)
+{
+	struct capn_fix *f = *state;
+	struct capn c;
+	struct SeatCheck sc;
+	SeatCheck_ptr sp;
+	uint8_t *in = NULL, *out = NULL;
+	size_t in_len = 0, out_len = 0;
+	char *argv[] = { "sleep", "30", NULL };
+
+	start_bits(f->sup, 1, 2, argv);
+	setenv("PHRONESIS_DENY_ALL", "1", 1);
+
+	memset(&c, 0, sizeof(c));
+	capn_init_malloc(&c);
+	memset(&sc, 0, sizeof(sc));
+	sc.agentId = mk_agent(capn_root(&c).seg, 1, 2);
+	sc.action = SeatAction_publishRun;
+	sp = new_SeatCheck(capn_root(&c).seg);
+	write_SeatCheck(&sc, sp);
+	assert_int_equal(capn_setp(capn_root(&c), 0, sp.p), 0);
+	assert_int_equal(write_msg(&c, &in, &in_len), 0);
+	capn_free(&c);
+
+	phronesis_check_seat(f->sup, in, in_len, &out, &out_len);
+	free(in);
+	expect_decision_code(out, out_len, Decision_deny, PolicyReason_denyAll, 1,
+			     2);
+	free(out);
+	unsetenv("PHRONESIS_DENY_ALL");
+	stop_bits(f->sup, 1, 2);
+}
+
+static void test_check_model_deny_all(void **state)
+{
+	struct capn_fix *f = *state;
+	struct capn c;
+	struct ModelCheck mc;
+	ModelCheck_ptr mp;
+	uint8_t *in = NULL, *out = NULL;
+	size_t in_len = 0, out_len = 0;
+	char *argv[] = { "sleep", "30", NULL };
+
+	start_bits(f->sup, 5, 6, argv);
+	setenv("PHRONESIS_DENY_ALL", "1", 1);
+
+	memset(&c, 0, sizeof(c));
+	capn_init_malloc(&c);
+	memset(&mc, 0, sizeof(mc));
+	mc.agentId = mk_agent(capn_root(&c).seg, 5, 6);
+	mc.model.len = 0;
+	mc.model.str = "";
+	mc.model.seg = NULL;
+	mp = new_ModelCheck(capn_root(&c).seg);
+	write_ModelCheck(&mc, mp);
+	assert_int_equal(capn_setp(capn_root(&c), 0, mp.p), 0);
+	assert_int_equal(write_msg(&c, &in, &in_len), 0);
+	capn_free(&c);
+
+	phronesis_check_model(f->sup, in, in_len, &out, &out_len);
+	free(in);
+	expect_decision_code(out, out_len, Decision_deny, PolicyReason_denyAll, 5,
+			     6);
+	free(out);
+	unsetenv("PHRONESIS_DENY_ALL");
+	stop_bits(f->sup, 5, 6);
 }
 
 static void check_audio_action(phronesis_supervisor_t *sup, enum AudioAction action,
@@ -323,6 +584,20 @@ int run_capnp_ffi_tests(void)
 		cmocka_unit_test_setup_teardown(test_check_seat_allow,
 						capn_setup, capn_teardown),
 		cmocka_unit_test_setup_teardown(test_admit_model_allow,
+						capn_setup, capn_teardown),
+		cmocka_unit_test_setup_teardown(test_check_seat_null_id_deny,
+						capn_setup, capn_teardown),
+		cmocka_unit_test_setup_teardown(test_check_seat_unknown_deny,
+						capn_setup, capn_teardown),
+		cmocka_unit_test_setup_teardown(test_check_seat_stopped_deny,
+						capn_setup, capn_teardown),
+		cmocka_unit_test_setup_teardown(test_check_model_unknown_deny,
+						capn_setup, capn_teardown),
+		cmocka_unit_test_setup_teardown(test_admit_model_null_id_deny,
+						capn_setup, capn_teardown),
+		cmocka_unit_test_setup_teardown(test_check_seat_deny_all,
+						capn_setup, capn_teardown),
+		cmocka_unit_test_setup_teardown(test_check_model_deny_all,
 						capn_setup, capn_teardown),
 		cmocka_unit_test_setup_teardown(test_check_audio_defaults,
 						capn_setup, capn_teardown),

@@ -59,9 +59,64 @@ static void test_deny_all_env(void **state)
 		phronesis_policy_check(s, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "model", "start",
 				  "/bin/true", &pr),
 		PHRONESIS_OK);
-	assert_int_equal(pr.decision, PHRONESIS_DECISION_ALLOW);
+	assert_int_equal(pr.decision, PHRONESIS_DECISION_DENY);
+	assert_int_equal(pr.code, PHRONESIS_REASON_TOOLS_DEFAULT_DENY);
 
 	phronesis_supervisor_close(s);
+}
+
+static void test_seat_model_require_running_slot(void **state)
+{
+	phronesis_supervisor_t *s = NULL;
+	char st[PHRONESIS_PATH_MAX], rt[PHRONESIS_PATH_MAX];
+	phronesis_policy_result_t pr;
+	char *live[] = { "sleep", "30", NULL };
+	char *done[] = { "true", NULL };
+
+	(void)state;
+	assert_int_equal(t_open_pair(&s, st, sizeof(st), rt, sizeof(rt), "adm"),
+			 PHRONESIS_OK);
+
+	assert_int_equal(phronesis_policy_check(s, NULL, "model", "start", NULL, &pr),
+			 PHRONESIS_OK);
+	assert_int_equal(pr.decision, PHRONESIS_DECISION_DENY);
+	assert_int_equal(pr.code, PHRONESIS_REASON_INVALID_MESSAGE);
+
+	assert_int_equal(
+		phronesis_policy_check(s, "missing-id", "seat", "publish_run", NULL, &pr),
+		PHRONESIS_OK);
+	assert_int_equal(pr.decision, PHRONESIS_DECISION_DENY);
+	assert_int_equal(pr.code, PHRONESIS_REASON_TOOLS_DEFAULT_DENY);
+
+	assert_int_equal(phronesis_supervisor_start(s, "agent-live", "develop",
+						    "/ws/proj", live),
+			 PHRONESIS_OK);
+	assert_int_equal(
+		phronesis_policy_check(s, "agent-live", "seat", "publish_run", NULL, &pr),
+		PHRONESIS_OK);
+	assert_int_equal(pr.decision, PHRONESIS_DECISION_ALLOW);
+	assert_int_equal(pr.code, PHRONESIS_REASON_SEAT_BOARD_ALLOW);
+	assert_int_equal(phronesis_policy_check(s, "agent-live", "model", "start",
+					   NULL, &pr),
+			 PHRONESIS_OK);
+	assert_int_equal(pr.decision, PHRONESIS_DECISION_ALLOW);
+	assert_int_equal(pr.code, PHRONESIS_REASON_MODEL_START_ALLOW);
+
+	assert_int_equal(phronesis_supervisor_start(s, "agent-done", "develop",
+						    "/ws/proj", done),
+			 PHRONESIS_OK);
+	wait_stopped(s, "agent-done");
+	assert_int_equal(
+		phronesis_policy_check(s, "agent-done", "model", "start", NULL, &pr),
+		PHRONESIS_OK);
+	assert_int_equal(pr.decision, PHRONESIS_DECISION_DENY);
+	assert_int_equal(pr.code, PHRONESIS_REASON_TOOLS_DEFAULT_DENY);
+
+	assert_int_equal(phronesis_supervisor_stop(s, "agent-live"), PHRONESIS_OK);
+	wait_stopped(s, "agent-live");
+	phronesis_supervisor_close(s);
+	t_rm_rf(st);
+	t_rm_rf(rt);
 }
 
 static void test_tools_default_deny(void **state)
@@ -237,6 +292,7 @@ int run_policy_tests(void)
 {
 	const struct CMUnitTest tests[] = {
 		cmocka_unit_test(test_deny_all_env),
+		cmocka_unit_test(test_seat_model_require_running_slot),
 		cmocka_unit_test(test_tools_default_deny),
 		cmocka_unit_test(test_shell_exec_workspace_allow),
 		cmocka_unit_test(test_workspace_allowlist),

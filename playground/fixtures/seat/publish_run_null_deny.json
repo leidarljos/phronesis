@@ -1,0 +1,8 @@
+{
+  "id": "publish_run_null_deny",
+  "description": "SeatAction.publishRun with null AgentId → invalidMessage (4).",
+  "method": "checkSeat",
+  "agentId": { "hi": 0, "lo": 0 },
+  "action": "publishRun",
+  "expect": { "decision": 0, "code": 4 }
+}
