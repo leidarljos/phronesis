@@ -154,6 +154,54 @@ static void deny_msg(struct AgentId agent, phronesis_policy_reason_t code,
 	emit_code(PHRONESIS_DECISION_DENY, code, agent, out, out_len);
 }
 
+/** Truthy env for TCB gates: 1 / true / yes (any case of true/yes). */
+static int env_truthy(const char *name)
+{
+	const char *v = getenv(name);
+
+	if (!v || !v[0])
+		return 0;
+	return strcmp(v, "1") == 0 || strcmp(v, "true") == 0 ||
+	       strcmp(v, "yes") == 0 || strcmp(v, "TRUE") == 0 ||
+	       strcmp(v, "YES") == 0;
+}
+
+/** @return 1 if DENY_ALL fired (decision already written). */
+static int deny_if_all(struct AgentId agent, uint8_t **out, size_t *out_len)
+{
+	if (!env_truthy("PHRONESIS_DENY_ALL"))
+		return 0;
+	emit_code(PHRONESIS_DECISION_DENY, PHRONESIS_REASON_DENY_ALL, agent, out,
+		  out_len);
+	return 1;
+}
+
+/**
+ * Admit plane: null AgentId, missing supervisor, unknown slot, and
+ * non-running slot are deny. Running slot is the only allow path.
+ */
+static int agent_running(phronesis_supervisor_t *sup, struct AgentId agent)
+{
+	char hex[PHRONESIS_ID_MAX];
+	phronesis_agent_status_t st;
+
+	if (!sup || (agent.hi == 0 && agent.lo == 0))
+		return 0;
+	phronesis_agent_id_to_hex(agent.hi, agent.lo, hex);
+	if (!hex[0])
+		return 0;
+	if (phronesis_supervisor_status(sup, hex, &st) != PHRONESIS_OK)
+		return 0;
+	return st.state == PHRONESIS_AGENT_RUNNING;
+}
+
+static phronesis_policy_reason_t admit_deny_code(struct AgentId agent)
+{
+	if (agent.hi == 0 && agent.lo == 0)
+		return PHRONESIS_REASON_INVALID_MESSAGE;
+	return PHRONESIS_REASON_TOOLS_DEFAULT_DENY;
+}
+
 static int open_in(const uint8_t *in, size_t in_len, struct capn *c)
 {
 	if (!in || in_len == 0 || in_len > PHRONESIS_CAPNP_MAX_BODY)
@@ -199,7 +247,6 @@ void phronesis_check_seat(phronesis_supervisor_t *sup, const uint8_t *in,
 	phronesis_policy_result_t pr;
 	SeatCheck_ptr root;
 
-	(void)sup;
 	memset(&agent, 0, sizeof(agent));
 	PD_TRACE_EVENT(PD_TRACE_LAYER_HOST, PD_TRACE_PHASE_ENTER, "checkSeat",
 		       "phronesis_check_seat", -1, NULL, 0);
@@ -213,6 +260,15 @@ void phronesis_check_seat(phronesis_supervisor_t *sup, const uint8_t *in,
 	root.p = capn_getp(capn_root(&c), 0, 1);
 	read_SeatCheck(&sc, root);
 	read_agent(sc.agentId, &agent);
+	if (deny_if_all(agent, out, out_len)) {
+		capn_free(&c);
+		return;
+	}
+	if (!agent_running(sup, agent)) {
+		deny_msg(agent, admit_deny_code(agent), out, out_len);
+		capn_free(&c);
+		return;
+	}
 	switch (sc.action) {
 	case SeatAction_publishRun:
 	case SeatAction_readRun:
@@ -239,7 +295,6 @@ void phronesis_check_model(phronesis_supervisor_t *sup, const uint8_t *in,
 	phronesis_policy_result_t pr;
 	ModelCheck_ptr root;
 
-	(void)sup;
 	memset(&agent, 0, sizeof(agent));
 	if (open_in(in, in_len, &c) != 0) {
 		deny_msg(agent, PHRONESIS_REASON_INVALID_MESSAGE, out, out_len);
@@ -248,6 +303,15 @@ void phronesis_check_model(phronesis_supervisor_t *sup, const uint8_t *in,
 	root.p = capn_getp(capn_root(&c), 0, 1);
 	read_ModelCheck(&mc, root);
 	read_agent(mc.agentId, &agent);
+	if (deny_if_all(agent, out, out_len)) {
+		capn_free(&c);
+		return;
+	}
+	if (!agent_running(sup, agent)) {
+		deny_msg(agent, admit_deny_code(agent), out, out_len);
+		capn_free(&c);
+		return;
+	}
 	phronesis_policy_result_set(&pr, PHRONESIS_DECISION_ALLOW,
 			       PHRONESIS_REASON_MODEL_START_ALLOW);
 	capn_free(&c);
@@ -417,18 +481,6 @@ void phronesis_check_risk(phronesis_supervisor_t *sup, const uint8_t *in,
 	}
 	capn_free(&c);
 	emit_decision(&pr, agent, out, out_len);
-}
-
-/** Truthy env for TCB gates: 1 / true / yes (any case of true/yes). */
-static int env_truthy(const char *name)
-{
-	const char *v = getenv(name);
-
-	if (!v || !v[0])
-		return 0;
-	return strcmp(v, "1") == 0 || strcmp(v, "true") == 0 ||
-	       strcmp(v, "yes") == 0 || strcmp(v, "TRUE") == 0 ||
-	       strcmp(v, "YES") == 0;
 }
 
 /** Read Cap'n PolicyDecision decision+code into @a out (reason ignored). */

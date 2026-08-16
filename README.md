@@ -73,8 +73,8 @@ phronesis_check_shell(sup, shell_msg, shell_len, &out, &out_len);
 
 | Method | allow when | deny / prompt |
 |--------|------------|---------------|
-| checkSeat | publishRun / readRun / listRuns / listEvents | unknown action → deny |
-| checkModel | always (admit plane) | — |
+| checkSeat | publishRun / readRun / listRuns / listEvents **and** agent slot is running | null AgentId → deny (`invalidMessage`); unknown / non-running slot → deny (`toolsDefaultDeny`); unknown action → deny |
+| checkModel | agent slot is running | null AgentId → deny (`invalidMessage`); unknown / non-running slot → deny (`toolsDefaultDeny`) |
 | checkPath | read/write under workspace | outside → deny; delete → prompt |
 | checkShell | cwd under workspace; content pack: python via uv+PEP723; deny sudo/curl\|sh/banned PMs/dangerous git | bare python / missing PEP 723 / danger runners → deny |
 | checkRisk | — | secretExport → deny; other risk → prompt |
@@ -82,7 +82,7 @@ phronesis_check_shell(sup, shell_msg, shell_len, &out, &out_len);
 
 Lexical paths: absolute only; reject `//`, `.`, `..`. No `realpath`.
 
-`PHRONESIS_DENY_ALL` forces deny on the CLI/string eval path and on `checkAudio` (it wins over `PHRONESIS_AUDIO_ALLOW`). Not all Cap'n methods consult it yet.
+`PHRONESIS_DENY_ALL` forces deny on the CLI/string eval path and on `checkSeat` / `checkModel` / `checkAudio` (it wins over `PHRONESIS_AUDIO_ALLOW`). Not all Cap'n methods consult it yet.
 
 ## Build / test / coverage (pixi only)
 

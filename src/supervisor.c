@@ -481,15 +481,27 @@ int phronesis_policy_check(phronesis_supervisor_t *s,
 		if (!valid_id(agent_id))
 			return PHRONESIS_ERR_INVAL;
 		rc = load_agent(s, agent_id, &a);
-		if (rc == PHRONESIS_OK)
+		if (rc == PHRONESIS_OK) {
+			reap_slot(a);
+			(void)write_slot(s, a);
 			ws = a->workspace[0] ? a->workspace : NULL;
-		else if (rc != PHRONESIS_ERR_NOTFOUND)
+		} else if (rc != PHRONESIS_ERR_NOTFOUND)
 			return rc;
 		/* unknown agent still evaluates with empty workspace (deny paths) */
 	}
 	rc = phronesis_policy_eval(ws, tool, action, path, out);
 	if (rc != PHRONESIS_OK)
 		return rc;
+	/* Seat / model ALLOW requires a running slot; null and missing ids deny. */
+	if (out->decision == PHRONESIS_DECISION_ALLOW && tool &&
+	    (strcmp(tool, "seat") == 0 || strcmp(tool, "model") == 0)) {
+		if (!agent_id || !agent_id[0])
+			phronesis_policy_result_set(out, PHRONESIS_DECISION_DENY,
+					       PHRONESIS_REASON_INVALID_MESSAGE);
+		else if (!a || a->state != PHRONESIS_AGENT_RUNNING)
+			phronesis_policy_result_set(out, PHRONESIS_DECISION_DENY,
+					       PHRONESIS_REASON_TOOLS_DEFAULT_DENY);
+	}
 	snprintf(detail, sizeof(detail), "tool=%s action=%s decision=%d %s",
 		 tool ? tool : "", action ? action : "",
 		 (int)out->decision, out->reason);
