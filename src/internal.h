@@ -48,4 +48,13 @@ int phronesis_policy_eval(const char *workspace,
 int phronesis_resolve_script(const char *cwd, const char *script, char *out,
 			       size_t out_n);
 
+/**
+ * Build Cap'n ShellView bytes (malloc *flat_out).
+ * Returns 0 on success, -2 if argc > 256 or an arg is >= PHRONESIS_PATH_MAX,
+ * -1 on other failure. Callers free *flat_out.
+ */
+int phronesis_build_shell_view(const char *workspace, const char *cwd,
+			       capn_ptr argv, uint8_t **flat_out,
+			       size_t *flat_len);
+
 #endif
