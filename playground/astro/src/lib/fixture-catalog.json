@@ -121,14 +121,25 @@
     }
   },
   {
-    "id": "publish_run_allow",
+    "id": "publish_run_null_deny",
     "domain": "seat",
     "method": "checkSeat",
-    "description": "SeatAction.publishRun → seatBoardAllow (8).",
-    "file": "seat/publish_run_allow.json",
+    "description": "SeatAction.publishRun with null AgentId → invalidMessage (4).",
+    "file": "seat/publish_run_null_deny.json",
     "expect": {
-      "decision": 1,
-      "code": 8
+      "decision": 0,
+      "code": 4
+    }
+  },
+  {
+    "id": "publish_run_unknown_deny",
+    "domain": "seat",
+    "method": "checkSeat",
+    "description": "SeatAction.publishRun with no supervisor slot → toolsDefaultDeny (1).",
+    "file": "seat/publish_run_unknown_deny.json",
+    "expect": {
+      "decision": 0,
+      "code": 1
     }
   },
   {

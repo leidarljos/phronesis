@@ -39,7 +39,7 @@ node playground/scripts/wasm-smoke.mjs --expect-trace
 # expect: OK checkShell deny code=24 … spans+shortCircuit
 
 node playground/scripts/parity-node.mjs
-# expect: parity OK 13 fixtures
+# expect: parity OK 15 fixtures
 
 # 2) Web UI (dev server)
 cd playground/astro

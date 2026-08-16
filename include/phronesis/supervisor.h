@@ -404,14 +404,24 @@ PHRONESIS_API void phronesis_status(phronesis_supervisor_t *sup,
 					  uint8_t **out,
 					  size_t *out_len);
 
-/** checkSeat → in SeatCheck, out PolicyDecision. */
+/**
+ * checkSeat → in SeatCheck, out PolicyDecision.
+ *
+ * Null AgentId, unknown slot, and non-running slot deny. Known board
+ * actions allow only when the supervisor slot is running.
+ */
 PHRONESIS_API void phronesis_check_seat(phronesis_supervisor_t *sup,
 					      const uint8_t *in,
 					      size_t in_len,
 					      uint8_t **out,
 					      size_t *out_len);
 
-/** checkModel → in ModelCheck, out PolicyDecision. */
+/**
+ * checkModel → in ModelCheck, out PolicyDecision.
+ *
+ * Null AgentId, unknown slot, and non-running slot deny. Model start
+ * allows only when the supervisor slot is running.
+ */
 PHRONESIS_API void phronesis_check_model(phronesis_supervisor_t *sup,
 					       const uint8_t *in,
 					       size_t in_len,

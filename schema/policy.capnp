@@ -13,11 +13,13 @@
 # Trust
 # -----
 # - Identity: Util.AgentId only (fixed-width). Never Text hex on the wire.
+#   checkSeat / checkModel / admit* deny a null, unknown, or non-running id.
 # - Path checks: lexical only (no realpath). Overlong text → fail-closed deny.
 # - Policy outcome is always PolicyDecision (deny | allow | prompt). Protocol /
 #   parse failures are Decision.deny with a reason (fail closed) — not a second
 #   error channel.
-# - TCB does not authenticate agentId; the seat joins it to the run id by convention.
+# - TCB resolves agentId through the supervisor slot table on checkSeat /
+#   checkModel / admit*. Null, unknown, and non-running ids deny.
 #
 # Design
 # ------
