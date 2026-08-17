@@ -456,6 +456,23 @@ int policyd_supervisor_bind(policyd_supervisor_t *s,
 	return POLICYD_OK;
 }
 
+int policyd_supervisor_has_running(policyd_supervisor_t *s)
+{
+	int i;
+
+	if (!s)
+		return 0;
+	for (i = 0; i < POLICYD_MAX_AGENTS; i++) {
+		if (!s->agents[i].in_use)
+			continue;
+		reap_slot(&s->agents[i]);
+		(void)write_slot(s, &s->agents[i]);
+		if (s->agents[i].state == POLICYD_AGENT_RUNNING)
+			return 1;
+	}
+	return 0;
+}
+
 int policyd_supervisor_status(policyd_supervisor_t *s,
 			   const char *agent_id,
 			   policyd_agent_status_t *out)

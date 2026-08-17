@@ -157,6 +157,8 @@ static void capnp_reload(policyd_supervisor_t *sup, const char *path,
 	free(out);
 }
 
+static const char k_slot_id[] = "00000000000000010000000000000002";
+
 struct shell_fix {
 	policyd_supervisor_t *sup;
 	char st[POLICYD_PATH_MAX];
@@ -485,6 +487,11 @@ static void test_reload_shell_pack_hot_load(void **state)
 	assert_int_equal(dec, Decision_allow);
 	assert_int_equal(code, PolicyReason_shellExecAllow);
 
+	assert_int_equal(policyd_supervisor_stop(f->sup, k_slot_id), POLICYD_OK);
+	assert_int_equal(
+		policyd_supervisor_bind(f->sup, k_slot_id, NULL, f->ws, 0),
+		POLICYD_OK);
+
 	/* Cap'n reloadShellPack method */
 	memset(&c, 0, sizeof(c));
 	capn_init_malloc(&c);
@@ -533,6 +540,11 @@ static void test_reload_untrusted_workspace_pack_denied(void **state)
 	rc = policyd_policy_shell_pack_reload(evil);
 	assert_int_equal(rc, POLICYD_ERR_INVAL);
 
+	assert_int_equal(policyd_supervisor_stop(f->sup, k_slot_id), POLICYD_OK);
+	assert_int_equal(
+		policyd_supervisor_bind(f->sup, k_slot_id, NULL, f->ws, 0),
+		POLICYD_OK);
+
 	capnp_reload(f->sup, evil, &dec, &code);
 	assert_int_not_equal(dec, Decision_allow);
 	assert_int_not_equal(code, PolicyReason_packReloaded);
@@ -549,6 +561,42 @@ static void test_reload_untrusted_workspace_pack_denied(void **state)
 	assert_bare_python_still_denied(f);
 
 	setenv("GROKOS_POLICYD_DEV_PACK", "1", 1);
+}
+
+/*
+ * Cap'n reloadShellPack has no AgentId. A handle with no running slot
+ * must not replace packs even for a trusted/dev path.
+ */
+static void test_capnp_reload_requires_running_slot(void **state)
+{
+	struct shell_fix *f = *state;
+	char product[POLICYD_PATH_MAX];
+	enum Decision dec;
+	enum PolicyReason code;
+	int rc;
+
+	product_pack_path(product, sizeof(product));
+	assert_int_equal(policyd_policy_shell_pack_reload(product), POLICYD_OK);
+	assert_bare_python_still_denied(f);
+
+	assert_int_equal(policyd_supervisor_stop(f->sup, k_slot_id), POLICYD_OK);
+
+	/* Operator C entry still reloads without a live slot. */
+	rc = policyd_policy_shell_pack_reload(product);
+	assert_int_equal(rc, POLICYD_OK);
+
+	capnp_reload(f->sup, product, &dec, &code);
+	assert_int_equal(dec, Decision_deny);
+	assert_int_equal(code, PolicyReason_toolsDefaultDeny);
+	assert_bare_python_still_denied(f);
+
+	assert_int_equal(
+		policyd_supervisor_bind(f->sup, k_slot_id, NULL, f->ws, 0),
+		POLICYD_OK);
+	capnp_reload(f->sup, product, &dec, &code);
+	assert_int_equal(dec, Decision_allow);
+	assert_int_equal(code, PolicyReason_packReloaded);
+	assert_bare_python_still_denied(f);
 }
 
 /* Multi-pack: allow-all + deny-true compose to deny (fail-closed). */
@@ -777,6 +825,9 @@ int run_shell_pack_tests(void)
 						shell_setup, shell_teardown),
 		cmocka_unit_test_setup_teardown(
 			test_reload_untrusted_workspace_pack_denied, shell_setup,
+			shell_teardown),
+		cmocka_unit_test_setup_teardown(
+			test_capnp_reload_requires_running_slot, shell_setup,
 			shell_teardown),
 		cmocka_unit_test_setup_teardown(test_multi_pack_compose_deny,
 						shell_setup, shell_teardown),
