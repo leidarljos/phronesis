@@ -61,9 +61,6 @@ int policyd_policy_require_running_agent(policyd_supervisor_t *sup,
 				      const char *agent_id,
 				      policyd_policy_reason_t *code);
 
-/** 1 if @a s has at least one POLICYD_AGENT_RUNNING slot (reaps first). */
-int policyd_supervisor_has_running(policyd_supervisor_t *s);
-
 #include <capnp_c.h>
 
 /** Resolve script path against cwd (workspace-bound callers only). */

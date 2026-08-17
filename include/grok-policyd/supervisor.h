@@ -502,8 +502,8 @@ POLICYD_API void policyd_agent_status(policyd_supervisor_t *sup,
  * reloadShellPack → in ReloadShellPack, out PolicyDecision.
  *
  * Same trusted-prefix allowlist as @ref policyd_policy_shell_pack_reload.
- * Requires at least one running supervisor slot on @a sup (the params
- * message has no AgentId). No running slot → deny, packs unchanged.
+ * @a sup is unused: ReloadShellPack has no AgentId, and the product
+ * caller opens a fresh handle per reload. Trust is the path allowlist.
  */
 POLICYD_API void policyd_reload_shell_pack(policyd_supervisor_t *sup,
 						     const uint8_t *in,

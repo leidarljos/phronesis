@@ -713,6 +713,7 @@ void policyd_reload_shell_pack(policyd_supervisor_t *sup, const uint8_t *in,
 	size_t pl;
 	int rc;
 
+	(void)sup;
 	memset(&agent, 0, sizeof(agent));
 	if (open_in(in, in_len, &c) != 0) {
 		deny_msg(agent, POLICYD_REASON_INVALID_MESSAGE, out, out_len);
@@ -737,11 +738,6 @@ void policyd_reload_shell_pack(policyd_supervisor_t *sup, const uint8_t *in,
 	/* Lockdown: do not reconfigure packs under DENY_ALL. */
 	if (deny_if_all(agent, out, out_len))
 		return;
-	/* ReloadShellPack has no AgentId; require a live slot on this handle. */
-	if (!policyd_supervisor_has_running(sup)) {
-		deny_msg(agent, POLICYD_REASON_TOOLS_DEFAULT_DENY, out, out_len);
-		return;
-	}
 
 	rc = policyd_policy_shell_pack_reload_internal(path);
 	memset(&pr, 0, sizeof(pr));
