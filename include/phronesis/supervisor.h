@@ -321,6 +321,20 @@ PHRONESIS_API int phronesis_supervisor_start(phronesis_supervisor_t *s,
 					   char *const argv[]);
 
 /**
+ * Admit @a agent_id as a running slot without fork/exec.
+ *
+ * sessiond binds after Cap'n admit. @a pid 0 leaves the slot running
+ * with no process to reap or kill.
+ *
+ * @return @ref PHRONESIS_OK or @ref PHRONESIS_ERR_EXISTS / @ref PHRONESIS_ERR_INVAL.
+ */
+PHRONESIS_API int phronesis_supervisor_bind(phronesis_supervisor_t *s,
+					  const char *agent_id,
+					  const char *mode,
+					  const char *workspace,
+					  pid_t pid);
+
+/**
  * Fill @a out with the current status of @a agent_id (reaps zombies).
  *
  * @return @ref PHRONESIS_OK or @ref PHRONESIS_ERR_NOTFOUND / @ref PHRONESIS_ERR_INVAL.
