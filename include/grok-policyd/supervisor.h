@@ -510,11 +510,17 @@ POLICYD_API void policyd_reload_shell_pack(policyd_supervisor_t *sup,
  *
  * @param path  Colon-separated list of absolute .janet pack files and/or
  *              absolute directories of top-level *.janet packs. Empty is
- *              invalid. Each pack loads into its own sealed env; checkShell /
+ *              invalid. Each segment must sit under the same trusted prefix
+ *              allowlist as @c GROKOS_POLICYD_JANET_PACK (install share paths,
+ *              @c GROKOS_PREFIX/share/grok-policyd, or the compile-time
+ *              default pack directory), unless @c GROKOS_POLICYD_DEV_PACK is
+ *              truthy. A rejected spec does not unload the current packs.
+ *              Each pack loads into its own sealed env; checkShell /
  *              checkAudio compose fail-closed across packs that define the
  *              entry (deny > prompt > allow).
- * @return @ref POLICYD_OK on successful load; @ref POLICYD_ERR_INVAL for bad path;
- *         @ref POLICYD_ERR_IO when a file cannot be loaded as a pack.
+ * @return @ref POLICYD_OK on successful load; @ref POLICYD_ERR_INVAL for bad path
+ *         or a path outside the allowlist; @ref POLICYD_ERR_IO when a file
+ *         cannot be loaded as a pack.
  *
  * Threading: not concurrent with checkShell. Product path is single-threaded
  * TCB per process (same as other policy methods).

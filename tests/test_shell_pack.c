@@ -115,12 +115,71 @@ static void write_file(const char *path, const char *body)
 	fclose(f);
 }
 
+static const char *product_pack_path(char *buf, size_t n)
+{
+	const char *src = getenv("POLICYD_SOURCE_ROOT");
+
+	if (!src || !src[0])
+		src = ".";
+	assert_true(snprintf(buf, n, "%s/policy/shell.janet", src) < (int)n);
+	return buf;
+}
+
+static void write_allow_all_pack(const char *path)
+{
+	write_file(path,
+		   "(defn shell-check [buf]\n"
+		   "  (capnp/build-message 1 2\n"
+		   "    @[[:u16 0 1] [:u16 2 20] [:text 0 \"allow all pack\"]]))\n");
+}
+
+static void capnp_reload(policyd_supervisor_t *sup, const char *path,
+			 enum Decision *dec, enum PolicyReason *code)
+{
+	struct capn c;
+	struct ReloadShellPack rp;
+	ReloadShellPack_ptr root;
+	uint8_t *in = NULL, *out = NULL;
+	size_t in_len = 0, out_len = 0;
+
+	memset(&c, 0, sizeof(c));
+	capn_init_malloc(&c);
+	memset(&rp, 0, sizeof(rp));
+	rp.path = ctext(path);
+	root = new_ReloadShellPack(capn_root(&c).seg);
+	write_ReloadShellPack(&rp, root);
+	assert_int_equal(capn_setp(capn_root(&c), 0, root.p), 0);
+	assert_int_equal(write_msg(&c, &in, &in_len), 0);
+	capn_free(&c);
+	policyd_reload_shell_pack(sup, in, in_len, &out, &out_len);
+	free(in);
+	read_decision(out, out_len, dec, code, NULL, 0);
+	free(out);
+}
+
 struct shell_fix {
 	policyd_supervisor_t *sup;
 	char st[POLICYD_PATH_MAX];
 	char rt[POLICYD_PATH_MAX];
 	char ws[POLICYD_PATH_MAX];
 };
+
+static void assert_bare_python_still_denied(struct shell_fix *f)
+{
+	char *argv[] = { "python3", "script.py", NULL };
+	uint8_t *in = NULL, *out = NULL;
+	size_t in_len = 0, out_len = 0;
+	enum Decision dec;
+	enum PolicyReason code;
+
+	build_shell_check(f->ws, argv, 2, &in, &in_len);
+	policyd_check_shell(f->sup, in, in_len, &out, &out_len);
+	free(in);
+	read_decision(out, out_len, &dec, &code, NULL, 0);
+	free(out);
+	assert_int_equal(dec, Decision_deny);
+	assert_int_equal(code, PolicyReason_pythonRequiresUvRun);
+}
 
 static int shell_setup(void **state)
 {
@@ -450,6 +509,48 @@ static void test_reload_shell_pack_hot_load(void **state)
 	assert_int_equal(rc, POLICYD_ERR_INVAL);
 }
 
+/*
+ * Adversarial: workspace-written allow-all pack must not replace product
+ * law when GROKOS_POLICYD_DEV_PACK is unset (same allowlist as JANET_PACK).
+ */
+static void test_reload_untrusted_workspace_pack_denied(void **state)
+{
+	struct shell_fix *f = *state;
+	char product[POLICYD_PATH_MAX], evil[POLICYD_PATH_MAX], mixed[POLICYD_PATH_MAX * 2];
+	enum Decision dec;
+	enum PolicyReason code;
+	int rc;
+
+	product_pack_path(product, sizeof(product));
+	assert_int_equal(policyd_policy_shell_pack_reload(product), POLICYD_OK);
+	assert_bare_python_still_denied(f);
+
+	snprintf(evil, sizeof(evil), "%s/allow_all.janet", f->ws);
+	write_allow_all_pack(evil);
+
+	unsetenv("GROKOS_POLICYD_DEV_PACK");
+
+	rc = policyd_policy_shell_pack_reload(evil);
+	assert_int_equal(rc, POLICYD_ERR_INVAL);
+
+	capnp_reload(f->sup, evil, &dec, &code);
+	assert_int_not_equal(dec, Decision_allow);
+	assert_int_not_equal(code, PolicyReason_packReloaded);
+	assert_int_equal(dec, Decision_deny);
+	assert_int_equal(code, PolicyReason_packPathInvalid);
+
+	snprintf(mixed, sizeof(mixed), "%s:%s", product, evil);
+	rc = policyd_policy_shell_pack_reload(mixed);
+	assert_int_equal(rc, POLICYD_ERR_INVAL);
+	capnp_reload(f->sup, mixed, &dec, &code);
+	assert_int_equal(dec, Decision_deny);
+	assert_int_equal(code, PolicyReason_packPathInvalid);
+
+	assert_bare_python_still_denied(f);
+
+	setenv("GROKOS_POLICYD_DEV_PACK", "1", 1);
+}
+
 /* Multi-pack: allow-all + deny-true compose to deny (fail-closed). */
 static void test_multi_pack_compose_deny(void **state)
 {
@@ -674,6 +775,9 @@ int run_shell_pack_tests(void)
 			shell_teardown),
 		cmocka_unit_test_setup_teardown(test_reload_shell_pack_hot_load,
 						shell_setup, shell_teardown),
+		cmocka_unit_test_setup_teardown(
+			test_reload_untrusted_workspace_pack_denied, shell_setup,
+			shell_teardown),
 		cmocka_unit_test_setup_teardown(test_multi_pack_compose_deny,
 						shell_setup, shell_teardown),
 		cmocka_unit_test_setup_teardown(test_multi_pack_dir, shell_setup,

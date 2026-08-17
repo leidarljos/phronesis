@@ -71,6 +71,7 @@ static int pack_spec_set;
 
 static int path_is_file(const char *path);
 static int path_is_absolute_file(const char *path);
+static int path_is_absolute_dir(const char *path);
 
 static int env_flag_on(const char *name)
 {
@@ -96,7 +97,7 @@ static int path_under_prefix(const char *path, const char *prefix)
 	return path[n] == '\0' || path[n] == '/';
 }
 
-static int pack_env_allowed(const char *path)
+static int pack_under_trusted_prefix(const char *path)
 {
 	static char prefix_root[PACK_PATH_MAX];
 	const char *prefix;
@@ -105,10 +106,6 @@ static int pack_env_allowed(const char *path)
 	char dir[PACK_PATH_MAX];
 	size_t n;
 
-	if (!path_is_absolute_file(path))
-		return 0;
-	if (env_flag_on("GROKOS_POLICYD_DEV_PACK"))
-		return 1;
 	if (path_under_prefix(path, "/usr/local/share/grok-policyd") ||
 	    path_under_prefix(path, "/usr/share/grok-policyd"))
 		return 1;
@@ -130,6 +127,44 @@ static int pack_env_allowed(const char *path)
 		}
 	}
 	return 0;
+}
+
+static int pack_env_allowed(const char *path)
+{
+	if (!path_is_absolute_file(path))
+		return 0;
+	if (env_flag_on("GROKOS_POLICYD_DEV_PACK"))
+		return 1;
+	return pack_under_trusted_prefix(path);
+}
+
+/** File or directory segment allowed for reload (same prefixes as env). */
+static int pack_reload_segment_allowed(const char *path)
+{
+	if (!path_is_absolute_file(path) && !path_is_absolute_dir(path))
+		return 0;
+	if (env_flag_on("GROKOS_POLICYD_DEV_PACK"))
+		return 1;
+	return pack_under_trusted_prefix(path);
+}
+
+static int pack_reload_spec_allowed(const char *spec)
+{
+	char buf[PACK_SPEC_MAX];
+	char *save = NULL;
+	char *tok;
+	int any = 0;
+
+	if (!spec || !spec[0] || strlen(spec) >= sizeof(buf))
+		return 0;
+	memcpy(buf, spec, strlen(spec) + 1);
+	for (tok = strtok_r(buf, ":", &save); tok;
+	     tok = strtok_r(NULL, ":", &save)) {
+		if (!tok[0] || !pack_reload_segment_allowed(tok))
+			return 0;
+		any = 1;
+	}
+	return any;
 }
 
 /**
@@ -721,6 +756,9 @@ int policyd_policy_shell_pack_reload_internal(const char *path)
 
 	/* path is a colon-separated list of absolute files and/or directories. */
 	if (!path || !path[0])
+		return -1;
+	/* Reject before unload so a failed attack cannot drop the loaded pack. */
+	if (!pack_reload_spec_allowed(path))
 		return -1;
 	rc = load_packs_from_spec(path, 1);
 	if (rc != 0) {
