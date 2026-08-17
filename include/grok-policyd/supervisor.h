@@ -328,6 +328,10 @@ GROK_POLICYD_API int grok_supervisor_start(grok_supervisor_t *s,
  * with no process to reap or kill. A live @a pid is recorded and reaped
  * like @ref grok_supervisor_start.
  *
+ * A running slot with an empty workspace may be filled by a later bind
+ * (sessiond often admits first, the agent then bind-fills cwd). A
+ * non-empty workspace is sticky and returns @ref GROK_ERR_EXISTS.
+ *
  * @return @ref GROK_OK or @ref GROK_ERR_EXISTS / @ref GROK_ERR_INVAL.
  */
 GROK_POLICYD_API int grok_supervisor_bind(grok_supervisor_t *s,
