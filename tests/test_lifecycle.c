@@ -170,6 +170,31 @@ static void test_two_agents_independent(void **state)
 	t_rm_rf(rt);
 }
 
+static void test_bind_slot_no_fork(void **state)
+{
+	grok_supervisor_t *s = NULL;
+	char st[GROK_PATH_MAX], rt[GROK_PATH_MAX];
+	grok_agent_status_t stt;
+	const char *hex = "00000000000000010000000000000002";
+
+	(void)state;
+	assert_int_equal(t_open_pair(&s, st, sizeof(st), rt, sizeof(rt), "bind"),
+			 GROK_OK);
+	assert_int_equal(grok_supervisor_bind(s, hex, "agent", "/ws/proj", 0),
+			 GROK_OK);
+	assert_int_equal(grok_supervisor_status(s, hex, &stt), GROK_OK);
+	assert_int_equal(stt.state, GROK_AGENT_RUNNING);
+	assert_int_equal(stt.pid, 0);
+	assert_int_equal(grok_supervisor_bind(s, hex, "agent", "/ws/proj", 0),
+			 GROK_ERR_EXISTS);
+	assert_int_equal(grok_supervisor_stop(s, hex), GROK_OK);
+	assert_int_equal(grok_supervisor_status(s, hex, &stt), GROK_OK);
+	assert_int_equal(stt.state, GROK_AGENT_STOPPED);
+	grok_supervisor_close(s);
+	t_rm_rf(st);
+	t_rm_rf(rt);
+}
+
 int run_lifecycle_tests(void)
 {
 	const struct CMUnitTest tests[] = {
@@ -179,6 +204,7 @@ int run_lifecycle_tests(void)
 		cmocka_unit_test(test_natural_exit_reaped),
 		cmocka_unit_test(test_exec_failure_child),
 		cmocka_unit_test(test_two_agents_independent),
+		cmocka_unit_test(test_bind_slot_no_fork),
 	};
 	return cmocka_run_group_tests_name("lifecycle", tests, NULL, NULL);
 }

@@ -377,6 +377,60 @@ int grok_supervisor_start(grok_supervisor_t *s,
 	return GROK_OK;
 }
 
+int grok_supervisor_bind(grok_supervisor_t *s,
+			 const char *agent_id,
+			 const char *mode,
+			 const char *workspace,
+			 pid_t pid)
+{
+	agent_slot_t *a;
+	char detail[GROK_DETAIL_MAX];
+	int rc;
+
+	if (!s || !valid_id(agent_id))
+		return GROK_ERR_INVAL;
+	if (mode && mode[0] && !valid_token(mode, GROK_MODE_MAX))
+		return GROK_ERR_INVAL;
+	if (workspace && workspace[0] && !valid_token(workspace, GROK_PATH_MAX))
+		return GROK_ERR_INVAL;
+	if (pid < 0)
+		return GROK_ERR_INVAL;
+
+	rc = load_agent(s, agent_id, &a);
+	if (rc == GROK_OK) {
+		reap_slot(a);
+		if (a->state == GROK_AGENT_RUNNING)
+			return GROK_ERR_EXISTS;
+	} else if (rc == GROK_ERR_NOTFOUND) {
+		a = alloc_mem(s);
+		if (!a)
+			return GROK_ERR_STATE;
+		snprintf(a->id, sizeof(a->id), "%s", agent_id);
+	} else {
+		return rc;
+	}
+
+	a->pid = pid;
+	a->pgid = pid > 1 ? pid : 0;
+	a->state = GROK_AGENT_RUNNING;
+	a->exit_status = -1;
+	a->cgroup_path[0] = '\0';
+	if (mode && mode[0])
+		snprintf(a->mode, sizeof(a->mode), "%s", mode);
+	else
+		snprintf(a->mode, sizeof(a->mode), "develop");
+	if (workspace && workspace[0])
+		snprintf(a->workspace, sizeof(a->workspace), "%s", workspace);
+	else
+		a->workspace[0] = '\0';
+
+	if (write_slot(s, a) != GROK_OK)
+		return GROK_ERR_IO;
+	snprintf(detail, sizeof(detail), "bind pid=%d", (int)pid);
+	(void)grok_action_log_append(s->action_log, agent_id, "bind", detail);
+	return GROK_OK;
+}
+
 int grok_supervisor_status(grok_supervisor_t *s,
 			   const char *agent_id,
 			   grok_agent_status_t *out)
@@ -424,6 +478,15 @@ int grok_supervisor_stop(grok_supervisor_t *s, const char *agent_id)
 	}
 
 	pgid = a->pgid > 0 ? a->pgid : a->pid;
+	if (pgid <= 1) {
+		a->state = GROK_AGENT_STOPPED;
+		a->pid = 0;
+		a->pgid = 0;
+		(void)write_slot(s, a);
+		(void)grok_action_log_append(s->action_log, agent_id, "stop",
+					     "bind-only");
+		return GROK_OK;
+	}
 	if (a->cgroup_path[0] && grok_cgroup_kill(a->cgroup_path) == GROK_OK) {
 		snprintf(detail, sizeof(detail), "cgroup.kill path=%.200s pgid=%d",
 			 a->cgroup_path, (int)pgid);
