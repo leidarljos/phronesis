@@ -200,6 +200,39 @@ static void test_check_seat_allow(void **state)
 	stop_bits(f->sup, 1, 2);
 }
 
+static void test_check_seat_bind_allow(void **state)
+{
+	struct capn_fix *f = *state;
+	struct capn c;
+	struct SeatCheck sc;
+	SeatCheck_ptr sp;
+	uint8_t *in = NULL, *out = NULL;
+	size_t in_len = 0, out_len = 0;
+	char hex[PHRONESIS_ID_MAX];
+
+	hex_agent(9, 10, hex);
+	assert_int_equal(phronesis_supervisor_bind(f->sup, hex, "agent",
+						   "/ws/proj", 0),
+			 PHRONESIS_OK);
+
+	memset(&c, 0, sizeof(c));
+	capn_init_malloc(&c);
+	memset(&sc, 0, sizeof(sc));
+	sc.agentId = mk_agent(capn_root(&c).seg, 9, 10);
+	sc.action = SeatAction_publishRun;
+	sp = new_SeatCheck(capn_root(&c).seg);
+	write_SeatCheck(&sc, sp);
+	assert_int_equal(capn_setp(capn_root(&c), 0, sp.p), 0);
+	assert_int_equal(write_msg(&c, &in, &in_len), 0);
+	capn_free(&c);
+
+	phronesis_check_seat(f->sup, in, in_len, &out, &out_len);
+	free(in);
+	expect_decision(out, out_len, Decision_allow);
+	free(out);
+	assert_int_equal(phronesis_supervisor_stop(f->sup, hex), PHRONESIS_OK);
+}
+
 static void test_admit_model_allow(void **state)
 {
 	struct capn_fix *f = *state;
@@ -582,6 +615,8 @@ int run_capnp_ffi_tests(void)
 		cmocka_unit_test_setup_teardown(test_status, capn_setup,
 						capn_teardown),
 		cmocka_unit_test_setup_teardown(test_check_seat_allow,
+						capn_setup, capn_teardown),
+		cmocka_unit_test_setup_teardown(test_check_seat_bind_allow,
 						capn_setup, capn_teardown),
 		cmocka_unit_test_setup_teardown(test_admit_model_allow,
 						capn_setup, capn_teardown),
