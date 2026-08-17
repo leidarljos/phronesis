@@ -321,6 +321,22 @@ GROK_POLICYD_API int grok_supervisor_start(grok_supervisor_t *s,
 					   char *const argv[]);
 
 /**
+ * Admit @a agent_id as a running slot without fork/exec.
+ *
+ * Used by sessiond after Cap'n admit: the agent process is launched on the
+ * vat/proc plane, not by this supervisor. @a pid 0 leaves the slot running
+ * with no process to reap or kill. A live @a pid is recorded and reaped
+ * like @ref grok_supervisor_start.
+ *
+ * @return @ref GROK_OK or @ref GROK_ERR_EXISTS / @ref GROK_ERR_INVAL.
+ */
+GROK_POLICYD_API int grok_supervisor_bind(grok_supervisor_t *s,
+					  const char *agent_id,
+					  const char *mode,
+					  const char *workspace,
+					  pid_t pid);
+
+/**
  * Fill @a out with the current status of @a agent_id (reaps zombies).
  *
  * @return @ref GROK_OK or @ref GROK_ERR_NOTFOUND / @ref GROK_ERR_INVAL.
