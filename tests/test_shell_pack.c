@@ -220,7 +220,6 @@ static int shell_setup(void **state)
 	struct shell_fix *f = calloc(1, sizeof(*f));
 	char *argv0[] = { "true", NULL };
 	char pack[POLICYD_PATH_MAX];
-	const char *src;
 
 	assert_non_null(f);
 	assert_int_equal(t_open_pair(&f->sup, f->st, sizeof(f->st), f->rt,
@@ -233,10 +232,7 @@ static int shell_setup(void **state)
 				      NULL, f->ws, argv0),
 		POLICYD_OK);
 
-	src = getenv("POLICYD_SOURCE_ROOT");
-	if (!src || !src[0])
-		src = ".";
-	snprintf(pack, sizeof(pack), "%s/policy/shell.janet", src);
+	product_pack_path(pack, sizeof(pack));
 	setenv("GROKOS_POLICYD_DEV_PACK", "1", 1);
 	setenv("GROKOS_POLICYD_JANET_PACK", pack, 1);
 
@@ -471,73 +467,26 @@ static void test_reload_shell_pack_hot_load(void **state)
 {
 	struct shell_fix *f = *state;
 	char pack_a[POLICYD_PATH_MAX], pack_b[POLICYD_PATH_MAX];
-	char *argv[] = { "python3", "x.py", NULL };
-	uint8_t *in = NULL, *out = NULL;
-	size_t in_len = 0, out_len = 0;
 	enum Decision dec;
 	enum PolicyReason code;
-	const char *src = getenv("POLICYD_SOURCE_ROOT");
-	struct capn c;
-	struct ReloadShellPack rp;
-	ReloadShellPack_ptr root;
 	int rc;
 
-	if (!src || !src[0])
-		src = ".";
-	snprintf(pack_a, sizeof(pack_a), "%s/policy/shell.janet", src);
-	/* pack_b: allow-all shell pack (no python law) */
+	product_pack_path(pack_a, sizeof(pack_a));
 	snprintf(pack_b, sizeof(pack_b), "%s/allow_all.janet", f->ws);
-	{
-		FILE *fp = fopen(pack_b, "w");
+	write_allow_all_pack(pack_b);
 
-		assert_non_null(fp);
-		fputs("(defn shell-check [buf]\n"
-		      "  (capnp/build-message 1 2\n"
-		      "    @[[:u16 0 1] [:u16 2 20] [:text 0 \"allow all pack\"]]))\n",
-		      fp);
-		fclose(fp);
-	}
-
-	/* Reload to product UV pack → bare python deny */
 	rc = policyd_policy_shell_pack_reload(pack_a);
 	assert_int_equal(rc, POLICYD_OK);
-	build_shell_check(f->ws, argv, 2, &in, &in_len);
-	policyd_check_shell(f->sup, in, in_len, &out, &out_len);
-	free(in);
-	read_decision(out, out_len, &dec, &code, NULL, 0);
-	free(out);
-	assert_int_equal(dec, Decision_deny);
-	assert_int_equal(code, PolicyReason_pythonRequiresUvRun);
+	assert_bare_python_still_denied(f);
 
-	/* Hot-load allow-all pack → same argv allows */
 	rc = policyd_policy_shell_pack_reload(pack_b);
 	assert_int_equal(rc, POLICYD_OK);
-	build_shell_check(f->ws, argv, 2, &in, &in_len);
-	policyd_check_shell(f->sup, in, in_len, &out, &out_len);
-	free(in);
-	read_decision(out, out_len, &dec, &code, NULL, 0);
-	free(out);
-	assert_int_equal(dec, Decision_allow);
-	assert_int_equal(code, PolicyReason_shellExecAllow);
+	assert_bare_python_allowed(f);
 
-	/* Cap'n reloadShellPack method */
-	memset(&c, 0, sizeof(c));
-	capn_init_malloc(&c);
-	memset(&rp, 0, sizeof(rp));
-	rp.path = ctext(pack_a);
-	root = new_ReloadShellPack(capn_root(&c).seg);
-	write_ReloadShellPack(&rp, root);
-	assert_int_equal(capn_setp(capn_root(&c), 0, root.p), 0);
-	assert_int_equal(write_msg(&c, &in, &in_len), 0);
-	capn_free(&c);
-	policyd_reload_shell_pack(f->sup, in, in_len, &out, &out_len);
-	free(in);
-	read_decision(out, out_len, &dec, &code, NULL, 0);
-	free(out);
+	capnp_reload(f->sup, pack_a, &dec, &code);
 	assert_int_equal(dec, Decision_allow);
 	assert_int_equal(code, PolicyReason_packReloaded);
 
-	/* Invalid path */
 	rc = policyd_policy_shell_pack_reload("/no/such/pack.janet");
 	assert_int_equal(rc, POLICYD_ERR_INVAL);
 	rc = policyd_policy_shell_pack_reload("relative.janet");
@@ -569,8 +518,6 @@ static void test_reload_untrusted_workspace_pack_denied(void **state)
 	assert_int_equal(rc, POLICYD_ERR_INVAL);
 
 	capnp_reload(f->sup, evil, &dec, &code);
-	assert_int_not_equal(dec, Decision_allow);
-	assert_int_not_equal(code, PolicyReason_packReloaded);
 	assert_int_equal(dec, Decision_deny);
 	assert_int_equal(code, PolicyReason_packPathInvalid);
 
@@ -587,53 +534,16 @@ static void test_reload_untrusted_workspace_pack_denied(void **state)
 }
 
 /*
- * Product agent: PolicyTcb::open_default then reload. Fresh handle, no
- * start/bind. Trusted prefix pack must load (allowlist, not a running slot).
- */
-static void test_capnp_reload_fresh_handle(void **state)
-{
-	struct shell_fix *f = *state;
-	policyd_supervisor_t *fresh = NULL;
-	char product[POLICYD_PATH_MAX], prefix[POLICYD_PATH_MAX], pack[POLICYD_PATH_MAX];
-	char st[POLICYD_PATH_MAX], rt[POLICYD_PATH_MAX];
-	enum Decision dec;
-	enum PolicyReason code;
-
-	product_pack_path(product, sizeof(product));
-	assert_int_equal(policyd_policy_shell_pack_reload(product), POLICYD_OK);
-	assert_bare_python_still_denied(f);
-
-	write_trusted_prefix_pack(f->rt, prefix, sizeof(prefix), pack,
-				  sizeof(pack));
-	unsetenv("GROKOS_POLICYD_DEV_PACK");
-	setenv("GROKOS_PREFIX", prefix, 1);
-
-	assert_int_equal(t_open_pair(&fresh, st, sizeof(st), rt, sizeof(rt),
-				     "fresh"),
-			 POLICYD_OK);
-	capnp_reload(fresh, pack, &dec, &code);
-	assert_int_equal(dec, Decision_allow);
-	assert_int_equal(code, PolicyReason_packReloaded);
-	assert_bare_python_allowed(f);
-
-	policyd_supervisor_close(fresh);
-	t_rm_rf(st);
-	t_rm_rf(rt);
-
-	unsetenv("GROKOS_PREFIX");
-	setenv("GROKOS_POLICYD_DEV_PACK", "1", 1);
-	assert_int_equal(policyd_policy_shell_pack_reload(product), POLICYD_OK);
-}
-
-/*
- * Allow path of pack_under_trusted_prefix: DEV_PACK unset, file and
- * directory under GROKOS_PREFIX/share/grok-policyd.
+ * Allow path with DEV_PACK unset: file and directory under
+ * GROKOS_PREFIX/share/grok-policyd. Cap'n reload on a fresh handle
+ * (product agent: open, no start/bind).
  */
 static void test_reload_trusted_prefix_without_dev_pack(void **state)
 {
 	struct shell_fix *f = *state;
+	policyd_supervisor_t *fresh = NULL;
 	char product[POLICYD_PATH_MAX], prefix[POLICYD_PATH_MAX], pack[POLICYD_PATH_MAX];
-	char dir[POLICYD_PATH_MAX];
+	char dir[POLICYD_PATH_MAX], st[POLICYD_PATH_MAX], rt[POLICYD_PATH_MAX];
 	enum Decision dec;
 	enum PolicyReason code;
 	int rc;
@@ -658,9 +568,15 @@ static void test_reload_trusted_prefix_without_dev_pack(void **state)
 	assert_int_equal(rc, POLICYD_OK);
 	assert_bare_python_allowed(f);
 
-	capnp_reload(f->sup, pack, &dec, &code);
+	assert_int_equal(t_open_pair(&fresh, st, sizeof(st), rt, sizeof(rt),
+				     "fresh"),
+			 POLICYD_OK);
+	capnp_reload(fresh, pack, &dec, &code);
 	assert_int_equal(dec, Decision_allow);
 	assert_int_equal(code, PolicyReason_packReloaded);
+	policyd_supervisor_close(fresh);
+	t_rm_rf(st);
+	t_rm_rf(rt);
 
 	unsetenv("GROKOS_PREFIX");
 	setenv("GROKOS_POLICYD_DEV_PACK", "1", 1);
@@ -894,8 +810,6 @@ int run_shell_pack_tests(void)
 		cmocka_unit_test_setup_teardown(
 			test_reload_untrusted_workspace_pack_denied, shell_setup,
 			shell_teardown),
-		cmocka_unit_test_setup_teardown(test_capnp_reload_fresh_handle,
-						shell_setup, shell_teardown),
 		cmocka_unit_test_setup_teardown(
 			test_reload_trusted_prefix_without_dev_pack, shell_setup,
 			shell_teardown),
