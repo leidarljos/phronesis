@@ -14,6 +14,11 @@ __pycache__/
 .pixi/
 .cache/
 
+# tools ci-kit local-ci outputs (meta #140)
+.ci-local-report.md
+.ci-local-result.env
+.ci-local.log
+
 # Secrets / credentials (basename-deny classes — match grokos-tools ci-kit/secrets)
 .env
 .env.*

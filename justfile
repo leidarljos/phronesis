@@ -24,3 +24,15 @@ coverage:
 
 ci:
     pixi run ci
+
+# Canonical local CI — tools ci-kit SoT (meta #140). No second runner.
+local-ci:
+    #!/usr/bin/env -S bash -euo pipefail
+    tools="${GROKOS_TOOLS_ROOT:-{{justfile_directory()}}/../grokos-tools}"
+    script="${tools}/ci-kit/local-ci/local-ci.sh"
+    [[ -f "$script" ]] || {
+      echo "local-ci: missing ${script} (sibling grokos-tools or GROKOS_TOOLS_ROOT)" >&2
+      exit 1
+    }
+    cd "{{justfile_directory()}}"
+    bash "$script"

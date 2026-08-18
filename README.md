@@ -70,6 +70,7 @@ eval path. It wins over `GROKOS_POLICYD_AUDIO_ALLOW`.
 # once: https://pixi.sh
 pixi install --locked
 pixi run env-info
+just local-ci                 # host/product gates via tools ci-kit (meta #140)
 pixi run test                 # meson compile + cmocka (incl. Cap'n FFI)
 pixi run coverage             # Meson -Db_coverage + gcovr → coverage-out/
 # CI: coverage:pixi job runs the same `pixi run coverage` and requires
