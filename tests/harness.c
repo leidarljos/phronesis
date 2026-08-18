@@ -13,7 +13,7 @@
 int t_tmpdir(char *buf, size_t n, const char *prefix)
 {
 	const char *base = getenv("TMPDIR");
-	char tmpl[GROK_PATH_MAX];
+	char tmpl[POLICYD_PATH_MAX];
 	int r;
 
 	if (!base || !base[0])
@@ -84,7 +84,7 @@ static void rm_tree(const char *path)
 {
 	DIR *d;
 	struct dirent *e;
-	char child[GROK_PATH_MAX];
+	char child[POLICYD_PATH_MAX];
 	struct stat st;
 
 	if (lstat(path, &st) != 0)
@@ -113,7 +113,7 @@ void t_rm_rf(const char *path)
 		rm_tree(path);
 }
 
-int t_open_pair(grok_supervisor_t **out, char *state, size_t sn,
+int t_open_pair(policyd_supervisor_t **out, char *state, size_t sn,
 		char *runtime, size_t rn, const char *tag)
 {
 	char pfx_s[64], pfx_r[64];
@@ -124,5 +124,5 @@ int t_open_pair(grok_supervisor_t **out, char *state, size_t sn,
 		return -1;
 	if (t_tmpdir(runtime, rn, pfx_r) != 0)
 		return -1;
-	return grok_supervisor_open(out, state, runtime);
+	return policyd_supervisor_open(out, state, runtime);
 }

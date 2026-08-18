@@ -7,7 +7,7 @@ Policy and multi-agent supervisor (security-critical core) for [GrokOS](https://
 | **Meta** | https://nova.teachx.ai/trace-analysis/grokos |
 | **Issues** | https://nova.teachx.ai/trace-analysis/grokos/-/issues |
 | **Language** | Cap'n SoT: [grokos-schema](https://nova.teachx.ai/trace-analysis/grokos-packages/grokos-schema) via Meson subproject/wrap; `schema/SCHEMA_PIN` is publish provenance only |
-| **Product API** | `grok_policyd_handle_capnp()` (in-process FFI) |
+| **Product API** | Cap'n methods (`policyd_check_shell`, `policyd_status`, …) |
 | **C helpers** | `include/grok-policyd/supervisor.h` |
 
 ## Cap'n product API (`interface Policyd`)
@@ -41,11 +41,11 @@ sessiond, shell.
 /* in: Cap'n ShellCheck root; out: Cap'n PolicyDecision root */
 uint8_t *out = NULL;
 size_t out_len = 0;
-grok_policyd_check_shell(sup, shell_msg, shell_len, &out, &out_len);
+policyd_check_shell(sup, shell_msg, shell_len, &out, &out_len);
 /* decode PolicyDecision from out; free(out) */
 ```
 
-`grok_policy_check` is CLI string bridge only.
+`policyd_policy_check` is CLI string bridge only.
 
 ### Decision table (by method)
 

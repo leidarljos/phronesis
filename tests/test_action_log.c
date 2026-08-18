@@ -25,94 +25,94 @@ static int count_lines(const char *path)
 
 static void test_start_stop_log_lines(void **state)
 {
-	grok_supervisor_t *s = NULL;
-	char st[GROK_PATH_MAX], rt[GROK_PATH_MAX];
+	policyd_supervisor_t *s = NULL;
+	char st[POLICYD_PATH_MAX], rt[POLICYD_PATH_MAX];
 	char line[1024];
 	const char *logpath;
 	char *argv[] = { "sleep", "30", NULL };
 
 	(void)state;
-	assert_int_equal(t_open_pair(&s, st, sizeof(st), rt, sizeof(rt), "alog"), GROK_OK);
-	logpath = grok_supervisor_action_log_path(s);
-	assert_int_equal(grok_supervisor_start(s, "agent-a", NULL, NULL, argv), GROK_OK);
-	assert_int_equal(grok_supervisor_log_last(s, line, sizeof(line)), GROK_OK);
+	assert_int_equal(t_open_pair(&s, st, sizeof(st), rt, sizeof(rt), "alog"), POLICYD_OK);
+	logpath = policyd_supervisor_action_log_path(s);
+	assert_int_equal(policyd_supervisor_start(s, "agent-a", NULL, NULL, argv), POLICYD_OK);
+	assert_int_equal(policyd_supervisor_log_last(s, line, sizeof(line)), POLICYD_OK);
 	assert_non_null(strstr(line, "\"kind\":\"start\""));
 	assert_non_null(strstr(line, "\"agent\":\"agent-a\""));
 	assert_non_null(strstr(line, "pid="));
-	assert_int_equal(grok_supervisor_stop(s, "agent-a"), GROK_OK);
-	assert_int_equal(grok_supervisor_log_last(s, line, sizeof(line)), GROK_OK);
+	assert_int_equal(policyd_supervisor_stop(s, "agent-a"), POLICYD_OK);
+	assert_int_equal(policyd_supervisor_log_last(s, line, sizeof(line)), POLICYD_OK);
 	assert_non_null(strstr(line, "\"kind\":\"stop\""));
 	assert_true(count_lines(logpath) >= 2);
-	grok_supervisor_close(s);
+	policyd_supervisor_close(s);
 	t_rm_rf(st);
 	t_rm_rf(rt);
 }
 
 static void test_log_json_escape_and_system(void **state)
 {
-	grok_supervisor_t *s = NULL;
-	char st[GROK_PATH_MAX], rt[GROK_PATH_MAX];
+	policyd_supervisor_t *s = NULL;
+	char st[POLICYD_PATH_MAX], rt[POLICYD_PATH_MAX];
 	char line[1024];
 
 	(void)state;
-	assert_int_equal(t_open_pair(&s, st, sizeof(st), rt, sizeof(rt), "esc"), GROK_OK);
-	assert_int_equal(grok_supervisor_log(s, NULL, "note", "say \"hi\" \\ ok"), GROK_OK);
-	assert_int_equal(grok_supervisor_log_last(s, line, sizeof(line)), GROK_OK);
+	assert_int_equal(t_open_pair(&s, st, sizeof(st), rt, sizeof(rt), "esc"), POLICYD_OK);
+	assert_int_equal(policyd_supervisor_log(s, NULL, "note", "say \"hi\" \\ ok"), POLICYD_OK);
+	assert_int_equal(policyd_supervisor_log_last(s, line, sizeof(line)), POLICYD_OK);
 	assert_non_null(strstr(line, "\\\"hi\\\""));
 	assert_non_null(strstr(line, "\\\\"));
 	assert_non_null(strstr(line, "\"agent\":\"\""));
-	assert_int_equal(grok_supervisor_log(s, "bad id", "x", "y"), GROK_ERR_INVAL);
-	assert_int_equal(grok_supervisor_log(s, "agent-a", "", "y"), GROK_ERR_INVAL);
-	assert_int_equal(grok_supervisor_log(s, "agent-a", NULL, "y"), GROK_ERR_INVAL);
-	grok_supervisor_close(s);
+	assert_int_equal(policyd_supervisor_log(s, "bad id", "x", "y"), POLICYD_ERR_INVAL);
+	assert_int_equal(policyd_supervisor_log(s, "agent-a", "", "y"), POLICYD_ERR_INVAL);
+	assert_int_equal(policyd_supervisor_log(s, "agent-a", NULL, "y"), POLICYD_ERR_INVAL);
+	policyd_supervisor_close(s);
 	t_rm_rf(st);
 	t_rm_rf(rt);
 }
 
 static void test_log_append_order(void **state)
 {
-	grok_supervisor_t *s = NULL;
-	char st[GROK_PATH_MAX], rt[GROK_PATH_MAX];
+	policyd_supervisor_t *s = NULL;
+	char st[POLICYD_PATH_MAX], rt[POLICYD_PATH_MAX];
 	char line[1024];
 	const char *logpath;
 
 	(void)state;
-	assert_int_equal(t_open_pair(&s, st, sizeof(st), rt, sizeof(rt), "ord"), GROK_OK);
-	logpath = grok_supervisor_action_log_path(s);
-	assert_int_equal(grok_supervisor_log(s, "agent-a", "k1", "d1"), GROK_OK);
-	assert_int_equal(grok_supervisor_log(s, "agent-a", "k2", "d2"), GROK_OK);
-	assert_int_equal(grok_supervisor_log(s, "agent-b", "k3", "d3"), GROK_OK);
+	assert_int_equal(t_open_pair(&s, st, sizeof(st), rt, sizeof(rt), "ord"), POLICYD_OK);
+	logpath = policyd_supervisor_action_log_path(s);
+	assert_int_equal(policyd_supervisor_log(s, "agent-a", "k1", "d1"), POLICYD_OK);
+	assert_int_equal(policyd_supervisor_log(s, "agent-a", "k2", "d2"), POLICYD_OK);
+	assert_int_equal(policyd_supervisor_log(s, "agent-b", "k3", "d3"), POLICYD_OK);
 	assert_int_equal(count_lines(logpath), 3);
-	assert_int_equal(grok_supervisor_log_last(s, line, sizeof(line)), GROK_OK);
+	assert_int_equal(policyd_supervisor_log_last(s, line, sizeof(line)), POLICYD_OK);
 	assert_non_null(strstr(line, "\"kind\":\"k3\""));
 	assert_non_null(strstr(line, "agent-b"));
-	grok_supervisor_close(s);
+	policyd_supervisor_close(s);
 	t_rm_rf(st);
 	t_rm_rf(rt);
 }
 
 static void test_idempotent_stop_logged(void **state)
 {
-	grok_supervisor_t *s = NULL;
-	char st[GROK_PATH_MAX], rt[GROK_PATH_MAX];
+	policyd_supervisor_t *s = NULL;
+	char st[POLICYD_PATH_MAX], rt[POLICYD_PATH_MAX];
 	char line[1024];
 	char *argv[] = { "true", NULL };
-	grok_agent_status_t stt;
+	policyd_agent_status_t stt;
 	int tries;
 
 	(void)state;
-	assert_int_equal(t_open_pair(&s, st, sizeof(st), rt, sizeof(rt), "idemp"), GROK_OK);
-	assert_int_equal(grok_supervisor_start(s, "agent-a", NULL, NULL, argv), GROK_OK);
+	assert_int_equal(t_open_pair(&s, st, sizeof(st), rt, sizeof(rt), "idemp"), POLICYD_OK);
+	assert_int_equal(policyd_supervisor_start(s, "agent-a", NULL, NULL, argv), POLICYD_OK);
 	for (tries = 0; tries < 100; tries++) {
-		grok_supervisor_status(s, "agent-a", &stt);
-		if (stt.state != GROK_AGENT_RUNNING)
+		policyd_supervisor_status(s, "agent-a", &stt);
+		if (stt.state != POLICYD_AGENT_RUNNING)
 			break;
 		usleep(10 * 1000);
 	}
-	assert_int_equal(grok_supervisor_stop(s, "agent-a"), GROK_OK);
-	assert_int_equal(grok_supervisor_log_last(s, line, sizeof(line)), GROK_OK);
+	assert_int_equal(policyd_supervisor_stop(s, "agent-a"), POLICYD_OK);
+	assert_int_equal(policyd_supervisor_log_last(s, line, sizeof(line)), POLICYD_OK);
 	assert_true(strstr(line, "idempotent") != NULL || strstr(line, "\"kind\":\"stop\"") != NULL);
-	grok_supervisor_close(s);
+	policyd_supervisor_close(s);
 	t_rm_rf(st);
 	t_rm_rf(rt);
 }

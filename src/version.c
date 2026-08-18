@@ -1,12 +1,12 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 #include "grok-policyd/supervisor.h"
 
-const char *grok_policyd_version_string(void)
+const char *policyd_version_string(void)
 {
-	return GROK_POLICYD_VERSION;
+	return POLICYD_VERSION;
 }
 
-int grok_policyd_api_version(void)
+int policyd_api_version(void)
 {
-	return GROK_POLICYD_API_VERSION;
+	return POLICYD_API_VERSION;
 }

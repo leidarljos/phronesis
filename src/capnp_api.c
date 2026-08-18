@@ -61,7 +61,7 @@ static int write_msg(struct capn *c, uint8_t **out, size_t *out_len)
 			return -1;
 		cap *= 2U;
 	}
-	if ((uint64_t)n > (uint64_t)GROK_POLICY_CAPNP_MAX_BODY) {
+	if ((uint64_t)n > (uint64_t)POLICYD_POLICY_CAPNP_MAX_BODY) {
 		free(buf);
 		return -1;
 	}
@@ -90,19 +90,19 @@ static void read_agent(AgentId_ptr p, struct AgentId *out)
 }
 
 /* Copy agent workspace into caller buffer; never return a pointer into a local. */
-static const char *workspace_for(grok_supervisor_t *sup, struct AgentId id,
+static const char *workspace_for(policyd_supervisor_t *sup, struct AgentId id,
 				 char *ws_buf, size_t ws_len)
 {
-	char hex[GROK_ID_MAX];
-	grok_agent_status_t st;
+	char hex[POLICYD_ID_MAX];
+	policyd_agent_status_t st;
 
 	if (!ws_buf || ws_len == 0)
 		return NULL;
 	ws_buf[0] = '\0';
-	grok_agent_id_to_hex(id.hi, id.lo, hex);
+	policyd_agent_id_to_hex(id.hi, id.lo, hex);
 	if (!hex[0])
 		return NULL;
-	if (grok_supervisor_status(sup, hex, &st) != GROK_OK)
+	if (policyd_supervisor_status(sup, hex, &st) != POLICYD_OK)
 		return NULL;
 	if (!st.workspace[0])
 		return NULL;
@@ -110,7 +110,7 @@ static const char *workspace_for(grok_supervisor_t *sup, struct AgentId id,
 	return ws_buf;
 }
 
-static void emit_decision(const grok_policy_result_t *pr, struct AgentId agent,
+static void emit_decision(const policyd_policy_result_t *pr, struct AgentId agent,
 			  uint8_t **out, size_t *out_len)
 {
 	struct capn c;
@@ -139,27 +139,27 @@ static void emit_decision(const grok_policy_result_t *pr, struct AgentId agent,
 	capn_free(&c);
 }
 
-static void emit_code(grok_decision_t decision, grok_policy_reason_t code,
+static void emit_code(policyd_decision_t decision, policyd_policy_reason_t code,
 		      struct AgentId agent, uint8_t **out, size_t *out_len)
 {
-	grok_policy_result_t pr;
+	policyd_policy_result_t pr;
 
-	grok_policy_result_set(&pr, decision, code);
+	policyd_policy_result_set(&pr, decision, code);
 	emit_decision(&pr, agent, out, out_len);
 }
 
-static void deny_msg(struct AgentId agent, grok_policy_reason_t code,
+static void deny_msg(struct AgentId agent, policyd_policy_reason_t code,
 		     uint8_t **out, size_t *out_len)
 {
-	emit_code(GROK_DECISION_DENY, code, agent, out, out_len);
+	emit_code(POLICYD_DECISION_DENY, code, agent, out, out_len);
 }
 
 /** @return 1 if DENY_ALL fired (decision already written). */
 static int deny_if_all(struct AgentId agent, uint8_t **out, size_t *out_len)
 {
-	if (!grok_policy_deny_all())
+	if (!policyd_policy_deny_all())
 		return 0;
-	emit_code(GROK_DECISION_DENY, GROK_REASON_DENY_ALL, agent, out, out_len);
+	emit_code(POLICYD_DECISION_DENY, POLICYD_REASON_DENY_ALL, agent, out, out_len);
 	return 1;
 }
 
@@ -167,18 +167,18 @@ static int deny_if_all(struct AgentId agent, uint8_t **out, size_t *out_len)
  * Deny unless AgentId is set and names a running supervisor slot.
  * @return 1 if a deny decision was already written.
  */
-static int deny_if_unbound(grok_supervisor_t *sup, struct AgentId agent,
+static int deny_if_unbound(policyd_supervisor_t *sup, struct AgentId agent,
 			   uint8_t **out, size_t *out_len)
 {
-	char hex[GROK_ID_MAX];
-	grok_policy_reason_t code;
+	char hex[POLICYD_ID_MAX];
+	policyd_policy_reason_t code;
 
 	if (agent.hi == 0 && agent.lo == 0) {
-		deny_msg(agent, GROK_REASON_INVALID_MESSAGE, out, out_len);
+		deny_msg(agent, POLICYD_REASON_INVALID_MESSAGE, out, out_len);
 		return 1;
 	}
-	grok_agent_id_to_hex(agent.hi, agent.lo, hex);
-	if (grok_policy_require_running_agent(sup, hex, &code) != 0) {
+	policyd_agent_id_to_hex(agent.hi, agent.lo, hex);
+	if (policyd_policy_require_running_agent(sup, hex, &code) != 0) {
 		deny_msg(agent, code, out, out_len);
 		return 1;
 	}
@@ -187,13 +187,13 @@ static int deny_if_unbound(grok_supervisor_t *sup, struct AgentId agent,
 
 static int open_in(const uint8_t *in, size_t in_len, struct capn *c)
 {
-	if (!in || in_len == 0 || in_len > GROK_POLICY_CAPNP_MAX_BODY)
+	if (!in || in_len == 0 || in_len > POLICYD_POLICY_CAPNP_MAX_BODY)
 		return -1;
 	memset(c, 0, sizeof(*c));
 	return capn_init_mem(c, in, in_len, 0);
 }
 
-void grok_policyd_status(grok_supervisor_t *sup, uint8_t **out, size_t *out_len)
+void policyd_status(policyd_supervisor_t *sup, uint8_t **out, size_t *out_len)
 {
 	struct capn c;
 	struct PolicydStatus st;
@@ -206,10 +206,10 @@ void grok_policyd_status(grok_supervisor_t *sup, uint8_t **out, size_t *out_len)
 	memset(&c, 0, sizeof(c));
 	capn_init_malloc(&c);
 	memset(&st, 0, sizeof(st));
-	st.version = ctext(grok_policyd_version_string());
-	st.apiVersion = grok_policyd_api_version();
-	st.stateDir = ctext(sup ? grok_supervisor_state_dir(sup) : "");
-	st.runtimeDir = ctext(sup ? grok_supervisor_runtime_dir(sup) : "");
+	st.version = ctext(policyd_version_string());
+	st.apiVersion = policyd_api_version();
+	st.stateDir = ctext(sup ? policyd_supervisor_state_dir(sup) : "");
+	st.runtimeDir = ctext(sup ? policyd_supervisor_runtime_dir(sup) : "");
 	st.ready = sup ? 1 : 0;
 	sp = new_PolicydStatus(capn_root(&c).seg);
 	write_PolicydStatus(&st, sp);
@@ -221,23 +221,23 @@ void grok_policyd_status(grok_supervisor_t *sup, uint8_t **out, size_t *out_len)
 	capn_free(&c);
 }
 
-void grok_policyd_check_seat(grok_supervisor_t *sup, const uint8_t *in,
+void policyd_check_seat(policyd_supervisor_t *sup, const uint8_t *in,
 			     size_t in_len, uint8_t **out, size_t *out_len)
 {
 	struct capn c;
 	struct SeatCheck sc;
 	struct AgentId agent;
-	grok_policy_result_t pr;
+	policyd_policy_result_t pr;
 	SeatCheck_ptr root;
 
 	memset(&agent, 0, sizeof(agent));
 	PD_TRACE_EVENT(PD_TRACE_LAYER_HOST, PD_TRACE_PHASE_ENTER, "checkSeat",
-		       "grok_policyd_check_seat", -1, NULL, 0);
+		       "policyd_check_seat", -1, NULL, 0);
 	if (open_in(in, in_len, &c) != 0) {
 		PD_TRACE_EVENT(PD_TRACE_LAYER_CAPNP, PD_TRACE_PHASE_ERROR,
 			       "checkSeat/open", "invalid Cap'n message",
-			       (int)GROK_REASON_INVALID_MESSAGE, "deny", 1);
-		deny_msg(agent, GROK_REASON_INVALID_MESSAGE, out, out_len);
+			       (int)POLICYD_REASON_INVALID_MESSAGE, "deny", 1);
+		deny_msg(agent, POLICYD_REASON_INVALID_MESSAGE, out, out_len);
 		return;
 	}
 	root.p = capn_getp(capn_root(&c), 0, 1);
@@ -256,30 +256,30 @@ void grok_policyd_check_seat(grok_supervisor_t *sup, const uint8_t *in,
 	case SeatAction_readRun:
 	case SeatAction_listRuns:
 	case SeatAction_listEvents:
-		grok_policy_result_set(&pr, GROK_DECISION_ALLOW,
-				       GROK_REASON_SEAT_BOARD_ALLOW);
+		policyd_policy_result_set(&pr, POLICYD_DECISION_ALLOW,
+				       POLICYD_REASON_SEAT_BOARD_ALLOW);
 		break;
 	default:
-		grok_policy_result_set(&pr, GROK_DECISION_DENY,
-				       GROK_REASON_UNKNOWN_SEAT_ACTION);
+		policyd_policy_result_set(&pr, POLICYD_DECISION_DENY,
+				       POLICYD_REASON_UNKNOWN_SEAT_ACTION);
 		break;
 	}
 	capn_free(&c);
 	emit_decision(&pr, agent, out, out_len);
 }
 
-void grok_policyd_check_model(grok_supervisor_t *sup, const uint8_t *in,
+void policyd_check_model(policyd_supervisor_t *sup, const uint8_t *in,
 			      size_t in_len, uint8_t **out, size_t *out_len)
 {
 	struct capn c;
 	struct ModelCheck mc;
 	struct AgentId agent;
-	grok_policy_result_t pr;
+	policyd_policy_result_t pr;
 	ModelCheck_ptr root;
 
 	memset(&agent, 0, sizeof(agent));
 	if (open_in(in, in_len, &c) != 0) {
-		deny_msg(agent, GROK_REASON_INVALID_MESSAGE, out, out_len);
+		deny_msg(agent, POLICYD_REASON_INVALID_MESSAGE, out, out_len);
 		return;
 	}
 	root.p = capn_getp(capn_root(&c), 0, 1);
@@ -293,28 +293,28 @@ void grok_policyd_check_model(grok_supervisor_t *sup, const uint8_t *in,
 		capn_free(&c);
 		return;
 	}
-	grok_policy_result_set(&pr, GROK_DECISION_ALLOW,
-			       GROK_REASON_MODEL_START_ALLOW);
+	policyd_policy_result_set(&pr, POLICYD_DECISION_ALLOW,
+			       POLICYD_REASON_MODEL_START_ALLOW);
 	capn_free(&c);
 	emit_decision(&pr, agent, out, out_len);
 }
 
-void grok_policyd_check_path(grok_supervisor_t *sup, const uint8_t *in,
+void policyd_check_path(policyd_supervisor_t *sup, const uint8_t *in,
 			     size_t in_len, uint8_t **out, size_t *out_len)
 {
 	struct capn c;
 	struct PathCheck pc;
 	struct AgentId agent;
-	char path[GROK_PATH_MAX];
-	char ws_buf[GROK_PATH_MAX];
+	char path[POLICYD_PATH_MAX];
+	char ws_buf[POLICYD_PATH_MAX];
 	const char *ws;
-	grok_policy_result_t pr;
+	policyd_policy_result_t pr;
 	PathCheck_ptr root;
 	size_t pl;
 
 	memset(&agent, 0, sizeof(agent));
 	if (open_in(in, in_len, &c) != 0) {
-		deny_msg(agent, GROK_REASON_INVALID_MESSAGE, out, out_len);
+		deny_msg(agent, POLICYD_REASON_INVALID_MESSAGE, out, out_len);
 		return;
 	}
 	root.p = capn_getp(capn_root(&c), 0, 1);
@@ -328,7 +328,7 @@ void grok_policyd_check_path(grok_supervisor_t *sup, const uint8_t *in,
 	pl = pc.path.len > 0 ? (size_t)pc.path.len : 0;
 	if (pl >= sizeof(path) || (pl > 0 && !pc.path.str)) {
 		capn_free(&c);
-		deny_msg(agent, GROK_REASON_FIELD_TOO_LONG, out, out_len);
+		deny_msg(agent, POLICYD_REASON_FIELD_TOO_LONG, out, out_len);
 		return;
 	}
 	if (pl)
@@ -342,7 +342,7 @@ void grok_policyd_check_path(grok_supervisor_t *sup, const uint8_t *in,
 			action = "write";
 		else if (pc.action == PathAction_delete)
 			action = "delete";
-		(void)grok_policy_eval(ws, "fs", action, path[0] ? path : NULL,
+		(void)policyd_policy_eval(ws, "fs", action, path[0] ? path : NULL,
 				       &pr);
 	}
 	capn_free(&c);
@@ -350,36 +350,36 @@ void grok_policyd_check_path(grok_supervisor_t *sup, const uint8_t *in,
 }
 
 #ifdef GROKOS_POLICYD_TRACE
-static const char *decision_str(grok_decision_t d)
+static const char *decision_str(policyd_decision_t d)
 {
 	switch (d) {
-	case GROK_DECISION_ALLOW:
+	case POLICYD_DECISION_ALLOW:
 		return "allow";
-	case GROK_DECISION_PROMPT:
+	case POLICYD_DECISION_PROMPT:
 		return "prompt";
-	case GROK_DECISION_DENY:
+	case POLICYD_DECISION_DENY:
 	default:
 		return "deny";
 	}
 }
 #endif
 
-void grok_policyd_check_shell(grok_supervisor_t *sup, const uint8_t *in,
+void policyd_check_shell(policyd_supervisor_t *sup, const uint8_t *in,
 			      size_t in_len, uint8_t **out, size_t *out_len)
 {
 	struct capn c;
 	struct ShellCheck sc;
 	struct AgentId agent;
-	char ws_buf[GROK_PATH_MAX];
+	char ws_buf[POLICYD_PATH_MAX];
 	const char *ws;
-	char cwd[GROK_PATH_MAX];
-	grok_policy_result_t pr;
+	char cwd[POLICYD_PATH_MAX];
+	policyd_policy_result_t pr;
 	ShellCheck_ptr root;
 	size_t cl;
 
 	memset(&agent, 0, sizeof(agent));
 	if (open_in(in, in_len, &c) != 0) {
-		deny_msg(agent, GROK_REASON_INVALID_MESSAGE, out, out_len);
+		deny_msg(agent, POLICYD_REASON_INVALID_MESSAGE, out, out_len);
 		return;
 	}
 	root.p = capn_getp(capn_root(&c), 0, 1);
@@ -393,7 +393,7 @@ void grok_policyd_check_shell(grok_supervisor_t *sup, const uint8_t *in,
 	cl = sc.cwd.len > 0 ? (size_t)sc.cwd.len : 0;
 	if (cl >= sizeof(cwd) || (cl > 0 && !sc.cwd.str)) {
 		capn_free(&c);
-		deny_msg(agent, GROK_REASON_FIELD_TOO_LONG, out, out_len);
+		deny_msg(agent, POLICYD_REASON_FIELD_TOO_LONG, out, out_len);
 		return;
 	}
 	if (cl)
@@ -403,8 +403,8 @@ void grok_policyd_check_shell(grok_supervisor_t *sup, const uint8_t *in,
 	/* Path plane first; content pack returns Cap'n PolicyDecision for passthrough. */
 	PD_TRACE_EVENT(PD_TRACE_LAYER_HOST, PD_TRACE_PHASE_GATE,
 		       "checkShell/path-plane", cwd[0] ? cwd : "", -1, NULL, 0);
-	(void)grok_policy_eval(ws, "shell", "exec", cwd[0] ? cwd : NULL, &pr);
-	if (pr.decision != GROK_DECISION_ALLOW) {
+	(void)policyd_policy_eval(ws, "shell", "exec", cwd[0] ? cwd : NULL, &pr);
+	if (pr.decision != POLICYD_DECISION_ALLOW) {
 		capn_free(&c);
 #ifdef GROKOS_POLICYD_TRACE
 		PD_TRACE_EVENT(PD_TRACE_LAYER_HOST, PD_TRACE_PHASE_DECIDE,
@@ -427,7 +427,7 @@ void grok_policyd_check_shell(grok_supervisor_t *sup, const uint8_t *in,
 		PD_TRACE_EVENT(PD_TRACE_LAYER_HOST, PD_TRACE_PHASE_ENTER,
 			       "checkShell/pack", "multi-pack shell-check compose", -1,
 			       NULL, 0);
-		grok_policy_shell_pack(ws, cwd, sc.argv, &pack_out, &pack_len);
+		policyd_policy_shell_pack(ws, cwd, sc.argv, &pack_out, &pack_len);
 		capn_free(&c);
 		if (pack_out && pack_len) {
 			/* Passthrough pack Cap'n PolicyDecision (reason from pack). */
@@ -435,26 +435,26 @@ void grok_policyd_check_shell(grok_supervisor_t *sup, const uint8_t *in,
 			*out_len = pack_len;
 			return;
 		}
-		deny_msg(agent, GROK_REASON_PACK_BAD_RESULT, out, out_len);
+		deny_msg(agent, POLICYD_REASON_PACK_BAD_RESULT, out, out_len);
 		return;
 	}
 	capn_free(&c);
 	emit_decision(&pr, agent, out, out_len);
 }
 
-void grok_policyd_check_risk(grok_supervisor_t *sup, const uint8_t *in,
+void policyd_check_risk(policyd_supervisor_t *sup, const uint8_t *in,
 			     size_t in_len, uint8_t **out, size_t *out_len)
 {
 	struct capn c;
 	struct RiskCheck rc;
 	struct AgentId agent;
-	grok_policy_result_t pr;
+	policyd_policy_result_t pr;
 	RiskCheck_ptr root;
 
 	(void)sup;
 	memset(&agent, 0, sizeof(agent));
 	if (open_in(in, in_len, &c) != 0) {
-		deny_msg(agent, GROK_REASON_INVALID_MESSAGE, out, out_len);
+		deny_msg(agent, POLICYD_REASON_INVALID_MESSAGE, out, out_len);
 		return;
 	}
 	root.p = capn_getp(capn_root(&c), 0, 1);
@@ -467,12 +467,12 @@ void grok_policyd_check_risk(grok_supervisor_t *sup, const uint8_t *in,
 	memset(&pr, 0, sizeof(pr));
 	/* secretExport: never allow (no secrets leave seat / traces). */
 	if (rc.action == RiskAction_secretExport) {
-		grok_policy_result_set(&pr, GROK_DECISION_DENY,
-				       GROK_REASON_SECRET_EXPORT_DENIED);
+		policyd_policy_result_set(&pr, POLICYD_DECISION_DENY,
+				       POLICYD_REASON_SECRET_EXPORT_DENIED);
 	} else {
 		/* network/sudo/pay/auth/…: prompt; agent fail-closes until UX. */
-		grok_policy_result_set(&pr, GROK_DECISION_PROMPT,
-				       GROK_REASON_HIGH_RISK_PROMPT);
+		policyd_policy_result_set(&pr, POLICYD_DECISION_PROMPT,
+				       POLICYD_REASON_HIGH_RISK_PROMPT);
 	}
 	capn_free(&c);
 	emit_decision(&pr, agent, out, out_len);
@@ -480,7 +480,7 @@ void grok_policyd_check_risk(grok_supervisor_t *sup, const uint8_t *in,
 
 /** Read Cap'n PolicyDecision decision+code into @a out (reason ignored). */
 static int policy_result_from_capnp(const uint8_t *msg, size_t len,
-				    grok_policy_result_t *out)
+				    policyd_policy_result_t *out)
 {
 	struct capn c;
 	struct PolicyDecision d;
@@ -493,19 +493,19 @@ static int policy_result_from_capnp(const uint8_t *msg, size_t len,
 		return -1;
 	root.p = capn_getp(capn_root(&c), 0, 1);
 	read_PolicyDecision(&d, root);
-	grok_policy_result_set(out, (grok_decision_t)d.decision,
-			       (grok_policy_reason_t)d.code);
+	policyd_policy_result_set(out, (policyd_decision_t)d.decision,
+			       (policyd_policy_reason_t)d.code);
 	capn_free(&c);
 	return 0;
 }
 
-void grok_policyd_check_audio(grok_supervisor_t *sup, const uint8_t *in,
+void policyd_check_audio(policyd_supervisor_t *sup, const uint8_t *in,
 			      size_t in_len, uint8_t **out, size_t *out_len)
 {
 	struct capn c;
 	struct AudioCheck ac;
 	struct AgentId agent;
-	grok_policy_result_t pr;
+	policyd_policy_result_t pr;
 	AudioCheck_ptr root;
 	uint8_t *pack_out = NULL;
 	size_t pack_len = 0;
@@ -513,7 +513,7 @@ void grok_policyd_check_audio(grok_supervisor_t *sup, const uint8_t *in,
 	(void)sup;
 	memset(&agent, 0, sizeof(agent));
 	if (open_in(in, in_len, &c) != 0) {
-		deny_msg(agent, GROK_REASON_INVALID_MESSAGE, out, out_len);
+		deny_msg(agent, POLICYD_REASON_INVALID_MESSAGE, out, out_len);
 		return;
 	}
 	root.p = capn_getp(capn_root(&c), 0, 1);
@@ -524,8 +524,8 @@ void grok_policyd_check_audio(grok_supervisor_t *sup, const uint8_t *in,
 	/* Hard TCB env gates before pack (DENY_ALL wins over AUDIO_ALLOW). */
 	if (deny_if_all(agent, out, out_len))
 		return;
-	if (grok_env_truthy("GROKOS_POLICYD_AUDIO_ALLOW")) {
-		emit_code(GROK_DECISION_ALLOW, GROK_REASON_AUDIO_FIXTURE_ALLOW,
+	if (policyd_env_truthy("GROKOS_POLICYD_AUDIO_ALLOW")) {
+		emit_code(POLICYD_DECISION_ALLOW, POLICYD_REASON_AUDIO_FIXTURE_ALLOW,
 			  agent, out, out_len);
 		return;
 	}
@@ -534,18 +534,18 @@ void grok_policyd_check_audio(grok_supervisor_t *sup, const uint8_t *in,
 	 * Product table: Cap'n AudioCheck → Janet audio-check → PolicyDecision.
 	 * Re-stamp agentId in TCB (pack does not need to echo it).
 	 */
-	grok_policy_audio_pack(in, in_len, &pack_out, &pack_len);
+	policyd_policy_audio_pack(in, in_len, &pack_out, &pack_len);
 	if (!pack_out || !pack_len ||
 	    policy_result_from_capnp(pack_out, pack_len, &pr) != 0) {
 		free(pack_out);
-		deny_msg(agent, GROK_REASON_PACK_BAD_RESULT, out, out_len);
+		deny_msg(agent, POLICYD_REASON_PACK_BAD_RESULT, out, out_len);
 		return;
 	}
 	free(pack_out);
 	emit_decision(&pr, agent, out, out_len);
 }
 
-void grok_policyd_admit_seat(grok_supervisor_t *sup, const uint8_t *in,
+void policyd_admit_seat(policyd_supervisor_t *sup, const uint8_t *in,
 			     size_t in_len, uint8_t **out, size_t *out_len)
 {
 	struct capn c;
@@ -560,7 +560,7 @@ void grok_policyd_admit_seat(grok_supervisor_t *sup, const uint8_t *in,
 	(void)sup;
 	memset(&agent, 0, sizeof(agent));
 	if (open_in(in, in_len, &c) != 0) {
-		deny_msg(agent, GROK_REASON_INVALID_MESSAGE, out, out_len);
+		deny_msg(agent, POLICYD_REASON_INVALID_MESSAGE, out, out_len);
 		return;
 	}
 	{
@@ -582,15 +582,15 @@ void grok_policyd_admit_seat(grok_supervisor_t *sup, const uint8_t *in,
 	if (capn_setp(capn_root(&synth), 0, sp.p) != 0 ||
 	    write_msg(&synth, &inner, &inner_len) != 0) {
 		capn_free(&synth);
-		deny_msg(agent, GROK_REASON_INVALID_MESSAGE, out, out_len);
+		deny_msg(agent, POLICYD_REASON_INVALID_MESSAGE, out, out_len);
 		return;
 	}
 	capn_free(&synth);
-	grok_policyd_check_seat(sup, inner, inner_len, out, out_len);
+	policyd_check_seat(sup, inner, inner_len, out, out_len);
 	free(inner);
 }
 
-void grok_policyd_admit_model(grok_supervisor_t *sup, const uint8_t *in,
+void policyd_admit_model(policyd_supervisor_t *sup, const uint8_t *in,
 			      size_t in_len, uint8_t **out, size_t *out_len)
 {
 	struct capn c;
@@ -604,7 +604,7 @@ void grok_policyd_admit_model(grok_supervisor_t *sup, const uint8_t *in,
 
 	memset(&agent, 0, sizeof(agent));
 	if (open_in(in, in_len, &c) != 0) {
-		deny_msg(agent, GROK_REASON_INVALID_MESSAGE, out, out_len);
+		deny_msg(agent, POLICYD_REASON_INVALID_MESSAGE, out, out_len);
 		return;
 	}
 	{
@@ -625,23 +625,23 @@ void grok_policyd_admit_model(grok_supervisor_t *sup, const uint8_t *in,
 	if (capn_setp(capn_root(&synth), 0, mp.p) != 0 ||
 	    write_msg(&synth, &inner, &inner_len) != 0) {
 		capn_free(&synth);
-		deny_msg(agent, GROK_REASON_INVALID_MESSAGE, out, out_len);
+		deny_msg(agent, POLICYD_REASON_INVALID_MESSAGE, out, out_len);
 		return;
 	}
 	capn_free(&synth);
-	grok_policyd_check_model(sup, inner, inner_len, out, out_len);
+	policyd_check_model(sup, inner, inner_len, out, out_len);
 	free(inner);
 }
 
-void grok_policyd_agent_status(grok_supervisor_t *sup, const uint8_t *in,
+void policyd_agent_status(policyd_supervisor_t *sup, const uint8_t *in,
 			       size_t in_len, uint8_t **out, size_t *out_len)
 {
 	struct capn c, co;
 	struct AgentQuery aq;
 	struct AgentId agent;
 	struct AgentStatus as;
-	grok_agent_status_t st;
-	char hex[GROK_ID_MAX];
+	policyd_agent_status_t st;
+	char hex[POLICYD_ID_MAX];
 	AgentQuery_ptr root;
 	AgentStatus_ptr asp;
 	int rc;
@@ -657,11 +657,11 @@ void grok_policyd_agent_status(grok_supervisor_t *sup, const uint8_t *in,
 	read_AgentQuery(&aq, root);
 	read_agent(aq.agentId, &agent);
 	capn_free(&c);
-	grok_agent_id_to_hex(agent.hi, agent.lo, hex);
+	policyd_agent_id_to_hex(agent.hi, agent.lo, hex);
 	if (!hex[0] || !sup)
 		goto missing;
-	rc = grok_supervisor_status(sup, hex, &st);
-	if (rc != GROK_OK)
+	rc = policyd_supervisor_status(sup, hex, &st);
+	if (rc != POLICYD_OK)
 		goto missing;
 
 	memset(&co, 0, sizeof(co));
@@ -700,14 +700,14 @@ missing:
 	capn_free(&co);
 }
 
-void grok_policyd_reload_shell_pack(grok_supervisor_t *sup, const uint8_t *in,
+void policyd_reload_shell_pack(policyd_supervisor_t *sup, const uint8_t *in,
 				    size_t in_len, uint8_t **out,
 				    size_t *out_len)
 {
 	struct capn c;
 	struct ReloadShellPack rp;
 	struct AgentId agent;
-	grok_policy_result_t pr;
+	policyd_policy_result_t pr;
 	/* Colon-joined multi-pack spec (files and/or dirs); same cap as host. */
 	char path[4096 * 16];
 	size_t pl;
@@ -716,7 +716,7 @@ void grok_policyd_reload_shell_pack(grok_supervisor_t *sup, const uint8_t *in,
 	(void)sup;
 	memset(&agent, 0, sizeof(agent));
 	if (open_in(in, in_len, &c) != 0) {
-		deny_msg(agent, GROK_REASON_INVALID_MESSAGE, out, out_len);
+		deny_msg(agent, POLICYD_REASON_INVALID_MESSAGE, out, out_len);
 		return;
 	}
 	{
@@ -728,7 +728,7 @@ void grok_policyd_reload_shell_pack(grok_supervisor_t *sup, const uint8_t *in,
 	pl = rp.path.len > 0 ? (size_t)rp.path.len : 0;
 	if (pl == 0 || pl >= sizeof(path) || !rp.path.str) {
 		capn_free(&c);
-		deny_msg(agent, GROK_REASON_PACK_PATH_INVALID, out, out_len);
+		deny_msg(agent, POLICYD_REASON_PACK_PATH_INVALID, out, out_len);
 		return;
 	}
 	memcpy(path, rp.path.str, pl);
@@ -739,17 +739,17 @@ void grok_policyd_reload_shell_pack(grok_supervisor_t *sup, const uint8_t *in,
 	if (deny_if_all(agent, out, out_len))
 		return;
 
-	rc = grok_policy_shell_pack_reload_internal(path);
+	rc = policyd_policy_shell_pack_reload_internal(path);
 	memset(&pr, 0, sizeof(pr));
 	if (rc == 0) {
-		grok_policy_result_set(&pr, GROK_DECISION_ALLOW,
-				       GROK_REASON_PACK_RELOADED);
+		policyd_policy_result_set(&pr, POLICYD_DECISION_ALLOW,
+				       POLICYD_REASON_PACK_RELOADED);
 	} else if (rc == -1) {
-		grok_policy_result_set(&pr, GROK_DECISION_DENY,
-				       GROK_REASON_PACK_PATH_INVALID);
+		policyd_policy_result_set(&pr, POLICYD_DECISION_DENY,
+				       POLICYD_REASON_PACK_PATH_INVALID);
 	} else {
-		grok_policy_result_set(&pr, GROK_DECISION_DENY,
-				       GROK_REASON_PACK_LOAD_FAILED);
+		policyd_policy_result_set(&pr, POLICYD_DECISION_DENY,
+				       POLICYD_REASON_PACK_LOAD_FAILED);
 	}
 	emit_decision(&pr, agent, out, out_len);
 }

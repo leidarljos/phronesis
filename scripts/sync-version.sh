@@ -11,11 +11,11 @@ hdr="include/grok-policyd/supervisor.h"
 tmp="$(mktemp)"
 # shellcheck disable=SC2016
 sed -E \
-  -e "s/#define GROK_POLICYD_VERSION \"[^\"]+\"/#define GROK_POLICYD_VERSION \"$ver\"/" \
-  -e "s/#define GROK_POLICYD_VERSION_MAJOR [0-9]+/#define GROK_POLICYD_VERSION_MAJOR $major/" \
-  -e "s/#define GROK_POLICYD_VERSION_MINOR [0-9]+/#define GROK_POLICYD_VERSION_MINOR $minor/" \
-  -e "s/#define GROK_POLICYD_VERSION_PATCH [0-9]+/#define GROK_POLICYD_VERSION_PATCH $patch/" \
-  -e "s/#define GROK_POLICYD_API_VERSION [0-9]+/#define GROK_POLICYD_API_VERSION $api/" \
+  -e "s/#define POLICYD_VERSION \"[^\"]+\"/#define POLICYD_VERSION \"$ver\"/" \
+  -e "s/#define POLICYD_VERSION_MAJOR [0-9]+/#define POLICYD_VERSION_MAJOR $major/" \
+  -e "s/#define POLICYD_VERSION_MINOR [0-9]+/#define POLICYD_VERSION_MINOR $minor/" \
+  -e "s/#define POLICYD_VERSION_PATCH [0-9]+/#define POLICYD_VERSION_PATCH $patch/" \
+  -e "s/#define POLICYD_API_VERSION [0-9]+/#define POLICYD_API_VERSION $api/" \
   "$hdr" >"$tmp"
 mv "$tmp" "$hdr"
 # Keep Sphinx/Doxygen project numbers in sync (cosmetic)
