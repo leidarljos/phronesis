@@ -608,6 +608,16 @@ static void test_reload_trusted_prefix_without_dev_pack(void **state)
 
 	unsetenv("GROKOS_PREFIX");
 	setenv("GROKOS_POLICYD_DEV_PACK", "1", 1);
+	{
+		const char *src = getenv("POLICYD_SOURCE_ROOT");
+		char root[POLICYD_PATH_MAX];
+
+		if (!src || !src[0])
+			src = ".";
+		assert_true(snprintf(root, sizeof(root), "%s/policy", src) <
+			    (int)sizeof(root));
+		setenv("GROKOS_POLICYD_PACK_ROOT", root, 1);
+	}
 	assert_int_equal(policyd_policy_shell_pack_reload(product), POLICYD_OK);
 }
 
