@@ -331,6 +331,8 @@ PHRONESIS_API int phronesis_supervisor_start(phronesis_supervisor_t *s,
  * A running slot with an empty workspace may be filled by a later bind
  * (sessiond often admits first, the agent then bind-fills cwd). A
  * non-empty workspace is sticky and returns @ref PHRONESIS_ERR_EXISTS.
+ * An empty incoming workspace on a later bind (including after stop)
+ * leaves the committed root in place.
  *
  * @return @ref PHRONESIS_OK or @ref PHRONESIS_ERR_EXISTS / @ref PHRONESIS_ERR_INVAL.
  */
