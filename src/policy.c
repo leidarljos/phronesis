@@ -155,8 +155,7 @@ int phronesis_resolve_script(const char *cwd, const char *script, char *out,
 	return 0;
 }
 
-/** Truthy env for TCB gates: 1 / true / yes (any case of true/yes). */
-static int env_truthy(const char *name)
+int phronesis_env_truthy(const char *name)
 {
 	const char *v = getenv(name);
 
@@ -165,6 +164,34 @@ static int env_truthy(const char *name)
 	return strcmp(v, "1") == 0 || strcmp(v, "true") == 0 ||
 	       strcmp(v, "yes") == 0 || strcmp(v, "TRUE") == 0 ||
 	       strcmp(v, "YES") == 0;
+}
+
+int phronesis_policy_deny_all(void)
+{
+	return phronesis_env_truthy("PHRONESIS_DENY_ALL");
+}
+
+int phronesis_policy_require_running_agent(phronesis_supervisor_t *sup,
+					  const char *agent_id,
+					  phronesis_policy_reason_t *code)
+{
+	phronesis_agent_status_t st;
+
+	if (!code)
+		return -1;
+	if (!agent_id || !agent_id[0]) {
+		*code = PHRONESIS_REASON_INVALID_MESSAGE;
+		return -1;
+	}
+	if (!sup || phronesis_supervisor_status(sup, agent_id, &st) != PHRONESIS_OK) {
+		*code = PHRONESIS_REASON_TOOLS_DEFAULT_DENY;
+		return -1;
+	}
+	if (st.state != PHRONESIS_AGENT_RUNNING) {
+		*code = PHRONESIS_REASON_TOOLS_DEFAULT_DENY;
+		return -1;
+	}
+	return 0;
 }
 
 int phronesis_policy_eval(const char *workspace, const char *tool,
@@ -179,10 +206,10 @@ int phronesis_policy_eval(const char *workspace, const char *tool,
 	PD_TRACE_EVENT(PD_TRACE_LAYER_HOST, PD_TRACE_PHASE_ENTER,
 		       "policy-eval", tool && tool[0] ? tool : "", -1, NULL, 0);
 
-	if (env_truthy("PHRONESIS_DENY_ALL")) {
+	if (phronesis_policy_deny_all()) {
 		phronesis_policy_result_set(out, PHRONESIS_DECISION_DENY,
 				       PHRONESIS_REASON_DENY_ALL);
-				PD_TRACE_EVENT(PD_TRACE_LAYER_HOST, PD_TRACE_PHASE_DECIDE,
+		PD_TRACE_EVENT(PD_TRACE_LAYER_HOST, PD_TRACE_PHASE_DECIDE,
 			       "policy-eval/deny-all", "PHRONESIS_DENY_ALL",
 			       (int)PHRONESIS_REASON_DENY_ALL, "deny", 1);
 		return PHRONESIS_OK;
@@ -195,6 +222,7 @@ int phronesis_policy_eval(const char *workspace, const char *tool,
 	}
 
 	if (strcmp(tool, "seat") == 0) {
+		/* Action table only; callers require a running supervisor slot. */
 		if (strcmp(action, "publish_run") == 0 ||
 		    strcmp(action, "read_run") == 0 ||
 		    strcmp(action, "list_runs") == 0 ||
@@ -208,6 +236,7 @@ int phronesis_policy_eval(const char *workspace, const char *tool,
 		return PHRONESIS_OK;
 	}
 	if (strcmp(tool, "model") == 0 && strcmp(action, "start") == 0) {
+		/* Action table only; callers require a running supervisor slot. */
 		phronesis_policy_result_set(out, PHRONESIS_DECISION_ALLOW,
 				       PHRONESIS_REASON_MODEL_START_ALLOW);
 		return PHRONESIS_OK;
@@ -218,16 +247,17 @@ int phronesis_policy_eval(const char *workspace, const char *tool,
 				       PHRONESIS_REASON_SECRET_EXPORT_DENIED);
 		return PHRONESIS_OK;
 	}
+	if (path && path[0] && path_is_sensitive(path) &&
+	    (strcmp(action, "read") == 0 || strcmp(action, "write") == 0 ||
+	     strcmp(action, "delete") == 0 || strcmp(action, "exec") == 0)) {
+		phronesis_policy_result_set(out, PHRONESIS_DECISION_DENY,
+				       PHRONESIS_REASON_PATH_SENSITIVE_DENY);
+		return PHRONESIS_OK;
+	}
 	if (strcmp(action, "delete") == 0 || strcmp(action, "network") == 0 ||
 	    strcmp(action, "sudo") == 0) {
 		phronesis_policy_result_set(out, PHRONESIS_DECISION_PROMPT,
 				       PHRONESIS_REASON_HIGH_RISK_PROMPT);
-		return PHRONESIS_OK;
-	}
-	if ((strcmp(action, "read") == 0 || strcmp(action, "write") == 0) &&
-	    path && path[0] && path_is_sensitive(path)) {
-		phronesis_policy_result_set(out, PHRONESIS_DECISION_DENY,
-				       PHRONESIS_REASON_PATH_SENSITIVE_DENY);
 		return PHRONESIS_OK;
 	}
 	if ((strcmp(action, "read") == 0 || strcmp(action, "write") == 0) &&

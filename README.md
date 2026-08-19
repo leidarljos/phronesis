@@ -75,14 +75,14 @@ phronesis_check_shell(sup, shell_msg, shell_len, &out, &out_len);
 |--------|------------|---------------|
 | checkSeat | publishRun / readRun / listRuns / listEvents **and** agent slot is running | null AgentId → deny (`invalidMessage`); unknown / non-running slot → deny (`toolsDefaultDeny`); unknown action → deny |
 | checkModel | agent slot is running | null AgentId → deny (`invalidMessage`); unknown / non-running slot → deny (`toolsDefaultDeny`) |
-| checkPath | read/write under workspace | outside → deny; delete → prompt |
+| checkPath | read/write under workspace | outside → deny; sensitive path (including delete/exec) → deny; other delete → prompt |
 | checkShell | cwd under workspace; content pack: python via uv+PEP723; deny sudo/curl\|sh/banned PMs/dangerous git | bare python / missing PEP 723 / danger runners → deny |
 | checkRisk | — | secretExport → deny; other risk → prompt |
 | checkAudio | `PHRONESIS_AUDIO_ALLOW` fixture (all `AudioAction`; CI/dogfood only — leave unset in production) | product pack (`audio-check`): micOpen/alwaysListen/networkStt/inject **deny**; listenArm **prompt**; unknown **deny**. Host: `DENY_ALL` wins over fixture. No PCM. meta #97 |
 
 Lexical paths: absolute only; reject `//`, `.`, `..`. No `realpath`.
 
-`PHRONESIS_DENY_ALL` forces deny on the CLI/string eval path and on `checkSeat` / `checkModel` / `checkAudio` (it wins over `PHRONESIS_AUDIO_ALLOW`). Not all Cap'n methods consult it yet.
+`PHRONESIS_DENY_ALL` forces deny on the CLI/string eval path and on every Cap'n `PolicyDecision` entry (`checkSeat` / `checkModel` / `checkPath` / `checkShell` / `checkRisk` / `checkAudio` / `reloadShellPack`). It wins over `PHRONESIS_AUDIO_ALLOW`.
 
 ## Build / test / coverage (pixi only)
 
@@ -145,7 +145,9 @@ MIT for first-party code. See `LICENSE` and `NOTICE`.
 
 ## Deny-all and audio fixture (tests / lockdown)
 
-Set `PHRONESIS_DENY_ALL=1` (or `true`/`yes`) to force deny on the CLI/string `policy_check` path and on Cap'n `checkAudio`. Used to prove agent/sessiond fail closed under a hard seat. Unset for normal allowlists.
+Set `PHRONESIS_DENY_ALL=1` (or `true`/`yes`) to force deny on the CLI/string `policy_check` path and on every Cap'n `PolicyDecision` entry. Used to prove agent/sessiond fail closed under a hard seat. Unset for normal allowlists.
+
+Pack reload opens files under one pack root (the install policy directory, or `PHRONESIS_PACK_ROOT`). That root cannot be `/`. Each file is opened beneath that directory (`openat2` `RESOLVE_BENEATH` on Linux, `openat` + `O_NOFOLLOW` walk elsewhere). Reload also requires each segment under a trusted prefix (`/usr/local/share/phronesis`, `/usr/share/phronesis`, `$PHRONESIS_PREFIX/share/phronesis`, or the compile-time default pack directory) unless `PHRONESIS_DEV_PACK=1`. A rejected reload leaves the already-loaded pack in place.
 
 Set `PHRONESIS_AUDIO_ALLOW=1` only in CI/dogfood to allow all `AudioAction` on `checkAudio`. Leave unset in production images. `DENY_ALL` still wins when both are set.
 

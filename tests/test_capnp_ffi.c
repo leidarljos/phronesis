@@ -40,7 +40,14 @@ static int capn_setup(void **state)
 	if (!src || !src[0])
 		src = ".";
 	snprintf(pack, sizeof(pack), "%s/policy/shell.janet", src);
+	setenv("PHRONESIS_DEV_PACK", "1", 1);
 	setenv("PHRONESIS_JANET_PACK", pack, 1);
+	{
+		char root[PHRONESIS_PATH_MAX];
+
+		snprintf(root, sizeof(root), "%s/policy", src);
+		setenv("PHRONESIS_PACK_ROOT", root, 1);
+	}
 	assert_int_equal(phronesis_shell_pack_reload(pack), PHRONESIS_OK);
 	*state = f;
 	return 0;
@@ -609,6 +616,127 @@ static void test_check_audio_bad_message(void **state)
 	free(out);
 }
 
+static void test_check_risk_deny_all(void **state)
+{
+	struct capn_fix *f = *state;
+	struct capn c;
+	struct RiskCheck rc;
+	RiskCheck_ptr rp;
+	uint8_t *in = NULL, *out = NULL;
+	size_t in_len = 0, out_len = 0;
+
+	setenv("PHRONESIS_DENY_ALL", "1", 1);
+
+	memset(&c, 0, sizeof(c));
+	capn_init_malloc(&c);
+	memset(&rc, 0, sizeof(rc));
+	rc.agentId = mk_agent(capn_root(&c).seg, 7, 8);
+	rc.action = RiskAction_network;
+	rp = new_RiskCheck(capn_root(&c).seg);
+	write_RiskCheck(&rc, rp);
+	assert_int_equal(capn_setp(capn_root(&c), 0, rp.p), 0);
+	assert_int_equal(write_msg(&c, &in, &in_len), 0);
+	capn_free(&c);
+
+	phronesis_check_risk(f->sup, in, in_len, &out, &out_len);
+	free(in);
+	expect_decision_code(out, out_len, Decision_deny, PolicyReason_denyAll, 7, 8);
+	free(out);
+	unsetenv("PHRONESIS_DENY_ALL");
+}
+
+static void test_check_risk_secret_export_deny(void **state)
+{
+	struct capn_fix *f = *state;
+	struct {
+		enum RiskAction action;
+		enum Decision dec;
+		enum PolicyReason code;
+	} cases[] = {
+		{ RiskAction_secretExport, Decision_deny,
+		  PolicyReason_secretExportDenied },
+		{ RiskAction_network, Decision_prompt,
+		  PolicyReason_highRiskPrompt },
+	};
+	size_t i;
+
+	unsetenv("PHRONESIS_DENY_ALL");
+	for (i = 0; i < sizeof(cases) / sizeof(cases[0]); i++) {
+		struct capn c;
+		struct RiskCheck rc;
+		RiskCheck_ptr rp;
+		uint8_t *in = NULL, *out = NULL;
+		size_t in_len = 0, out_len = 0;
+
+		memset(&c, 0, sizeof(c));
+		capn_init_malloc(&c);
+		memset(&rc, 0, sizeof(rc));
+		rc.agentId = mk_agent(capn_root(&c).seg, 11, 12);
+		rc.action = cases[i].action;
+		rp = new_RiskCheck(capn_root(&c).seg);
+		write_RiskCheck(&rc, rp);
+		assert_int_equal(capn_setp(capn_root(&c), 0, rp.p), 0);
+		assert_int_equal(write_msg(&c, &in, &in_len), 0);
+		capn_free(&c);
+
+		phronesis_check_risk(f->sup, in, in_len, &out, &out_len);
+		free(in);
+		expect_decision_code(out, out_len, cases[i].dec, cases[i].code,
+				     11, 12);
+		free(out);
+	}
+}
+
+static void test_check_path_write_vs_delete(void **state)
+{
+	struct capn_fix *f = *state;
+	char *argv[] = { "true", NULL };
+	const char *path = "/ws/out";
+	struct {
+		enum PathAction action;
+		enum Decision dec;
+		enum PolicyReason code;
+	} cases[] = {
+		{ PathAction_write, Decision_allow,
+		  PolicyReason_pathUnderWorkspaceAllow },
+		{ PathAction_delete, Decision_prompt,
+		  PolicyReason_highRiskPrompt },
+	};
+	size_t i;
+
+	unsetenv("PHRONESIS_DENY_ALL");
+	start_bits(f->sup, 13, 14, argv);
+
+	for (i = 0; i < sizeof(cases) / sizeof(cases[0]); i++) {
+		struct capn c;
+		struct PathCheck pc;
+		PathCheck_ptr pp;
+		uint8_t *in = NULL, *out = NULL;
+		size_t in_len = 0, out_len = 0;
+
+		memset(&c, 0, sizeof(c));
+		capn_init_malloc(&c);
+		memset(&pc, 0, sizeof(pc));
+		pc.agentId = mk_agent(capn_root(&c).seg, 13, 14);
+		pc.action = cases[i].action;
+		pc.path.len = (int)strlen(path);
+		pc.path.str = path;
+		pc.path.seg = NULL;
+		pp = new_PathCheck(capn_root(&c).seg);
+		write_PathCheck(&pc, pp);
+		assert_int_equal(capn_setp(capn_root(&c), 0, pp.p), 0);
+		assert_int_equal(write_msg(&c, &in, &in_len), 0);
+		capn_free(&c);
+
+		phronesis_check_path(f->sup, in, in_len, &out, &out_len);
+		free(in);
+		expect_decision_code(out, out_len, cases[i].dec, cases[i].code,
+				     13, 14);
+		free(out);
+	}
+	stop_bits(f->sup, 13, 14);
+}
+
 int run_capnp_ffi_tests(void)
 {
 	const struct CMUnitTest tests[] = {
@@ -633,6 +761,12 @@ int run_capnp_ffi_tests(void)
 		cmocka_unit_test_setup_teardown(test_check_seat_deny_all,
 						capn_setup, capn_teardown),
 		cmocka_unit_test_setup_teardown(test_check_model_deny_all,
+						capn_setup, capn_teardown),
+		cmocka_unit_test_setup_teardown(test_check_risk_deny_all,
+						capn_setup, capn_teardown),
+		cmocka_unit_test_setup_teardown(test_check_risk_secret_export_deny,
+						capn_setup, capn_teardown),
+		cmocka_unit_test_setup_teardown(test_check_path_write_vs_delete,
 						capn_setup, capn_teardown),
 		cmocka_unit_test_setup_teardown(test_check_audio_defaults,
 						capn_setup, capn_teardown),
