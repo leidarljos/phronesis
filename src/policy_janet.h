@@ -27,7 +27,9 @@ void policyd_policy_audio_pack(const uint8_t *in, size_t in_len, uint8_t **out,
 
 /**
  * Unload any loaded packs and load @a path (colon-separated absolute
- * .janet files and/or directories of top-level *.janet packs).
+ * .janet files and/or directories of top-level *.janet packs). Each
+ * file is opened under the pack root (install policy directory or
+ * GROKOS_POLICYD_PACK_ROOT; not "/").
  * Returns 0 on success, -1 path invalid, -2 load failed.
  */
 int policyd_policy_shell_pack_reload_internal(const char *path);

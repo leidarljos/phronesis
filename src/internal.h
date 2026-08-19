@@ -76,4 +76,11 @@ int policyd_policy_build_shell_view(const char *workspace, const char *cwd,
 				 capn_ptr argv, uint8_t **flat_out,
 				 size_t *flat_len);
 
+/** Open @a root as a directory. Rejects "/". Follows the root path itself. */
+int grok_beneath_dir(const char *root, int *outfd);
+/** @a path relative to @a root, or already-relative. Rejects `..`. */
+int grok_beneath_rel(const char *root, const char *path, char *rel, size_t n);
+/** Open @a rel under @a rootfd. No symlink steps. Caller closes *@a outfd. */
+int grok_beneath_open(int rootfd, const char *rel, int flags, int *outfd);
+
 #endif

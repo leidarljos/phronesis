@@ -10,6 +10,8 @@
  * files and/or directories of top-level *.janet files. Each pack loads into
  * its own sealed env. checkShell / checkAudio run every pack that defines
  * the entry and compose fail-closed (deny > prompt > allow).
+ * Pack bytes are read through grok_beneath_open on one pack-root fd
+ * (install policy directory or GROKOS_POLICYD_PACK_ROOT; never "/").
  */
 #include "policy_janet.h"
 #include "internal.h"
@@ -22,12 +24,14 @@
 
 #include <capnp_c.h>
 #include <dirent.h>
+#include <fcntl.h>
 #include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
 #include <sys/stat.h>
+#include <unistd.h>
 
 #define SHELL_HEAD_MAX 8192
 #define SHELL_ARGV_MAX 256
@@ -55,6 +59,8 @@ static int pack_loaded;
 static int pack_failed;
 static pack_slot_t packs[PACK_MAX];
 static int npacks;
+static int pack_rootfd = -1;
+static char pack_root[PACK_PATH_MAX];
 /* Spec string for default_pack / setenv (colon-joined). */
 static char pack_spec_buf[PACK_SPEC_MAX];
 static int pack_spec_set;
@@ -237,6 +243,76 @@ static int path_has_dotdot(const char *path)
 	return 0;
 }
 
+static int default_pack_dir(char *out, size_t n)
+{
+	const char *p = GROKOS_POLICYD_DEFAULT_JANET_PACK;
+	const char *slash = strrchr(p, '/');
+	size_t len;
+
+	if (!out || n == 0 || !slash || slash == p)
+		return -1;
+	len = (size_t)(slash - p);
+	if (len + 1 > n)
+		return -1;
+	memcpy(out, p, len);
+	out[len] = '\0';
+	return 0;
+}
+
+static int pack_root_path(char *out, size_t n)
+{
+	const char *e = getenv("GROKOS_POLICYD_PACK_ROOT");
+
+	if (e && e[0]) {
+		if (e[0] != '/' || strcmp(e, "/") == 0 || path_has_dotdot(e))
+			return -1;
+		if (strlen(e) >= n)
+			return -1;
+		memcpy(out, e, strlen(e) + 1);
+		return 0;
+	}
+	return default_pack_dir(out, n);
+}
+
+static int ensure_pack_root(void)
+{
+	char root[PACK_PATH_MAX];
+	int fd;
+
+	if (pack_root_path(root, sizeof(root)) != 0)
+		return -1;
+	if (pack_rootfd >= 0 && strcmp(pack_root, root) == 0)
+		return 0;
+	if (grok_beneath_dir(root, &fd) != 0)
+		return -1;
+	if (pack_rootfd >= 0)
+		(void)close(pack_rootfd);
+	pack_rootfd = fd;
+	if (snprintf(pack_root, sizeof(pack_root), "%s", root) >=
+	    (int)sizeof(pack_root)) {
+		(void)close(pack_rootfd);
+		pack_rootfd = -1;
+		pack_root[0] = '\0';
+		return -1;
+	}
+	return 0;
+}
+
+static int pack_on_root(const char *path)
+{
+	char rel[PACK_PATH_MAX];
+	int fd;
+
+	if (ensure_pack_root() != 0)
+		return 0;
+	if (grok_beneath_rel(pack_root, path, rel, sizeof(rel)) != 0)
+		return 0;
+	if (grok_beneath_open(pack_rootfd, rel, O_RDONLY, &fd) != 0)
+		return 0;
+	(void)close(fd);
+	return 1;
+}
+
 static int path_is_absolute_file(const char *path)
 {
 	struct stat st;
@@ -402,6 +478,8 @@ static int parse_pack_spec(const char *spec, char out[][PACK_PATH_MAX],
 			continue;
 		if (require_absolute && tok[0] != '/')
 			return -1;
+		if (require_absolute && !pack_on_root(tok))
+			return -1;
 		if (path_is_dir(tok) ||
 		    (require_absolute && path_is_absolute_dir(tok))) {
 			if (expand_dir_packs(tok, out, &n, max) != 0)
@@ -429,27 +507,31 @@ static int parse_pack_spec(const char *spec, char out[][PACK_PATH_MAX],
  */
 static int dobytes_file(JanetTable *env, const char *path)
 {
-	FILE *f;
+	char rel[PACK_PATH_MAX];
 	char *buf;
-	long sz;
+	off_t sz;
 	Janet out;
+	int fd;
 	int rc;
 
-	f = fopen(path, "rb");
-	if (!f)
+	if (ensure_pack_root() != 0)
 		return -1;
-	if (fseek(f, 0, SEEK_END) != 0 || (sz = ftell(f)) <= 0 ||
-	    sz > PACK_FILE_MAX || fseek(f, 0, SEEK_SET) != 0) {
-		fclose(f);
+	if (grok_beneath_rel(pack_root, path, rel, sizeof(rel)) != 0)
+		return -1;
+	if (grok_beneath_open(pack_rootfd, rel, O_RDONLY, &fd) != 0)
+		return -1;
+	sz = lseek(fd, 0, SEEK_END);
+	if (sz <= 0 || sz > PACK_FILE_MAX || lseek(fd, 0, SEEK_SET) != 0) {
+		(void)close(fd);
 		return -1;
 	}
 	buf = malloc((size_t)sz);
-	if (!buf || fread(buf, 1, (size_t)sz, f) != (size_t)sz) {
+	if (!buf || read(fd, buf, (size_t)sz) != (ssize_t)sz) {
 		free(buf);
-		fclose(f);
+		(void)close(fd);
 		return -1;
 	}
-	fclose(f);
+	(void)close(fd);
 	rc = janet_dobytes(env, (const uint8_t *)buf, (int32_t)sz, path, &out);
 	free(buf);
 	return rc == 0 ? 0 : -2;

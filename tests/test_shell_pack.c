@@ -115,6 +115,24 @@ static void write_file(const char *path, const char *body)
 	fclose(f);
 }
 
+static const char *product_pack_path(char *buf, size_t n)
+{
+	const char *src = getenv("POLICYD_SOURCE_ROOT");
+
+	if (!src || !src[0])
+		src = ".";
+	assert_true(snprintf(buf, n, "%s/policy/shell.janet", src) < (int)n);
+	return buf;
+}
+
+static void write_allow_all_pack(const char *path)
+{
+	write_file(path,
+		   "(defn shell-check [buf]\n"
+		   "  (capnp/build-message 1 2\n"
+		   "    @[[:u16 0 1] [:u16 2 20] [:text 0 \"allow all pack\"]]))\n");
+}
+
 struct shell_fix {
 	policyd_supervisor_t *sup;
 	char st[POLICYD_PATH_MAX];
@@ -122,11 +140,69 @@ struct shell_fix {
 	char ws[POLICYD_PATH_MAX];
 };
 
+static void capnp_reload(policyd_supervisor_t *sup, const char *path,
+			 enum Decision *dec, enum PolicyReason *code)
+{
+	struct capn c;
+	struct ReloadShellPack rp;
+	ReloadShellPack_ptr root;
+	uint8_t *in = NULL, *out = NULL;
+	size_t in_len = 0, out_len = 0;
+
+	memset(&c, 0, sizeof(c));
+	capn_init_malloc(&c);
+	memset(&rp, 0, sizeof(rp));
+	rp.path = ctext(path);
+	root = new_ReloadShellPack(capn_root(&c).seg);
+	write_ReloadShellPack(&rp, root);
+	assert_int_equal(capn_setp(capn_root(&c), 0, root.p), 0);
+	assert_int_equal(write_msg(&c, &in, &in_len), 0);
+	capn_free(&c);
+	policyd_reload_shell_pack(sup, in, in_len, &out, &out_len);
+	free(in);
+	read_decision(out, out_len, dec, code, NULL, 0);
+	free(out);
+}
+
+static void assert_bare_python_denied(struct shell_fix *f)
+{
+	char *argv[] = { "python3", "script.py", NULL };
+	uint8_t *in = NULL, *out = NULL;
+	size_t in_len = 0, out_len = 0;
+	enum Decision dec;
+	enum PolicyReason code;
+
+	build_shell_check(f->ws, argv, 2, &in, &in_len);
+	policyd_check_shell(f->sup, in, in_len, &out, &out_len);
+	free(in);
+	read_decision(out, out_len, &dec, &code, NULL, 0);
+	free(out);
+	assert_int_equal(dec, Decision_deny);
+	assert_int_equal(code, PolicyReason_pythonRequiresUvRun);
+}
+
+static void assert_bare_python_allowed(struct shell_fix *f)
+{
+	char *argv[] = { "python3", "script.py", NULL };
+	uint8_t *in = NULL, *out = NULL;
+	size_t in_len = 0, out_len = 0;
+	enum Decision dec;
+	enum PolicyReason code;
+
+	build_shell_check(f->ws, argv, 2, &in, &in_len);
+	policyd_check_shell(f->sup, in, in_len, &out, &out_len);
+	free(in);
+	read_decision(out, out_len, &dec, &code, NULL, 0);
+	free(out);
+	assert_int_equal(dec, Decision_allow);
+	assert_int_equal(code, PolicyReason_shellExecAllow);
+}
+
 static int shell_setup(void **state)
 {
 	struct shell_fix *f = calloc(1, sizeof(*f));
 	char *argv0[] = { "true", NULL };
-	char pack[POLICYD_PATH_MAX];
+	char pack[POLICYD_PATH_MAX], root[POLICYD_PATH_MAX];
 	const char *src;
 
 	assert_non_null(f);
@@ -140,12 +216,15 @@ static int shell_setup(void **state)
 				      NULL, f->ws, argv0),
 		POLICYD_OK);
 
+	product_pack_path(pack, sizeof(pack));
 	src = getenv("POLICYD_SOURCE_ROOT");
 	if (!src || !src[0])
 		src = ".";
-	snprintf(pack, sizeof(pack), "%s/policy/shell.janet", src);
 	setenv("GROKOS_POLICYD_DEV_PACK", "1", 1);
 	setenv("GROKOS_POLICYD_JANET_PACK", pack, 1);
+	assert_true(snprintf(root, sizeof(root), "%s/policy", src) <
+		    (int)sizeof(root));
+	setenv("GROKOS_POLICYD_PACK_ROOT", root, 1);
 
 	*state = f;
 	return 0;
@@ -157,6 +236,15 @@ static int shell_teardown(void **state)
 
 	unsetenv("GROKOS_POLICYD_JANET_PACK");
 	unsetenv("GROKOS_POLICYD_DEV_PACK");
+	{
+		const char *src = getenv("POLICYD_SOURCE_ROOT");
+		char root[POLICYD_PATH_MAX];
+
+		if (!src || !src[0])
+			src = ".";
+		snprintf(root, sizeof(root), "%s/policy", src);
+		setenv("GROKOS_POLICYD_PACK_ROOT", root, 1);
+	}
 	if (f) {
 		if (f->sup)
 			policyd_supervisor_close(f->sup);
@@ -377,73 +465,30 @@ static void test_reload_shell_pack_hot_load(void **state)
 {
 	struct shell_fix *f = *state;
 	char pack_a[POLICYD_PATH_MAX], pack_b[POLICYD_PATH_MAX];
-	char *argv[] = { "python3", "x.py", NULL };
-	uint8_t *in = NULL, *out = NULL;
-	size_t in_len = 0, out_len = 0;
 	enum Decision dec;
 	enum PolicyReason code;
-	const char *src = getenv("POLICYD_SOURCE_ROOT");
-	struct capn c;
-	struct ReloadShellPack rp;
-	ReloadShellPack_ptr root;
 	int rc;
 
-	if (!src || !src[0])
-		src = ".";
-	snprintf(pack_a, sizeof(pack_a), "%s/policy/shell.janet", src);
-	/* pack_b: allow-all shell pack (no python law) */
+	product_pack_path(pack_a, sizeof(pack_a));
 	snprintf(pack_b, sizeof(pack_b), "%s/allow_all.janet", f->ws);
-	{
-		FILE *fp = fopen(pack_b, "w");
+	write_allow_all_pack(pack_b);
 
-		assert_non_null(fp);
-		fputs("(defn shell-check [buf]\n"
-		      "  (capnp/build-message 1 2\n"
-		      "    @[[:u16 0 1] [:u16 2 20] [:text 0 \"allow all pack\"]]))\n",
-		      fp);
-		fclose(fp);
-	}
-
-	/* Reload to product UV pack → bare python deny */
 	rc = policyd_policy_shell_pack_reload(pack_a);
 	assert_int_equal(rc, POLICYD_OK);
-	build_shell_check(f->ws, argv, 2, &in, &in_len);
-	policyd_check_shell(f->sup, in, in_len, &out, &out_len);
-	free(in);
-	read_decision(out, out_len, &dec, &code, NULL, 0);
-	free(out);
-	assert_int_equal(dec, Decision_deny);
-	assert_int_equal(code, PolicyReason_pythonRequiresUvRun);
+	assert_bare_python_denied(f);
 
-	/* Hot-load allow-all pack → same argv allows */
 	rc = policyd_policy_shell_pack_reload(pack_b);
-	assert_int_equal(rc, POLICYD_OK);
-	build_shell_check(f->ws, argv, 2, &in, &in_len);
-	policyd_check_shell(f->sup, in, in_len, &out, &out_len);
-	free(in);
-	read_decision(out, out_len, &dec, &code, NULL, 0);
-	free(out);
-	assert_int_equal(dec, Decision_allow);
-	assert_int_equal(code, PolicyReason_shellExecAllow);
+	assert_int_equal(rc, POLICYD_ERR_INVAL);
+	assert_bare_python_denied(f);
 
-	/* Cap'n reloadShellPack method */
-	memset(&c, 0, sizeof(c));
-	capn_init_malloc(&c);
-	memset(&rp, 0, sizeof(rp));
-	rp.path = ctext(pack_a);
-	root = new_ReloadShellPack(capn_root(&c).seg);
-	write_ReloadShellPack(&rp, root);
-	assert_int_equal(capn_setp(capn_root(&c), 0, root.p), 0);
-	assert_int_equal(write_msg(&c, &in, &in_len), 0);
-	capn_free(&c);
-	policyd_reload_shell_pack(f->sup, in, in_len, &out, &out_len);
-	free(in);
-	read_decision(out, out_len, &dec, &code, NULL, 0);
-	free(out);
+	capnp_reload(f->sup, pack_b, &dec, &code);
+	assert_int_equal(dec, Decision_deny);
+	assert_int_equal(code, PolicyReason_packPathInvalid);
+
+	capnp_reload(f->sup, pack_a, &dec, &code);
 	assert_int_equal(dec, Decision_allow);
 	assert_int_equal(code, PolicyReason_packReloaded);
 
-	/* Invalid path */
 	rc = policyd_policy_shell_pack_reload("/no/such/pack.janet");
 	assert_int_equal(rc, POLICYD_ERR_INVAL);
 	rc = policyd_policy_shell_pack_reload("relative.janet");
@@ -463,6 +508,7 @@ static void test_multi_pack_compose_deny(void **state)
 	enum PolicyReason code;
 	int rc;
 
+	setenv("GROKOS_POLICYD_PACK_ROOT", f->ws, 1);
 	snprintf(pack_allow, sizeof(pack_allow), "%s/allow_all.janet", f->ws);
 	snprintf(pack_deny, sizeof(pack_deny), "%s/deny_true.janet", f->ws);
 	write_file(pack_allow,
@@ -512,6 +558,7 @@ static void test_multi_pack_dir(void **state)
 	int rc;
 	char p1[POLICYD_PATH_MAX], p2[POLICYD_PATH_MAX], pdoc[POLICYD_PATH_MAX];
 
+	setenv("GROKOS_POLICYD_PACK_ROOT", f->ws, 1);
 	snprintf(dir, sizeof(dir), "%s/packs.d", f->ws);
 	assert_int_equal(mkdir(dir, 0700), 0);
 	snprintf(p1, sizeof(p1), "%s/01-allow.janet", dir);
@@ -646,6 +693,43 @@ static void test_shell_view_256_args_fits_128k_stack(void **state)
 	capn_free(&c);
 }
 
+/* Operator PACK_ROOT may include a test/dev tree; then swap is allowed. */
+static void test_reload_pack_root_allows_swap(void **state)
+{
+	struct shell_fix *f = *state;
+	char pack_b[POLICYD_PATH_MAX];
+	int rc;
+
+	setenv("GROKOS_POLICYD_PACK_ROOT", f->ws, 1);
+	snprintf(pack_b, sizeof(pack_b), "%s/allow_all.janet", f->ws);
+	write_allow_all_pack(pack_b);
+	rc = policyd_policy_shell_pack_reload(pack_b);
+	assert_int_equal(rc, POLICYD_OK);
+	assert_bare_python_allowed(f);
+}
+
+static void test_reload_rejects_pack_root_slash(void **state)
+{
+	char pack_a[POLICYD_PATH_MAX];
+
+	(void)state;
+	product_pack_path(pack_a, sizeof(pack_a));
+	setenv("GROKOS_POLICYD_PACK_ROOT", "/", 1);
+	assert_int_equal(policyd_policy_shell_pack_reload(pack_a), POLICYD_ERR_INVAL);
+}
+
+static void test_reload_rejects_symlink(void **state)
+{
+	struct shell_fix *f = *state;
+	char pack_a[POLICYD_PATH_MAX], linkp[POLICYD_PATH_MAX];
+
+	product_pack_path(pack_a, sizeof(pack_a));
+	snprintf(linkp, sizeof(linkp), "%s/sneak.janet", f->ws);
+	assert_int_equal(symlink(pack_a, linkp), 0);
+	setenv("GROKOS_POLICYD_PACK_ROOT", f->ws, 1);
+	assert_int_equal(policyd_policy_shell_pack_reload(linkp), POLICYD_ERR_INVAL);
+}
+
 int run_shell_pack_tests(void)
 {
 	const struct CMUnitTest tests[] = {
@@ -678,6 +762,12 @@ int run_shell_pack_tests(void)
 						shell_setup, shell_teardown),
 		cmocka_unit_test_setup_teardown(test_multi_pack_dir, shell_setup,
 						shell_teardown),
+		cmocka_unit_test_setup_teardown(test_reload_pack_root_allows_swap,
+						shell_setup, shell_teardown),
+		cmocka_unit_test_setup_teardown(test_reload_rejects_symlink,
+						shell_setup, shell_teardown),
+		cmocka_unit_test_setup_teardown(test_reload_rejects_pack_root_slash,
+						shell_setup, shell_teardown),
 	};
 	return cmocka_run_group_tests_name("shell_pack", tests, NULL, NULL);
 }
