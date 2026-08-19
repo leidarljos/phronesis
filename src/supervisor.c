@@ -446,8 +446,8 @@ int phronesis_supervisor_bind(phronesis_supervisor_t *s,
 		snprintf(a->mode, sizeof(a->mode), "develop");
 	if (workspace && workspace[0])
 		snprintf(a->workspace, sizeof(a->workspace), "%s", workspace);
-	else
-		a->workspace[0] = '\0';
+	/* Empty incoming must not wipe a committed root. Sessiond
+	 * reportAgent often binds with workspace "". */
 
 	if (write_slot(s, a) != PHRONESIS_OK)
 		return PHRONESIS_ERR_IO;
