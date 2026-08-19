@@ -225,6 +225,29 @@ static void test_bind_fills_empty_workspace(void **state)
 	t_rm_rf(rt);
 }
 
+static void test_bind_empty_does_not_wipe_workspace(void **state)
+{
+	grok_supervisor_t *s = NULL;
+	char st[GROK_PATH_MAX], rt[GROK_PATH_MAX];
+	grok_agent_status_t stt;
+	const char *hex = "00000000000000010000000000000004";
+
+	(void)state;
+	assert_int_equal(t_open_pair(&s, st, sizeof(st), rt, sizeof(rt),
+				     "bindkeep"),
+			 GROK_OK);
+	assert_int_equal(grok_supervisor_bind(s, hex, "agent", "/ws/proj", 0),
+			 GROK_OK);
+	assert_int_equal(grok_supervisor_stop(s, hex), GROK_OK);
+	assert_int_equal(grok_supervisor_bind(s, hex, "agent", NULL, 0),
+			 GROK_OK);
+	assert_int_equal(grok_supervisor_status(s, hex, &stt), GROK_OK);
+	assert_string_equal(stt.workspace, "/ws/proj");
+	grok_supervisor_close(s);
+	t_rm_rf(st);
+	t_rm_rf(rt);
+}
+
 int run_lifecycle_tests(void)
 {
 	const struct CMUnitTest tests[] = {
@@ -236,6 +259,7 @@ int run_lifecycle_tests(void)
 		cmocka_unit_test(test_two_agents_independent),
 		cmocka_unit_test(test_bind_slot_no_fork),
 		cmocka_unit_test(test_bind_fills_empty_workspace),
+		cmocka_unit_test(test_bind_empty_does_not_wipe_workspace),
 	};
 	return cmocka_run_group_tests_name("lifecycle", tests, NULL, NULL);
 }
