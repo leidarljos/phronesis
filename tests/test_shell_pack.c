@@ -583,6 +583,52 @@ static void test_reload_trusted_prefix_without_dev_pack(void **state)
 	assert_int_equal(policyd_policy_shell_pack_reload(product), POLICYD_OK);
 }
 
+/*
+ * Distinctive trusted allow-all, then reject workspace / mixed / ...
+ * Product default would deny bare python; allow must stay allow.
+ */
+static void test_reload_reject_keeps_trusted_allow_pack(void **state)
+{
+	struct shell_fix *f = *state;
+	char prefix[POLICYD_PATH_MAX], trusted[POLICYD_PATH_MAX];
+	char evil[POLICYD_PATH_MAX], mixed[POLICYD_PATH_MAX * 2];
+	char dotdot[POLICYD_PATH_MAX];
+	enum Decision dec;
+	enum PolicyReason code;
+	int rc;
+
+	write_trusted_prefix_pack(f->rt, prefix, sizeof(prefix), trusted,
+				  sizeof(trusted));
+	unsetenv("GROKOS_POLICYD_DEV_PACK");
+	setenv("GROKOS_PREFIX", prefix, 1);
+	assert_int_equal(policyd_policy_shell_pack_reload(trusted), POLICYD_OK);
+	assert_bare_python_allowed(f);
+
+	snprintf(evil, sizeof(evil), "%s/allow_all.janet", f->ws);
+	write_allow_all_pack(evil);
+	rc = policyd_policy_shell_pack_reload(evil);
+	assert_int_equal(rc, POLICYD_ERR_INVAL);
+	assert_bare_python_allowed(f);
+
+	assert_true(snprintf(mixed, sizeof(mixed), "%s:%s", trusted, evil) <
+		    (int)sizeof(mixed));
+	rc = policyd_policy_shell_pack_reload(mixed);
+	assert_int_equal(rc, POLICYD_ERR_INVAL);
+	capnp_reload(f->sup, mixed, &dec, &code);
+	assert_int_equal(dec, Decision_deny);
+	assert_int_equal(code, PolicyReason_packPathInvalid);
+	assert_bare_python_allowed(f);
+
+	assert_true(snprintf(dotdot, sizeof(dotdot), "%s/../ws/allow_all.janet",
+			     prefix) < (int)sizeof(dotdot));
+	rc = policyd_policy_shell_pack_reload(dotdot);
+	assert_int_equal(rc, POLICYD_ERR_INVAL);
+	assert_bare_python_allowed(f);
+
+	unsetenv("GROKOS_PREFIX");
+	setenv("GROKOS_POLICYD_DEV_PACK", "1", 1);
+}
+
 /* Multi-pack: allow-all + deny-true compose to deny (fail-closed). */
 static void test_multi_pack_compose_deny(void **state)
 {
@@ -812,6 +858,9 @@ int run_shell_pack_tests(void)
 			shell_teardown),
 		cmocka_unit_test_setup_teardown(
 			test_reload_trusted_prefix_without_dev_pack, shell_setup,
+			shell_teardown),
+		cmocka_unit_test_setup_teardown(
+			test_reload_reject_keeps_trusted_allow_pack, shell_setup,
 			shell_teardown),
 		cmocka_unit_test_setup_teardown(test_multi_pack_compose_deny,
 						shell_setup, shell_teardown),
