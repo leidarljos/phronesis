@@ -19,11 +19,11 @@ ROOT = Path(__file__).resolve().parents[1]
 LIB = Path(os.environ.get("POLICYD_STATIC_LIB", ROOT / "build" / "libgrok_policyd.a"))
 PACKAGE = "libgrok_policyd"
 FILE = "libgrok_policyd.a"
-# Flat Cap'n product surface (API_VERSION 2) + supervisor lifecycle.
+# Flat Cap'n product surface (API_VERSION 3) + supervisor lifecycle.
 NEED_SYMS = (
-    "grok_supervisor_open",
-    "grok_policyd_status",
-    "grok_policyd_check_shell",
+    "policyd_supervisor_open",
+    "policyd_status",
+    "policyd_check_shell",
 )
 
 

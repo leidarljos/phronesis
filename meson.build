@@ -296,7 +296,7 @@ install_subdir(
 default_janet_pack = get_option('prefix') / policy_pack_install / 'shell.janet'
 message('Default Janet pack: @0@'.format(default_janet_pack))
 
-# Default-hidden visibility: only GROK_POLICYD_API symbols leave the .so.
+# Default-hidden visibility: only POLICYD_API symbols leave the .so.
 # Tests link the static archive so they can exercise internal helpers without
 # exporting those helpers to embedders.
 policyd_lib = library(

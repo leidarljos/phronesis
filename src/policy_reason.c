@@ -3,8 +3,8 @@
 
 #include <string.h>
 
-void grok_policy_result_set(grok_policy_result_t *out, grok_decision_t decision,
-			    grok_policy_reason_t code)
+void policyd_policy_result_set(policyd_policy_result_t *out, policyd_decision_t decision,
+			    policyd_policy_reason_t code)
 {
 	if (!out)
 		return;

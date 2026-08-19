@@ -17,14 +17,14 @@ static void usage(const char *argv0)
 		argv0, argv0, argv0, argv0, argv0);
 }
 
-static const char *state_name(grok_agent_state_t st)
+static const char *state_name(policyd_agent_state_t st)
 {
 	switch (st) {
-	case GROK_AGENT_RUNNING:
+	case POLICYD_AGENT_RUNNING:
 		return "running";
-	case GROK_AGENT_FAILED:
+	case POLICYD_AGENT_FAILED:
 		return "failed";
-	case GROK_AGENT_STOPPED:
+	case POLICYD_AGENT_STOPPED:
 	default:
 		return "stopped";
 	}
@@ -35,7 +35,7 @@ int main(int argc, char **argv)
 	const char *state_dir = NULL;
 	const char *runtime_dir = NULL;
 	const char *cmd;
-	grok_supervisor_t *sup = NULL;
+	policyd_supervisor_t *sup = NULL;
 	int i = 1;
 	int rc;
 	int exit_code = 0;
@@ -61,8 +61,8 @@ int main(int argc, char **argv)
 	}
 	cmd = argv[i++];
 
-	rc = grok_supervisor_open(&sup, state_dir, runtime_dir);
-	if (rc != GROK_OK) {
+	rc = policyd_supervisor_open(&sup, state_dir, runtime_dir);
+	if (rc != POLICYD_OK) {
 		fprintf(stderr, "open failed: %d\n", rc);
 		return 1;
 	}
@@ -89,23 +89,23 @@ int main(int argc, char **argv)
 			exit_code = 2;
 			goto out;
 		}
-		rc = grok_supervisor_start(sup, id, "develop", NULL, &argv[dash + 1]);
-		if (rc != GROK_OK) {
+		rc = policyd_supervisor_start(sup, id, "develop", NULL, &argv[dash + 1]);
+		if (rc != POLICYD_OK) {
 			fprintf(stderr, "start failed: %d\n", rc);
 			exit_code = 1;
 			goto out;
 		}
 		printf("started %s\n", id);
 	} else if (strcmp(cmd, "status") == 0) {
-		grok_agent_status_t st;
+		policyd_agent_status_t st;
 
 		if (i >= argc) {
 			usage(argv[0]);
 			exit_code = 2;
 			goto out;
 		}
-		rc = grok_supervisor_status(sup, argv[i], &st);
-		if (rc != GROK_OK) {
+		rc = policyd_supervisor_status(sup, argv[i], &st);
+		if (rc != POLICYD_OK) {
 			fprintf(stderr, "status failed: %d\n", rc);
 			exit_code = 1;
 			goto out;
@@ -118,8 +118,8 @@ int main(int argc, char **argv)
 			exit_code = 2;
 			goto out;
 		}
-		rc = grok_supervisor_stop(sup, argv[i]);
-		if (rc != GROK_OK) {
+		rc = policyd_supervisor_stop(sup, argv[i]);
+		if (rc != POLICYD_OK) {
 			fprintf(stderr, "stop failed: %d\n", rc);
 			exit_code = 1;
 			goto out;
@@ -131,14 +131,14 @@ int main(int argc, char **argv)
 			exit_code = 2;
 			goto out;
 		}
-		rc = grok_supervisor_log(sup, argv[i], argv[i + 1], argv[i + 2]);
-		if (rc != GROK_OK) {
+		rc = policyd_supervisor_log(sup, argv[i], argv[i + 1], argv[i + 2]);
+		if (rc != POLICYD_OK) {
 			fprintf(stderr, "log failed: %d\n", rc);
 			exit_code = 1;
 			goto out;
 		}
 	} else if (strcmp(cmd, "check") == 0) {
-		grok_policy_result_t pr;
+		policyd_policy_result_t pr;
 		const char *path = NULL;
 		const char *dec;
 
@@ -149,17 +149,17 @@ int main(int argc, char **argv)
 		}
 		if (i + 3 < argc)
 			path = argv[i + 3];
-		rc = grok_policy_check(sup, argv[i], argv[i + 1], argv[i + 2], path, &pr);
-		if (rc != GROK_OK) {
+		rc = policyd_policy_check(sup, argv[i], argv[i + 1], argv[i + 2], path, &pr);
+		if (rc != POLICYD_OK) {
 			fprintf(stderr, "check failed: %d\n", rc);
 			exit_code = 1;
 			goto out;
 		}
 		switch (pr.decision) {
-		case GROK_DECISION_ALLOW:
+		case POLICYD_DECISION_ALLOW:
 			dec = "allow";
 			break;
-		case GROK_DECISION_PROMPT:
+		case POLICYD_DECISION_PROMPT:
 			dec = "prompt";
 			break;
 		default:
@@ -167,13 +167,13 @@ int main(int argc, char **argv)
 			break;
 		}
 		printf("decision=%s reason=%s\n", dec, pr.reason);
-		exit_code = (pr.decision == GROK_DECISION_DENY) ? 2 : 0;
+		exit_code = (pr.decision == POLICYD_DECISION_DENY) ? 2 : 0;
 	} else {
 		usage(argv[0]);
 		exit_code = 2;
 	}
 
 out:
-	grok_supervisor_close(sup);
+	policyd_supervisor_close(sup);
 	return exit_code;
 }
