@@ -225,6 +225,29 @@ static void test_bind_fills_empty_workspace(void **state)
 	t_rm_rf(rt);
 }
 
+static void test_bind_empty_does_not_wipe_workspace(void **state)
+{
+	phronesis_supervisor_t *s = NULL;
+	char st[PHRONESIS_PATH_MAX], rt[PHRONESIS_PATH_MAX];
+	phronesis_agent_status_t stt;
+	const char *hex = "00000000000000010000000000000004";
+
+	(void)state;
+	assert_int_equal(t_open_pair(&s, st, sizeof(st), rt, sizeof(rt),
+				     "bindkeep"),
+			 PHRONESIS_OK);
+	assert_int_equal(phronesis_supervisor_bind(s, hex, "agent", "/ws/proj", 0),
+			 PHRONESIS_OK);
+	assert_int_equal(phronesis_supervisor_stop(s, hex), PHRONESIS_OK);
+	assert_int_equal(phronesis_supervisor_bind(s, hex, "agent", NULL, 0),
+			 PHRONESIS_OK);
+	assert_int_equal(phronesis_supervisor_status(s, hex, &stt), PHRONESIS_OK);
+	assert_string_equal(stt.workspace, "/ws/proj");
+	phronesis_supervisor_close(s);
+	t_rm_rf(st);
+	t_rm_rf(rt);
+}
+
 int run_lifecycle_tests(void)
 {
 	const struct CMUnitTest tests[] = {
@@ -236,6 +259,7 @@ int run_lifecycle_tests(void)
 		cmocka_unit_test(test_two_agents_independent),
 		cmocka_unit_test(test_bind_slot_no_fork),
 		cmocka_unit_test(test_bind_fills_empty_workspace),
+		cmocka_unit_test(test_bind_empty_does_not_wipe_workspace),
 	};
 	return cmocka_run_group_tests_name("lifecycle", tests, NULL, NULL);
 }
