@@ -119,6 +119,93 @@ static void test_seat_model_require_running_slot(void **state)
 	t_rm_rf(rt);
 }
 
+static void test_deny_all_truthy_spellings(void **state)
+{
+	phronesis_supervisor_t *s = NULL;
+	char st[PHRONESIS_PATH_MAX], rt[PHRONESIS_PATH_MAX];
+	phronesis_policy_result_t pr;
+	const char *deny_vals[] = { "true", "yes", "TRUE", "YES" };
+	const char *allow_vals[] = { "0", "false" };
+	size_t i;
+	char *argv[] = { "sleep", "30", NULL };
+
+	(void)state;
+	assert_int_equal(t_open_pair(&s, st, sizeof(st), rt, sizeof(rt), "denyt"),
+			 PHRONESIS_OK);
+	assert_int_equal(phronesis_supervisor_start(s,
+						    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+						    NULL, "/ws", argv),
+			 PHRONESIS_OK);
+	for (i = 0; i < sizeof(deny_vals) / sizeof(deny_vals[0]); i++) {
+		setenv("PHRONESIS_DENY_ALL", deny_vals[i], 1);
+		assert_int_equal(
+			phronesis_policy_check(s, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+					       "model", "start", "/bin/true", &pr),
+			PHRONESIS_OK);
+		assert_int_equal(pr.decision, PHRONESIS_DECISION_DENY);
+		assert_int_equal(pr.code, PHRONESIS_REASON_DENY_ALL);
+		unsetenv("PHRONESIS_DENY_ALL");
+	}
+	for (i = 0; i < sizeof(allow_vals) / sizeof(allow_vals[0]); i++) {
+		setenv("PHRONESIS_DENY_ALL", allow_vals[i], 1);
+		assert_int_equal(
+			phronesis_policy_check(s, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+					       "model", "start", "/bin/true", &pr),
+			PHRONESIS_OK);
+		assert_int_equal(pr.decision, PHRONESIS_DECISION_ALLOW);
+		unsetenv("PHRONESIS_DENY_ALL");
+	}
+	assert_int_equal(phronesis_supervisor_stop(s,
+						   "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
+			 PHRONESIS_OK);
+	phronesis_supervisor_close(s);
+	t_rm_rf(st);
+	t_rm_rf(rt);
+}
+
+static void test_sensitive_path_deny(void **state)
+{
+	phronesis_supervisor_t *s = NULL;
+	char st[PHRONESIS_PATH_MAX], rt[PHRONESIS_PATH_MAX];
+	phronesis_policy_result_t pr;
+	char *argv[] = { "true", NULL };
+	const char *paths[] = {
+		"/ws/proj/.env",
+		"/ws/proj/.ssh/id_rsa",
+		"/ws/proj/secrets.json",
+		"/ws/proj/id.key",
+	};
+	const char *fs_acts[] = { "read", "write", "delete" };
+	size_t i, j;
+
+	(void)state;
+	assert_int_equal(t_open_pair(&s, st, sizeof(st), rt, sizeof(rt), "sens"),
+			 PHRONESIS_OK);
+	assert_int_equal(phronesis_supervisor_start(s, "agent-a", NULL, "/ws/proj",
+						    argv),
+			 PHRONESIS_OK);
+	for (i = 0; i < sizeof(paths) / sizeof(paths[0]); i++) {
+		for (j = 0; j < sizeof(fs_acts) / sizeof(fs_acts[0]); j++) {
+			assert_int_equal(
+				phronesis_policy_check(s, "agent-a", "fs", fs_acts[j],
+						       paths[i], &pr),
+				PHRONESIS_OK);
+			assert_int_equal(pr.decision, PHRONESIS_DECISION_DENY);
+			assert_int_equal(pr.code, PHRONESIS_REASON_PATH_SENSITIVE_DENY);
+		}
+		assert_int_equal(
+			phronesis_policy_check(s, "agent-a", "shell", "exec",
+					       paths[i], &pr),
+			PHRONESIS_OK);
+		assert_int_equal(pr.decision, PHRONESIS_DECISION_DENY);
+		assert_int_equal(pr.code, PHRONESIS_REASON_PATH_SENSITIVE_DENY);
+	}
+	wait_stopped(s, "agent-a");
+	phronesis_supervisor_close(s);
+	t_rm_rf(st);
+	t_rm_rf(rt);
+}
+
 static void test_tools_default_deny(void **state)
 {
 	phronesis_supervisor_t *s = NULL;
@@ -292,7 +379,9 @@ int run_policy_tests(void)
 {
 	const struct CMUnitTest tests[] = {
 		cmocka_unit_test(test_deny_all_env),
+		cmocka_unit_test(test_deny_all_truthy_spellings),
 		cmocka_unit_test(test_seat_model_require_running_slot),
+		cmocka_unit_test(test_sensitive_path_deny),
 		cmocka_unit_test(test_tools_default_deny),
 		cmocka_unit_test(test_shell_exec_workspace_allow),
 		cmocka_unit_test(test_workspace_allowlist),

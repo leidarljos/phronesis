@@ -195,6 +195,36 @@ static void test_bind_slot_no_fork(void **state)
 	t_rm_rf(rt);
 }
 
+static void test_bind_fills_empty_workspace(void **state)
+{
+	phronesis_supervisor_t *s = NULL;
+	char st[PHRONESIS_PATH_MAX], rt[PHRONESIS_PATH_MAX];
+	phronesis_agent_status_t stt;
+	const char *hex = "00000000000000010000000000000003";
+
+	(void)state;
+	assert_int_equal(t_open_pair(&s, st, sizeof(st), rt, sizeof(rt),
+				     "bindfill"),
+			 PHRONESIS_OK);
+	assert_int_equal(phronesis_supervisor_bind(s, hex, "agent", NULL, 0),
+			 PHRONESIS_OK);
+	assert_int_equal(phronesis_supervisor_status(s, hex, &stt), PHRONESIS_OK);
+	assert_int_equal(stt.state, PHRONESIS_AGENT_RUNNING);
+	assert_string_equal(stt.workspace, "");
+	assert_int_equal(phronesis_supervisor_bind(s, hex, "agent", "/ws/proj", 0),
+			 PHRONESIS_OK);
+	assert_int_equal(phronesis_supervisor_status(s, hex, &stt), PHRONESIS_OK);
+	assert_string_equal(stt.workspace, "/ws/proj");
+	assert_int_equal(phronesis_supervisor_bind(s, hex, "agent", "/ws/other", 0),
+			 PHRONESIS_ERR_EXISTS);
+	assert_int_equal(phronesis_supervisor_status(s, hex, &stt), PHRONESIS_OK);
+	assert_string_equal(stt.workspace, "/ws/proj");
+	assert_int_equal(phronesis_supervisor_stop(s, hex), PHRONESIS_OK);
+	phronesis_supervisor_close(s);
+	t_rm_rf(st);
+	t_rm_rf(rt);
+}
+
 int run_lifecycle_tests(void)
 {
 	const struct CMUnitTest tests[] = {
@@ -205,6 +235,7 @@ int run_lifecycle_tests(void)
 		cmocka_unit_test(test_exec_failure_child),
 		cmocka_unit_test(test_two_agents_independent),
 		cmocka_unit_test(test_bind_slot_no_fork),
+		cmocka_unit_test(test_bind_fills_empty_workspace),
 	};
 	return cmocka_run_group_tests_name("lifecycle", tests, NULL, NULL);
 }

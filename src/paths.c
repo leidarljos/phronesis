@@ -30,7 +30,7 @@ static int join3(char *out, size_t n, const char *a, const char *b, const char *
  * Create one directory leaf. Temporarily umask(0) so mode is exact (tests
  * expect 0700). Existing dirs are left alone (no chmod of shared parents).
  */
-int phronesis_paths_ensure_dir(const char *path, int mode)
+static int mkdir_one(const char *path, int mode)
 {
 	mode_t old;
 	struct stat st;
@@ -56,6 +56,36 @@ int phronesis_paths_ensure_dir(const char *path, int mode)
 		return PHRONESIS_OK;
 	}
 	return PHRONESIS_ERR_IO;
+}
+
+/*
+ * Create `path` and any missing parents. New levels get `mode`. Existing
+ * parents are not chmod'd (shared ~/.local stays as the host left it).
+ */
+int phronesis_paths_ensure_dir(const char *path, int mode)
+{
+	char buf[PHRONESIS_PATH_MAX];
+	size_t i, n;
+	int rc;
+
+	if (!path || !path[0])
+		return PHRONESIS_ERR_INVAL;
+	n = strlen(path);
+	if (n >= sizeof(buf))
+		return PHRONESIS_ERR_INVAL;
+	memcpy(buf, path, n + 1);
+	for (i = 1; i < n; i++) {
+		if (buf[i] != '/')
+			continue;
+		buf[i] = '\0';
+		rc = mkdir_one(buf, mode);
+		buf[i] = '/';
+		if (rc != PHRONESIS_OK)
+			return rc;
+		while (i + 1 < n && buf[i + 1] == '/')
+			i++;
+	}
+	return mkdir_one(buf, mode);
 }
 
 static int ensure_state_tree(const char *state)

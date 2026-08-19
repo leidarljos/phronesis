@@ -59,6 +59,8 @@ The library reads these keys. Dual names are not kept in product code.
 | `GROKOS_POLICYD_JANET_PACK` | `PHRONESIS_JANET_PACK` |
 | `GROKOS_POLICYD_DENY_ALL` | `PHRONESIS_DENY_ALL` |
 | `GROKOS_POLICYD_AUDIO_ALLOW` | `PHRONESIS_AUDIO_ALLOW` |
+| `GROKOS_POLICYD_PACK_ROOT` | `PHRONESIS_PACK_ROOT` |
+| `GROKOS_POLICYD_DEV_PACK` | `PHRONESIS_DEV_PACK` |
 | `GROKOS_PREFIX` | `PHRONESIS_PREFIX` |
 
 Default XDG leaf is `phronesis` (was `grokos`). Default cgroup child

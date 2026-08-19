@@ -399,8 +399,33 @@ int phronesis_supervisor_bind(phronesis_supervisor_t *s,
 	rc = load_agent(s, agent_id, &a);
 	if (rc == PHRONESIS_OK) {
 		reap_slot(a);
-		if (a->state == PHRONESIS_AGENT_RUNNING)
+		if (a->state == PHRONESIS_AGENT_RUNNING) {
+			/*
+			 * Empty workspace is not a committed root. Sessiond
+			 * often admits first with workspace "". The seated
+			 * agent then bind-fills cwd. A non-empty workspace
+			 * is sticky: refuse replace.
+			 */
+			if (a->workspace[0] == '\0' && workspace &&
+			    workspace[0]) {
+				snprintf(a->workspace, sizeof(a->workspace),
+					 "%s", workspace);
+				if (pid > 0)
+					a->pid = pid;
+				if (pid > 1)
+					a->pgid = pid;
+				if (write_slot(s, a) != PHRONESIS_OK)
+					return PHRONESIS_ERR_IO;
+				snprintf(detail, sizeof(detail),
+					 "bind fill-workspace pid=%d",
+					 (int)a->pid);
+				(void)phronesis_action_log_append(s->action_log,
+							     agent_id, "bind",
+							     detail);
+				return PHRONESIS_OK;
+			}
 			return PHRONESIS_ERR_EXISTS;
+		}
 	} else if (rc == PHRONESIS_ERR_NOTFOUND) {
 		a = alloc_mem(s);
 		if (!a)

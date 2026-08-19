@@ -154,22 +154,10 @@ static void deny_msg(struct AgentId agent, phronesis_policy_reason_t code,
 	emit_code(PHRONESIS_DECISION_DENY, code, agent, out, out_len);
 }
 
-/** Truthy env for TCB gates: 1 / true / yes (any case of true/yes). */
-static int env_truthy(const char *name)
-{
-	const char *v = getenv(name);
-
-	if (!v || !v[0])
-		return 0;
-	return strcmp(v, "1") == 0 || strcmp(v, "true") == 0 ||
-	       strcmp(v, "yes") == 0 || strcmp(v, "TRUE") == 0 ||
-	       strcmp(v, "YES") == 0;
-}
-
 /** @return 1 if DENY_ALL fired (decision already written). */
 static int deny_if_all(struct AgentId agent, uint8_t **out, size_t *out_len)
 {
-	if (!env_truthy("PHRONESIS_DENY_ALL"))
+	if (!phronesis_policy_deny_all())
 		return 0;
 	emit_code(PHRONESIS_DECISION_DENY, PHRONESIS_REASON_DENY_ALL, agent, out,
 		  out_len);
@@ -339,6 +327,10 @@ void phronesis_check_path(phronesis_supervisor_t *sup, const uint8_t *in,
 	root.p = capn_getp(capn_root(&c), 0, 1);
 	read_PathCheck(&pc, root);
 	read_agent(pc.agentId, &agent);
+	if (deny_if_all(agent, out, out_len)) {
+		capn_free(&c);
+		return;
+	}
 	ws = workspace_for(sup, agent, ws_buf, sizeof(ws_buf));
 	pl = pc.path.len > 0 ? (size_t)pc.path.len : 0;
 	if (pl >= sizeof(path) || (pl > 0 && !pc.path.str)) {
@@ -400,6 +392,10 @@ void phronesis_check_shell(phronesis_supervisor_t *sup, const uint8_t *in,
 	root.p = capn_getp(capn_root(&c), 0, 1);
 	read_ShellCheck(&sc, root);
 	read_agent(sc.agentId, &agent);
+	if (deny_if_all(agent, out, out_len)) {
+		capn_free(&c);
+		return;
+	}
 	ws = workspace_for(sup, agent, ws_buf, sizeof(ws_buf));
 	cl = sc.cwd.len > 0 ? (size_t)sc.cwd.len : 0;
 	if (cl >= sizeof(cwd) || (cl > 0 && !sc.cwd.str)) {
@@ -469,6 +465,10 @@ void phronesis_check_risk(phronesis_supervisor_t *sup, const uint8_t *in,
 	root.p = capn_getp(capn_root(&c), 0, 1);
 	read_RiskCheck(&rc, root);
 	read_agent(rc.agentId, &agent);
+	if (deny_if_all(agent, out, out_len)) {
+		capn_free(&c);
+		return;
+	}
 	memset(&pr, 0, sizeof(pr));
 	/* secretExport: never allow (no secrets leave seat / traces). */
 	if (rc.action == RiskAction_secretExport) {
@@ -526,13 +526,10 @@ void phronesis_check_audio(phronesis_supervisor_t *sup, const uint8_t *in,
 	read_agent(ac.agentId, &agent);
 	capn_free(&c);
 
-	/* Hard TCB env gates (same story as shell workspace gate before pack). */
-	if (env_truthy("PHRONESIS_DENY_ALL")) {
-		emit_code(PHRONESIS_DECISION_DENY, PHRONESIS_REASON_DENY_ALL, agent, out,
-			  out_len);
+	/* Hard TCB env gates before pack (DENY_ALL wins over AUDIO_ALLOW). */
+	if (deny_if_all(agent, out, out_len))
 		return;
-	}
-	if (env_truthy("PHRONESIS_AUDIO_ALLOW")) {
+	if (phronesis_env_truthy("PHRONESIS_AUDIO_ALLOW")) {
 		emit_code(PHRONESIS_DECISION_ALLOW, PHRONESIS_REASON_AUDIO_FIXTURE_ALLOW,
 			  agent, out, out_len);
 		return;
@@ -742,6 +739,10 @@ void phronesis_reload_shell_pack(phronesis_supervisor_t *sup, const uint8_t *in,
 	memcpy(path, rp.path.str, pl);
 	path[pl] = '\0';
 	capn_free(&c);
+
+	/* Lockdown: do not reconfigure packs under DENY_ALL. */
+	if (deny_if_all(agent, out, out_len))
+		return;
 
 	rc = phronesis_shell_pack_reload_internal(path);
 	memset(&pr, 0, sizeof(pr));
