@@ -510,9 +510,13 @@ POLICYD_API void policyd_reload_shell_pack(policyd_supervisor_t *sup,
  *
  * @param path  Colon-separated list of absolute .janet pack files and/or
  *              absolute directories of top-level *.janet packs. Empty is
- *              invalid. Each pack loads into its own sealed env; checkShell /
- *              checkAudio compose fail-closed across packs that define the
- *              entry (deny > prompt > allow).
+ *              invalid. Each file is opened under the pack root
+ *              (install policy directory or @c GROKOS_POLICYD_PACK_ROOT;
+ *              not "/"). Symlink steps in the pack tree fail the open.
+ *              Each pack loads into
+ *              its own sealed env; checkShell / checkAudio compose
+ *              fail-closed across packs that define the entry
+ *              (deny > prompt > allow).
  * @return @ref POLICYD_OK on successful load; @ref POLICYD_ERR_INVAL for bad path;
  *         @ref POLICYD_ERR_IO when a file cannot be loaded as a pack.
  *

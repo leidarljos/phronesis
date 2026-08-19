@@ -133,6 +133,13 @@ static void write_allow_all_pack(const char *path)
 		   "    @[[:u16 0 1] [:u16 2 20] [:text 0 \"allow all pack\"]]))\n");
 }
 
+struct shell_fix {
+	policyd_supervisor_t *sup;
+	char st[POLICYD_PATH_MAX];
+	char rt[POLICYD_PATH_MAX];
+	char ws[POLICYD_PATH_MAX];
+};
+
 static void capnp_reload(policyd_supervisor_t *sup, const char *path,
 			 enum Decision *dec, enum PolicyReason *code)
 {
@@ -157,14 +164,7 @@ static void capnp_reload(policyd_supervisor_t *sup, const char *path,
 	free(out);
 }
 
-struct shell_fix {
-	policyd_supervisor_t *sup;
-	char st[POLICYD_PATH_MAX];
-	char rt[POLICYD_PATH_MAX];
-	char ws[POLICYD_PATH_MAX];
-};
-
-static void assert_bare_python_still_denied(struct shell_fix *f)
+static void assert_bare_python_denied(struct shell_fix *f)
 {
 	char *argv[] = { "python3", "script.py", NULL };
 	uint8_t *in = NULL, *out = NULL;
@@ -179,6 +179,11 @@ static void assert_bare_python_still_denied(struct shell_fix *f)
 	free(out);
 	assert_int_equal(dec, Decision_deny);
 	assert_int_equal(code, PolicyReason_pythonRequiresUvRun);
+}
+
+static void assert_bare_python_still_denied(struct shell_fix *f)
+{
+	assert_bare_python_denied(f);
 }
 
 static void assert_bare_python_allowed(struct shell_fix *f)
@@ -198,6 +203,10 @@ static void assert_bare_python_allowed(struct shell_fix *f)
 	assert_int_equal(code, PolicyReason_shellExecAllow);
 }
 
+/*
+ * Build $root/prefix/share/grok-policyd/allow_all.janet. Sets PACK_ROOT to
+ * that share directory so pack-root open and the prefix allowlist agree.
+ */
 static void write_trusted_prefix_pack(const char *root, char *prefix, size_t pn,
 				      char *pack, size_t pk)
 {
@@ -213,13 +222,15 @@ static void write_trusted_prefix_pack(const char *root, char *prefix, size_t pn,
 	assert_int_equal(mkdir(dest, 0700), 0);
 	assert_true(snprintf(pack, pk, "%s/allow_all.janet", dest) < (int)pk);
 	write_allow_all_pack(pack);
+	setenv("GROKOS_POLICYD_PACK_ROOT", dest, 1);
 }
 
 static int shell_setup(void **state)
 {
 	struct shell_fix *f = calloc(1, sizeof(*f));
 	char *argv0[] = { "true", NULL };
-	char pack[POLICYD_PATH_MAX];
+	char pack[POLICYD_PATH_MAX], root[POLICYD_PATH_MAX];
+	const char *src;
 
 	assert_non_null(f);
 	assert_int_equal(t_open_pair(&f->sup, f->st, sizeof(f->st), f->rt,
@@ -233,8 +244,14 @@ static int shell_setup(void **state)
 		POLICYD_OK);
 
 	product_pack_path(pack, sizeof(pack));
+	src = getenv("POLICYD_SOURCE_ROOT");
+	if (!src || !src[0])
+		src = ".";
 	setenv("GROKOS_POLICYD_DEV_PACK", "1", 1);
 	setenv("GROKOS_POLICYD_JANET_PACK", pack, 1);
+	assert_true(snprintf(root, sizeof(root), "%s/policy", src) <
+		    (int)sizeof(root));
+	setenv("GROKOS_POLICYD_PACK_ROOT", root, 1);
 
 	*state = f;
 	return 0;
@@ -243,10 +260,16 @@ static int shell_setup(void **state)
 static int shell_teardown(void **state)
 {
 	struct shell_fix *f = *state;
+	const char *src = getenv("POLICYD_SOURCE_ROOT");
+	char root[POLICYD_PATH_MAX];
 
 	unsetenv("GROKOS_POLICYD_JANET_PACK");
 	unsetenv("GROKOS_POLICYD_DEV_PACK");
 	unsetenv("GROKOS_PREFIX");
+	if (!src || !src[0])
+		src = ".";
+	snprintf(root, sizeof(root), "%s/policy", src);
+	setenv("GROKOS_POLICYD_PACK_ROOT", root, 1);
 	if (f) {
 		if (f->sup)
 			policyd_supervisor_close(f->sup);
@@ -477,11 +500,16 @@ static void test_reload_shell_pack_hot_load(void **state)
 
 	rc = policyd_policy_shell_pack_reload(pack_a);
 	assert_int_equal(rc, POLICYD_OK);
-	assert_bare_python_still_denied(f);
+	assert_bare_python_denied(f);
 
+	/* Workspace is outside default PACK_ROOT; reject, law stays. */
 	rc = policyd_policy_shell_pack_reload(pack_b);
-	assert_int_equal(rc, POLICYD_OK);
-	assert_bare_python_allowed(f);
+	assert_int_equal(rc, POLICYD_ERR_INVAL);
+	assert_bare_python_denied(f);
+
+	capnp_reload(f->sup, pack_b, &dec, &code);
+	assert_int_equal(dec, Decision_deny);
+	assert_int_equal(code, PolicyReason_packPathInvalid);
 
 	capnp_reload(f->sup, pack_a, &dec, &code);
 	assert_int_equal(dec, Decision_allow);
@@ -642,6 +670,7 @@ static void test_multi_pack_compose_deny(void **state)
 	enum PolicyReason code;
 	int rc;
 
+	setenv("GROKOS_POLICYD_PACK_ROOT", f->ws, 1);
 	snprintf(pack_allow, sizeof(pack_allow), "%s/allow_all.janet", f->ws);
 	snprintf(pack_deny, sizeof(pack_deny), "%s/deny_true.janet", f->ws);
 	write_file(pack_allow,
@@ -691,6 +720,7 @@ static void test_multi_pack_dir(void **state)
 	int rc;
 	char p1[POLICYD_PATH_MAX], p2[POLICYD_PATH_MAX], pdoc[POLICYD_PATH_MAX];
 
+	setenv("GROKOS_POLICYD_PACK_ROOT", f->ws, 1);
 	snprintf(dir, sizeof(dir), "%s/packs.d", f->ws);
 	assert_int_equal(mkdir(dir, 0700), 0);
 	snprintf(p1, sizeof(p1), "%s/01-allow.janet", dir);
@@ -825,6 +855,43 @@ static void test_shell_view_256_args_fits_128k_stack(void **state)
 	capn_free(&c);
 }
 
+/* Operator PACK_ROOT may include a test/dev tree; then swap is allowed. */
+static void test_reload_pack_root_allows_swap(void **state)
+{
+	struct shell_fix *f = *state;
+	char pack_b[POLICYD_PATH_MAX];
+	int rc;
+
+	setenv("GROKOS_POLICYD_PACK_ROOT", f->ws, 1);
+	snprintf(pack_b, sizeof(pack_b), "%s/allow_all.janet", f->ws);
+	write_allow_all_pack(pack_b);
+	rc = policyd_policy_shell_pack_reload(pack_b);
+	assert_int_equal(rc, POLICYD_OK);
+	assert_bare_python_allowed(f);
+}
+
+static void test_reload_rejects_pack_root_slash(void **state)
+{
+	char pack_a[POLICYD_PATH_MAX];
+
+	(void)state;
+	product_pack_path(pack_a, sizeof(pack_a));
+	setenv("GROKOS_POLICYD_PACK_ROOT", "/", 1);
+	assert_int_equal(policyd_policy_shell_pack_reload(pack_a), POLICYD_ERR_INVAL);
+}
+
+static void test_reload_rejects_symlink(void **state)
+{
+	struct shell_fix *f = *state;
+	char pack_a[POLICYD_PATH_MAX], linkp[POLICYD_PATH_MAX];
+
+	product_pack_path(pack_a, sizeof(pack_a));
+	snprintf(linkp, sizeof(linkp), "%s/sneak.janet", f->ws);
+	assert_int_equal(symlink(pack_a, linkp), 0);
+	setenv("GROKOS_POLICYD_PACK_ROOT", f->ws, 1);
+	assert_int_equal(policyd_policy_shell_pack_reload(linkp), POLICYD_ERR_INVAL);
+}
+
 int run_shell_pack_tests(void)
 {
 	const struct CMUnitTest tests[] = {
@@ -866,6 +933,12 @@ int run_shell_pack_tests(void)
 						shell_setup, shell_teardown),
 		cmocka_unit_test_setup_teardown(test_multi_pack_dir, shell_setup,
 						shell_teardown),
+		cmocka_unit_test_setup_teardown(test_reload_pack_root_allows_swap,
+						shell_setup, shell_teardown),
+		cmocka_unit_test_setup_teardown(test_reload_rejects_symlink,
+						shell_setup, shell_teardown),
+		cmocka_unit_test_setup_teardown(test_reload_rejects_pack_root_slash,
+						shell_setup, shell_teardown),
 	};
 	return cmocka_run_group_tests_name("shell_pack", tests, NULL, NULL);
 }
