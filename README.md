@@ -147,7 +147,7 @@ MIT for first-party code. See `LICENSE` and `NOTICE`.
 
 Set `PHRONESIS_DENY_ALL=1` (or `true`/`yes`) to force deny on the CLI/string `policy_check` path and on every Cap'n `PolicyDecision` entry. Used to prove agent/sessiond fail closed under a hard seat. Unset for normal allowlists.
 
-Pack reload opens files under one pack root (the install policy directory, or `PHRONESIS_PACK_ROOT`). That root cannot be `/`. Each file is opened beneath that directory (`openat2` `RESOLVE_BENEATH` on Linux, `openat` + `O_NOFOLLOW` walk elsewhere). Reload also requires each segment under a trusted prefix (`/usr/local/share/phronesis`, `/usr/share/phronesis`, `$PHRONESIS_PREFIX/share/phronesis`, or the compile-time default pack directory) unless `PHRONESIS_DEV_PACK=1`. A rejected reload leaves the already-loaded pack in place.
+Pack reload opens files under one pack root (the install policy directory, or `PHRONESIS_PACK_ROOT`). That root cannot be `/`. Each file is opened beneath that directory (`openat2` `RESOLVE_BENEATH` on Linux, `openat` + `O_NOFOLLOW` walk elsewhere). Reload and `PHRONESIS_JANET_PACK` accept a colon list of files and directories. Each segment must sit under a trusted prefix (`/usr/local/share/phronesis`, `/usr/share/phronesis`, `$PHRONESIS_PREFIX/share/phronesis`, the compile-time default pack directory, or `PHRONESIS_PACK_ROOT`) unless `PHRONESIS_DEV_PACK=1`. A rejected reload leaves the already-loaded pack in place. Directory children are opened beneath that root before teardown, so a symlink in the directory cannot drop law.
 
 Set `PHRONESIS_AUDIO_ALLOW=1` only in CI/dogfood to allow all `AudioAction` on `checkAudio`. Leave unset in production images. `DENY_ALL` still wins when both are set.
 

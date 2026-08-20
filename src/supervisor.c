@@ -565,6 +565,23 @@ int phronesis_policy_check(phronesis_supervisor_t *s,
 
 	if (!s || !out)
 		return PHRONESIS_ERR_INVAL;
+	if (!phronesis_policy_deny_all() && tool &&
+	    (strcmp(tool, "seat") == 0 || strcmp(tool, "model") == 0)) {
+		phronesis_policy_reason_t id_code;
+
+		if (phronesis_policy_require_running_agent(s, agent_id,
+							  &id_code) != 0) {
+			phronesis_policy_result_set(out, PHRONESIS_DECISION_DENY,
+					       id_code);
+			snprintf(detail, sizeof(detail),
+				 "tool=%s action=%s decision=%d",
+				 tool ? tool : "", action ? action : "",
+				 (int)out->decision);
+			(void)phronesis_action_log_append(s->action_log, agent_id,
+							  "policy", detail);
+			return PHRONESIS_OK;
+		}
+	}
 	if (agent_id && agent_id[0]) {
 		if (!valid_id(agent_id))
 			return PHRONESIS_ERR_INVAL;
@@ -580,16 +597,6 @@ int phronesis_policy_check(phronesis_supervisor_t *s,
 	rc = phronesis_policy_eval(ws, tool, action, path, out);
 	if (rc != PHRONESIS_OK)
 		return rc;
-	/* Seat / model ALLOW requires a running slot; null and missing ids deny. */
-	if (out->decision == PHRONESIS_DECISION_ALLOW && tool &&
-	    (strcmp(tool, "seat") == 0 || strcmp(tool, "model") == 0)) {
-		if (!agent_id || !agent_id[0])
-			phronesis_policy_result_set(out, PHRONESIS_DECISION_DENY,
-					       PHRONESIS_REASON_INVALID_MESSAGE);
-		else if (!a || a->state != PHRONESIS_AGENT_RUNNING)
-			phronesis_policy_result_set(out, PHRONESIS_DECISION_DENY,
-					       PHRONESIS_REASON_TOOLS_DEFAULT_DENY);
-	}
 	snprintf(detail, sizeof(detail), "tool=%s action=%s decision=%d %s",
 		 tool ? tool : "", action ? action : "",
 		 (int)out->decision, out->reason);
