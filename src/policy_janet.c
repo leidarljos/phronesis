@@ -89,6 +89,23 @@ static int env_flag_on(const char *name)
 	       strcasecmp(e, "yes") == 0;
 }
 
+/* "/" after collapsing "/" and "." components (`/`, `//`, `/.`, `/./`). */
+static int path_is_fs_root(const char *path)
+{
+	const char *p;
+
+	if (!path || path[0] != '/')
+		return 0;
+	for (p = path; *p; p++) {
+		if (*p == '/')
+			continue;
+		if (p[0] == '.' && (p[1] == '/' || p[1] == '\0'))
+			continue;
+		return 0;
+	}
+	return 1;
+}
+
 static int path_under_prefix(const char *path, const char *prefix)
 {
 	size_t n;
@@ -98,6 +115,8 @@ static int path_under_prefix(const char *path, const char *prefix)
 	n = strlen(prefix);
 	while (n > 0 && prefix[n - 1] == '/')
 		n--;
+	if (n == 0)
+		return 0;
 	if (strncmp(path, prefix, n) != 0)
 		return 0;
 	return path[n] == '\0' || path[n] == '/';
@@ -109,6 +128,7 @@ static int pack_under_trusted_prefix(const char *path)
 	const char *prefix;
 	const char *def;
 	const char *slash;
+	const char *root;
 	char dir[PACK_PATH_MAX];
 	size_t n;
 
@@ -132,16 +152,11 @@ static int pack_under_trusted_prefix(const char *path)
 				return 1;
 		}
 	}
-	return 0;
-}
-
-static int pack_env_allowed(const char *path)
-{
-	if (!path_is_absolute_file(path))
-		return 0;
-	if (env_flag_on("GROKOS_POLICYD_DEV_PACK"))
+	root = getenv("GROKOS_POLICYD_PACK_ROOT");
+	if (root && root[0] == '/' && !path_is_fs_root(root) &&
+	    path_under_prefix(path, root))
 		return 1;
-	return pack_under_trusted_prefix(path);
+	return 0;
 }
 
 /** File or directory segment allowed for reload (same prefixes as env). */
@@ -175,7 +190,8 @@ static int pack_reload_spec_allowed(const char *spec)
 
 /**
  * First existing pack path among product defaults.
- * Env override must be an absolute file under an allowlisted prefix
+ * Env override (GROKOS_POLICYD_JANET_PACK) is a colon list of absolute files
+ * and/or directories. Each segment must sit under an allowlisted prefix
  * (or GROKOS_POLICYD_DEV_PACK=1). CWD-relative policy/shell.janet is
  * only a candidate when that dev flag is set.
  */
@@ -192,7 +208,7 @@ static const char *default_pack_spec(void)
 	{
 		const char *e = getenv("GROKOS_POLICYD_JANET_PACK");
 
-		if (e && e[0] && pack_env_allowed(e))
+		if (e && e[0] && pack_reload_spec_allowed(e))
 			return e;
 	}
 
@@ -299,7 +315,7 @@ static int pack_root_path(char *out, size_t n)
 	const char *e = getenv("GROKOS_POLICYD_PACK_ROOT");
 
 	if (e && e[0]) {
-		if (e[0] != '/' || strcmp(e, "/") == 0 || path_has_dotdot(e))
+		if (e[0] != '/' || path_is_fs_root(e) || path_has_dotdot(e))
 			return -1;
 		if (strlen(e) >= n)
 			return -1;
@@ -517,8 +533,17 @@ static int parse_pack_spec(const char *spec, char out[][PACK_PATH_MAX],
 			return -1;
 		if (path_is_dir(tok) ||
 		    (require_absolute && path_is_absolute_dir(tok))) {
+			int n_before = n;
+			int i;
+
 			if (expand_dir_packs(tok, out, &n, max) != 0)
 				return -1;
+			if (require_absolute) {
+				for (i = n_before; i < n; i++) {
+					if (!pack_on_root(out[i]))
+						return -1;
+				}
+			}
 			continue;
 		}
 		if (require_absolute) {

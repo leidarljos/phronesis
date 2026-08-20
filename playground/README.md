@@ -206,7 +206,9 @@ exist) document the terra build path. Product `pixi run test` is unchanged.
 | `/ws/ok.py` | PEP 723 script for path probes |
 | `/pd-state/…` | Supervisor state (not `/tmp`) |
 | `/pd-runtime/agents/<id>.slot` | Agent with workspace `/ws` |
-| `GROKOS_POLICYD_JANET_PACK` | Default `/policy/shell.janet` |
+| `GROKOS_POLICYD_JANET_PACK` | Default `/policy/shell.janet:/policy/packs.d` |
+| `GROKOS_POLICYD_PACK_ROOT` | `/policy` |
+| `GROKOS_POLICYD_DEV_PACK` | `1` |
 
 ### KEEPALIVE API (`wasm/embind_api.c`)
 
