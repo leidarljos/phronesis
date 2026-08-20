@@ -206,6 +206,7 @@ lib_srcs = files(
   'src/policy.c',
   'src/policy_reason.c',
   'src/policy_janet.c',
+  'src/beneath.c',
   # TRACE ring: empty TU unless -DPHRONESIS_TRACE=1 (playground only).
   'src/policy_trace.c',
   'src/supervisor.c',
@@ -341,6 +342,7 @@ test(
   env: {
     'PHRONESIS_BUILD_DIR': meson.project_build_root(),
     'PHRONESIS_SOURCE_ROOT': meson.project_source_root(),
+    'PHRONESIS_PACK_ROOT': meson.project_source_root() / 'policy',
   },
 )
 
@@ -377,6 +379,7 @@ if get_option('mutation')
       'PHRONESIS_BUILD_DIR': meson.project_build_root(),
       # Shell pack tests resolve policy/shell.janet via PHRONESIS_SOURCE_ROOT.
       'PHRONESIS_SOURCE_ROOT': meson.project_source_root(),
+      'PHRONESIS_PACK_ROOT': meson.project_source_root() / 'policy',
     },
   )
 endif

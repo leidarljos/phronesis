@@ -10,6 +10,8 @@
  * files and/or directories of top-level *.janet files. Each pack loads into
  * its own sealed env. checkShell / checkAudio run every pack that defines
  * the entry and compose fail-closed (deny > prompt > allow).
+ * Pack bytes are read through phronesis_beneath_open on one pack-root fd
+ * (install policy directory or PHRONESIS_PACK_ROOT; never "/").
  */
 #include "policy_janet.h"
 #include "internal.h"
@@ -22,11 +24,14 @@
 
 #include <capnp_c.h>
 #include <dirent.h>
+#include <fcntl.h>
 #include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <sys/stat.h>
+#include <unistd.h>
 
 #define SHELL_HEAD_MAX 8192
 #define SHELL_ARGV_MAX 256
@@ -54,6 +59,8 @@ static int pack_loaded;
 static int pack_failed;
 static pack_slot_t packs[PACK_MAX];
 static int npacks;
+static int pack_rootfd = -1;
+static char pack_root[PACK_PATH_MAX];
 /* Spec string for default_pack / setenv (colon-joined). */
 static char pack_spec_buf[PACK_SPEC_MAX];
 static int pack_spec_set;
@@ -69,11 +76,108 @@ static int pack_spec_set;
 #endif
 
 static int path_is_file(const char *path);
+static int path_is_absolute_file(const char *path);
+static int path_is_absolute_dir(const char *path);
+
+static int env_flag_on(const char *name)
+{
+	const char *e = getenv(name);
+
+	if (!e || !e[0])
+		return 0;
+	return strcasecmp(e, "1") == 0 || strcasecmp(e, "true") == 0 ||
+	       strcasecmp(e, "yes") == 0;
+}
+
+static int path_under_prefix(const char *path, const char *prefix)
+{
+	size_t n;
+
+	if (!path || !prefix || path[0] != '/' || !prefix[0])
+		return 0;
+	n = strlen(prefix);
+	while (n > 0 && prefix[n - 1] == '/')
+		n--;
+	if (strncmp(path, prefix, n) != 0)
+		return 0;
+	return path[n] == '\0' || path[n] == '/';
+}
+
+static int pack_under_trusted_prefix(const char *path)
+{
+	static char prefix_root[PACK_PATH_MAX];
+	const char *prefix;
+	const char *def;
+	const char *slash;
+	char dir[PACK_PATH_MAX];
+	size_t n;
+
+	if (path_under_prefix(path, "/usr/local/share/phronesis") ||
+	    path_under_prefix(path, "/usr/share/phronesis"))
+		return 1;
+	prefix = getenv("PHRONESIS_PREFIX");
+	if (prefix && prefix[0] &&
+	    snprintf(prefix_root, sizeof(prefix_root), "%s/share/phronesis",
+		     prefix) < (int)sizeof(prefix_root) &&
+	    path_under_prefix(path, prefix_root))
+		return 1;
+	def = PHRONESIS_DEFAULT_JANET_PACK;
+	slash = def ? strrchr(def, '/') : NULL;
+	if (slash && slash > def) {
+		n = (size_t)(slash - def);
+		if (n < sizeof(dir)) {
+			memcpy(dir, def, n);
+			dir[n] = '\0';
+			if (path_under_prefix(path, dir))
+				return 1;
+		}
+	}
+	return 0;
+}
+
+static int pack_env_allowed(const char *path)
+{
+	if (!path_is_absolute_file(path))
+		return 0;
+	if (env_flag_on("PHRONESIS_DEV_PACK"))
+		return 1;
+	return pack_under_trusted_prefix(path);
+}
+
+/** File or directory segment allowed for reload (same prefixes as env). */
+static int pack_reload_segment_allowed(const char *path)
+{
+	if (!path_is_absolute_file(path) && !path_is_absolute_dir(path))
+		return 0;
+	if (env_flag_on("PHRONESIS_DEV_PACK"))
+		return 1;
+	return pack_under_trusted_prefix(path);
+}
+
+static int pack_reload_spec_allowed(const char *spec)
+{
+	char buf[PACK_SPEC_MAX];
+	char *save = NULL;
+	char *tok;
+	int any = 0;
+
+	if (!spec || !spec[0] || strlen(spec) >= sizeof(buf))
+		return 0;
+	memcpy(buf, spec, strlen(spec) + 1);
+	for (tok = strtok_r(buf, ":", &save); tok;
+	     tok = strtok_r(NULL, ":", &save)) {
+		if (!tok[0] || !pack_reload_segment_allowed(tok))
+			return 0;
+		any = 1;
+	}
+	return any;
+}
 
 /**
  * First existing pack path among product defaults.
- * Order: env PHRONESIS_JANET_PACK → compile-time install path →
- * PHRONESIS_PREFIX/share/... → common FHS paths → CWD-relative dev path.
+ * Env override must be an absolute file under an allowlisted prefix
+ * (or PHRONESIS_DEV_PACK=1). CWD-relative policy/shell.janet is
+ * only a candidate when that dev flag is set.
  */
 static const char *default_pack_spec(void)
 {
@@ -88,7 +192,7 @@ static const char *default_pack_spec(void)
 	{
 		const char *e = getenv("PHRONESIS_JANET_PACK");
 
-		if (e && e[0])
+		if (e && e[0] && pack_env_allowed(e))
 			return e;
 	}
 
@@ -101,7 +205,8 @@ static const char *default_pack_spec(void)
 		cands[n++] = prefix_buf;
 	cands[n++] = "/usr/local/share/phronesis/policy/shell.janet";
 	cands[n++] = "/usr/share/phronesis/policy/shell.janet";
-	cands[n++] = "policy/shell.janet"; /* monorepo / meson test workdir */
+	if (env_flag_on("PHRONESIS_DEV_PACK"))
+		cands[n++] = "policy/shell.janet";
 
 	for (i = 0; i < n; i++) {
 		if (cands[i] && cands[i][0] && path_is_file(cands[i]))
@@ -122,6 +227,16 @@ static void seal_pack_env(JanetTable *env)
  * Drop loaded pack state so the next load re-reads disk.
  * Prior Janet envs are abandoned for GC (reload is rare; no janet_deinit).
  */
+static void unload_packs(void);
+
+void phronesis_policy_pack_reset(void)
+{
+	unload_packs();
+	pack_failed = 0;
+	pack_spec_set = 0;
+	pack_spec_buf[0] = '\0';
+}
+
 static void unload_packs(void)
 {
 	int i;
@@ -217,6 +332,76 @@ static int path_is_dir(const char *path)
 	if (stat(path, &st) != 0)
 		return 0;
 	return S_ISDIR(st.st_mode) ? 1 : 0;
+}
+
+static int default_pack_dir(char *out, size_t n)
+{
+	const char *p = PHRONESIS_DEFAULT_JANET_PACK;
+	const char *slash = strrchr(p, '/');
+	size_t len;
+
+	if (!out || n == 0 || !slash || slash == p)
+		return -1;
+	len = (size_t)(slash - p);
+	if (len + 1 > n)
+		return -1;
+	memcpy(out, p, len);
+	out[len] = '\0';
+	return 0;
+}
+
+static int pack_root_path(char *out, size_t n)
+{
+	const char *e = getenv("PHRONESIS_PACK_ROOT");
+
+	if (e && e[0]) {
+		if (e[0] != '/' || strcmp(e, "/") == 0 || path_has_dotdot(e))
+			return -1;
+		if (strlen(e) >= n)
+			return -1;
+		memcpy(out, e, strlen(e) + 1);
+		return 0;
+	}
+	return default_pack_dir(out, n);
+}
+
+static int ensure_pack_root(void)
+{
+	char root[PACK_PATH_MAX];
+	int fd;
+
+	if (pack_root_path(root, sizeof(root)) != 0)
+		return -1;
+	if (pack_rootfd >= 0 && strcmp(pack_root, root) == 0)
+		return 0;
+	if (phronesis_beneath_dir(root, &fd) != 0)
+		return -1;
+	if (pack_rootfd >= 0)
+		(void)close(pack_rootfd);
+	pack_rootfd = fd;
+	if (snprintf(pack_root, sizeof(pack_root), "%s", root) >=
+	    (int)sizeof(pack_root)) {
+		(void)close(pack_rootfd);
+		pack_rootfd = -1;
+		pack_root[0] = '\0';
+		return -1;
+	}
+	return 0;
+}
+
+static int pack_on_root(const char *path)
+{
+	char rel[PACK_PATH_MAX];
+	int fd;
+
+	if (ensure_pack_root() != 0)
+		return 0;
+	if (phronesis_beneath_rel(pack_root, path, rel, sizeof(rel)) != 0)
+		return 0;
+	if (phronesis_beneath_open(pack_rootfd, rel, O_RDONLY, &fd) != 0)
+		return 0;
+	(void)close(fd);
+	return 1;
 }
 
 static int cmp_strptr(const void *a, const void *b)
@@ -328,6 +513,8 @@ static int parse_pack_spec(const char *spec, char out[][PACK_PATH_MAX],
 			continue;
 		if (require_absolute && tok[0] != '/')
 			return -1;
+		if (require_absolute && !pack_on_root(tok))
+			return -1;
 		if (path_is_dir(tok) ||
 		    (require_absolute && path_is_absolute_dir(tok))) {
 			if (expand_dir_packs(tok, out, &n, max) != 0)
@@ -355,27 +542,31 @@ static int parse_pack_spec(const char *spec, char out[][PACK_PATH_MAX],
  */
 static int dobytes_file(JanetTable *env, const char *path)
 {
-	FILE *f;
+	char rel[PACK_PATH_MAX];
 	char *buf;
-	long sz;
+	off_t sz;
 	Janet out;
+	int fd;
 	int rc;
 
-	f = fopen(path, "rb");
-	if (!f)
+	if (ensure_pack_root() != 0)
 		return -1;
-	if (fseek(f, 0, SEEK_END) != 0 || (sz = ftell(f)) <= 0 ||
-	    sz > PACK_FILE_MAX || fseek(f, 0, SEEK_SET) != 0) {
-		fclose(f);
+	if (phronesis_beneath_rel(pack_root, path, rel, sizeof(rel)) != 0)
+		return -1;
+	if (phronesis_beneath_open(pack_rootfd, rel, O_RDONLY, &fd) != 0)
+		return -1;
+	sz = lseek(fd, 0, SEEK_END);
+	if (sz <= 0 || sz > PACK_FILE_MAX || lseek(fd, 0, SEEK_SET) != 0) {
+		(void)close(fd);
 		return -1;
 	}
 	buf = malloc((size_t)sz);
-	if (!buf || fread(buf, 1, (size_t)sz, f) != (size_t)sz) {
+	if (!buf || read(fd, buf, (size_t)sz) != (ssize_t)sz) {
 		free(buf);
-		fclose(f);
+		(void)close(fd);
 		return -1;
 	}
-	fclose(f);
+	(void)close(fd);
 	rc = janet_dobytes(env, (const uint8_t *)buf, (int32_t)sz, path, &out);
 	free(buf);
 	return rc == 0 ? 0 : -2;
@@ -584,11 +775,12 @@ static int load_packs_from_spec(const char *spec, int require_absolute)
 	int i;
 	size_t spec_len = 0;
 
-	unload_packs();
 	if (!spec || !spec[0])
 		return -1;
+	/* Accept the spec before teardown so a rejected path cannot drop law. */
 	if (parse_pack_spec(spec, paths, &n, PACK_MAX, require_absolute) != 0)
 		return -1;
+	unload_packs();
 	PD_TRACE_EVENT(PD_TRACE_LAYER_HOST, PD_TRACE_PHASE_ENTER, "multi-pack-load",
 		       spec, n, NULL, 0);
 	for (i = 0; i < n; i++) {
@@ -612,7 +804,7 @@ static int load_packs_from_spec(const char *spec, int require_absolute)
 		if (spec_len + need + 1 >= sizeof(pack_spec_buf)) {
 			unload_packs();
 			pack_failed = 1;
-			return -1;
+			return -2;
 		}
 		if (i > 0)
 			pack_spec_buf[spec_len++] = ':';
@@ -637,7 +829,7 @@ static int load_pack_once(void)
 	if (pack_loaded)
 		return 0;
 	spec = default_pack_spec();
-	/* Env/default may be relative; do not require absolute. */
+	/* Relative only when PHRONESIS_DEV_PACK selected the cwd candidate. */
 	return load_packs_from_spec(spec, 0) == 0 ? 0 : -1;
 }
 
@@ -648,10 +840,16 @@ int phronesis_shell_pack_reload_internal(const char *path)
 	/* path is a colon-separated list of absolute files and/or directories. */
 	if (!path || !path[0])
 		return -1;
+	/* Reject before unload so a failed attack cannot drop the loaded pack. */
+	if (!pack_reload_spec_allowed(path))
+		return -1;
 	rc = load_packs_from_spec(path, 1);
 	if (rc != 0) {
-		pack_spec_buf[0] = '\0';
-		pack_spec_set = 0;
+		/* -1: spec rejected before unload. Live packs stay. */
+		if (rc == -2) {
+			pack_spec_buf[0] = '\0';
+			pack_spec_set = 0;
+		}
 		return rc;
 	}
 	/* Keep env in sync for subprocesses / diagnostics. */

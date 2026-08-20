@@ -115,6 +115,24 @@ static void write_file(const char *path, const char *body)
 	fclose(f);
 }
 
+static const char *product_pack_path(char *buf, size_t n)
+{
+	const char *src = getenv("PHRONESIS_SOURCE_ROOT");
+
+	if (!src || !src[0])
+		src = ".";
+	assert_true(snprintf(buf, n, "%s/policy/shell.janet", src) < (int)n);
+	return buf;
+}
+
+static void write_allow_all_pack(const char *path)
+{
+	write_file(path,
+		   "(defn shell-check [buf]\n"
+		   "  (capnp/build-message 1 2\n"
+		   "    @[[:u16 0 1] [:u16 2 20] [:text 0 \"allow all pack\"]]))\n");
+}
+
 struct shell_fix {
 	phronesis_supervisor_t *sup;
 	char st[PHRONESIS_PATH_MAX];
@@ -122,11 +140,96 @@ struct shell_fix {
 	char ws[PHRONESIS_PATH_MAX];
 };
 
+static void capnp_reload(phronesis_supervisor_t *sup, const char *path,
+			 enum Decision *dec, enum PolicyReason *code)
+{
+	struct capn c;
+	struct ReloadShellPack rp;
+	ReloadShellPack_ptr root;
+	uint8_t *in = NULL, *out = NULL;
+	size_t in_len = 0, out_len = 0;
+
+	memset(&c, 0, sizeof(c));
+	capn_init_malloc(&c);
+	memset(&rp, 0, sizeof(rp));
+	rp.path = ctext(path);
+	root = new_ReloadShellPack(capn_root(&c).seg);
+	write_ReloadShellPack(&rp, root);
+	assert_int_equal(capn_setp(capn_root(&c), 0, root.p), 0);
+	assert_int_equal(write_msg(&c, &in, &in_len), 0);
+	capn_free(&c);
+	phronesis_reload_shell_pack(sup, in, in_len, &out, &out_len);
+	free(in);
+	read_decision(out, out_len, dec, code, NULL, 0);
+	free(out);
+}
+
+static void assert_bare_python_denied(struct shell_fix *f)
+{
+	char *argv[] = { "python3", "script.py", NULL };
+	uint8_t *in = NULL, *out = NULL;
+	size_t in_len = 0, out_len = 0;
+	enum Decision dec;
+	enum PolicyReason code;
+
+	build_shell_check(f->ws, argv, 2, &in, &in_len);
+	phronesis_check_shell(f->sup, in, in_len, &out, &out_len);
+	free(in);
+	read_decision(out, out_len, &dec, &code, NULL, 0);
+	free(out);
+	assert_int_equal(dec, Decision_deny);
+	assert_int_equal(code, PolicyReason_pythonRequiresUvRun);
+}
+
+static void assert_bare_python_still_denied(struct shell_fix *f)
+{
+	assert_bare_python_denied(f);
+}
+
+static void assert_bare_python_allowed(struct shell_fix *f)
+{
+	char *argv[] = { "python3", "script.py", NULL };
+	uint8_t *in = NULL, *out = NULL;
+	size_t in_len = 0, out_len = 0;
+	enum Decision dec;
+	enum PolicyReason code;
+
+	build_shell_check(f->ws, argv, 2, &in, &in_len);
+	phronesis_check_shell(f->sup, in, in_len, &out, &out_len);
+	free(in);
+	read_decision(out, out_len, &dec, &code, NULL, 0);
+	free(out);
+	assert_int_equal(dec, Decision_allow);
+	assert_int_equal(code, PolicyReason_shellExecAllow);
+}
+
+/*
+ * Build $root/prefix/share/phronesis/allow_all.janet. Sets PACK_ROOT to
+ * that share directory so pack-root open and the prefix allowlist agree.
+ */
+static void write_trusted_prefix_pack(const char *root, char *prefix, size_t pn,
+				      char *pack, size_t pk)
+{
+	char share[PHRONESIS_PATH_MAX], dest[PHRONESIS_PATH_MAX];
+
+	assert_true(snprintf(prefix, pn, "%s/prefix", root) < (int)pn);
+	assert_int_equal(mkdir(prefix, 0700), 0);
+	assert_true(snprintf(share, sizeof(share), "%s/share", prefix) <
+		    (int)sizeof(share));
+	assert_int_equal(mkdir(share, 0700), 0);
+	assert_true(snprintf(dest, sizeof(dest), "%s/phronesis", share) <
+		    (int)sizeof(dest));
+	assert_int_equal(mkdir(dest, 0700), 0);
+	assert_true(snprintf(pack, pk, "%s/allow_all.janet", dest) < (int)pk);
+	write_allow_all_pack(pack);
+	setenv("PHRONESIS_PACK_ROOT", dest, 1);
+}
+
 static int shell_setup(void **state)
 {
 	struct shell_fix *f = calloc(1, sizeof(*f));
 	char *argv0[] = { "true", NULL };
-	char pack[PHRONESIS_PATH_MAX];
+	char pack[PHRONESIS_PATH_MAX], root[PHRONESIS_PATH_MAX];
 	const char *src;
 
 	assert_non_null(f);
@@ -140,11 +243,15 @@ static int shell_setup(void **state)
 				      NULL, f->ws, argv0),
 		PHRONESIS_OK);
 
+	product_pack_path(pack, sizeof(pack));
 	src = getenv("PHRONESIS_SOURCE_ROOT");
 	if (!src || !src[0])
 		src = ".";
-	snprintf(pack, sizeof(pack), "%s/policy/shell.janet", src);
+	setenv("PHRONESIS_DEV_PACK", "1", 1);
 	setenv("PHRONESIS_JANET_PACK", pack, 1);
+	assert_true(snprintf(root, sizeof(root), "%s/policy", src) <
+		    (int)sizeof(root));
+	setenv("PHRONESIS_PACK_ROOT", root, 1);
 
 	*state = f;
 	return 0;
@@ -153,8 +260,16 @@ static int shell_setup(void **state)
 static int shell_teardown(void **state)
 {
 	struct shell_fix *f = *state;
+	const char *src = getenv("PHRONESIS_SOURCE_ROOT");
+	char root[PHRONESIS_PATH_MAX];
 
 	unsetenv("PHRONESIS_JANET_PACK");
+	unsetenv("PHRONESIS_DEV_PACK");
+	unsetenv("PHRONESIS_PREFIX");
+	if (!src || !src[0])
+		src = ".";
+	snprintf(root, sizeof(root), "%s/policy", src);
+	setenv("PHRONESIS_PACK_ROOT", root, 1);
 	if (f) {
 		if (f->sup)
 			phronesis_supervisor_close(f->sup);
@@ -321,81 +436,235 @@ uint8_t *in = NULL, *out = NULL;
 	free(out);
 }
 
-static void test_reload_shell_pack_hot_load(void **state)
+static void test_cwd_pack_not_loaded(void **state)
 {
 	struct shell_fix *f = *state;
-	char pack_a[PHRONESIS_PATH_MAX], pack_b[PHRONESIS_PATH_MAX];
+	char pdir[PHRONESIS_PATH_MAX], pack[PHRONESIS_PATH_MAX], oldcwd[PHRONESIS_PATH_MAX];
+	char srcpack[PHRONESIS_PATH_MAX];
 	char *argv[] = { "python3", "x.py", NULL };
 	uint8_t *in = NULL, *out = NULL;
 	size_t in_len = 0, out_len = 0;
 	enum Decision dec;
 	enum PolicyReason code;
 	const char *src = getenv("PHRONESIS_SOURCE_ROOT");
-	struct capn c;
-	struct ReloadShellPack rp;
-	ReloadShellPack_ptr root;
-	int rc;
 
 	if (!src || !src[0])
 		src = ".";
-	snprintf(pack_a, sizeof(pack_a), "%s/policy/shell.janet", src);
-	/* pack_b: allow-all shell pack (no python law) */
-	snprintf(pack_b, sizeof(pack_b), "%s/allow_all.janet", f->ws);
+	snprintf(srcpack, sizeof(srcpack), "%s/policy/shell.janet", src);
+	snprintf(pdir, sizeof(pdir), "%s/policy", f->rt);
+	assert_int_equal(mkdir(pdir, 0700), 0);
+	snprintf(pack, sizeof(pack), "%s/shell.janet", pdir);
 	{
-		FILE *fp = fopen(pack_b, "w");
+		FILE *fp = fopen(pack, "w");
 
 		assert_non_null(fp);
 		fputs("(defn shell-check [buf]\n"
 		      "  (capnp/build-message 1 2\n"
-		      "    @[[:u16 0 1] [:u16 2 20] [:text 0 \"allow all pack\"]]))\n",
+		      "    @[[:u16 0 1] [:u16 2 20] [:text 0 \"cwd pack\"]]))\n",
 		      fp);
 		fclose(fp);
 	}
 
-	/* Reload to product UV pack → bare python deny */
+	assert_non_null(getcwd(oldcwd, sizeof(oldcwd)));
+	assert_int_equal(chdir(f->rt), 0);
+	unsetenv("PHRONESIS_JANET_PACK");
+	unsetenv("PHRONESIS_DEV_PACK");
+	phronesis_policy_pack_reset();
+
+	build_shell_check(f->ws, argv, 2, &in, &in_len);
+	phronesis_check_shell(f->sup, in, in_len, &out, &out_len);
+	free(in);
+	read_decision(out, out_len, &dec, &code, NULL, 0);
+	free(out);
+	assert_int_equal(chdir(oldcwd), 0);
+
+	assert_int_equal(dec, Decision_deny);
+	assert_int_not_equal(code, PolicyReason_shellExecAllow);
+
+	setenv("PHRONESIS_DEV_PACK", "1", 1);
+	setenv("PHRONESIS_JANET_PACK", srcpack, 1);
+	assert_int_equal(phronesis_shell_pack_reload(srcpack), PHRONESIS_OK);
+}
+
+static void test_reload_shell_pack_hot_load(void **state)
+{
+	struct shell_fix *f = *state;
+	char pack_a[PHRONESIS_PATH_MAX], pack_b[PHRONESIS_PATH_MAX];
+	enum Decision dec;
+	enum PolicyReason code;
+	int rc;
+
+	product_pack_path(pack_a, sizeof(pack_a));
+	snprintf(pack_b, sizeof(pack_b), "%s/allow_all.janet", f->ws);
+	write_allow_all_pack(pack_b);
+
 	rc = phronesis_shell_pack_reload(pack_a);
 	assert_int_equal(rc, PHRONESIS_OK);
-	build_shell_check(f->ws, argv, 2, &in, &in_len);
-	phronesis_check_shell(f->sup, in, in_len, &out, &out_len);
-	free(in);
-	read_decision(out, out_len, &dec, &code, NULL, 0);
-	free(out);
-	assert_int_equal(dec, Decision_deny);
-	assert_int_equal(code, PolicyReason_pythonRequiresUvRun);
+	assert_bare_python_denied(f);
 
-	/* Hot-load allow-all pack → same argv allows */
+	/* Workspace is outside default PACK_ROOT; reject, law stays. */
 	rc = phronesis_shell_pack_reload(pack_b);
-	assert_int_equal(rc, PHRONESIS_OK);
-	build_shell_check(f->ws, argv, 2, &in, &in_len);
-	phronesis_check_shell(f->sup, in, in_len, &out, &out_len);
-	free(in);
-	read_decision(out, out_len, &dec, &code, NULL, 0);
-	free(out);
-	assert_int_equal(dec, Decision_allow);
-	assert_int_equal(code, PolicyReason_shellExecAllow);
+	assert_int_equal(rc, PHRONESIS_ERR_INVAL);
+	assert_bare_python_denied(f);
 
-	/* Cap'n reloadShellPack method */
-	memset(&c, 0, sizeof(c));
-	capn_init_malloc(&c);
-	memset(&rp, 0, sizeof(rp));
-	rp.path = ctext(pack_a);
-	root = new_ReloadShellPack(capn_root(&c).seg);
-	write_ReloadShellPack(&rp, root);
-	assert_int_equal(capn_setp(capn_root(&c), 0, root.p), 0);
-	assert_int_equal(write_msg(&c, &in, &in_len), 0);
-	capn_free(&c);
-	phronesis_reload_shell_pack(f->sup, in, in_len, &out, &out_len);
-	free(in);
-	read_decision(out, out_len, &dec, &code, NULL, 0);
-	free(out);
+	capnp_reload(f->sup, pack_b, &dec, &code);
+	assert_int_equal(dec, Decision_deny);
+	assert_int_equal(code, PolicyReason_packPathInvalid);
+
+	capnp_reload(f->sup, pack_a, &dec, &code);
 	assert_int_equal(dec, Decision_allow);
 	assert_int_equal(code, PolicyReason_packReloaded);
 
-	/* Invalid path */
 	rc = phronesis_shell_pack_reload("/no/such/pack.janet");
 	assert_int_equal(rc, PHRONESIS_ERR_INVAL);
 	rc = phronesis_shell_pack_reload("relative.janet");
 	assert_int_equal(rc, PHRONESIS_ERR_INVAL);
+}
+
+/*
+ * Adversarial: workspace-written allow-all pack must not replace product
+ * law when PHRONESIS_DEV_PACK is unset (same allowlist as JANET_PACK).
+ */
+static void test_reload_untrusted_workspace_pack_denied(void **state)
+{
+	struct shell_fix *f = *state;
+	char product[PHRONESIS_PATH_MAX], evil[PHRONESIS_PATH_MAX], mixed[PHRONESIS_PATH_MAX * 2];
+	enum Decision dec;
+	enum PolicyReason code;
+	int rc;
+
+	product_pack_path(product, sizeof(product));
+	assert_int_equal(phronesis_shell_pack_reload(product), PHRONESIS_OK);
+	assert_bare_python_still_denied(f);
+
+	snprintf(evil, sizeof(evil), "%s/allow_all.janet", f->ws);
+	write_allow_all_pack(evil);
+
+	unsetenv("PHRONESIS_DEV_PACK");
+
+	rc = phronesis_shell_pack_reload(evil);
+	assert_int_equal(rc, PHRONESIS_ERR_INVAL);
+
+	capnp_reload(f->sup, evil, &dec, &code);
+	assert_int_equal(dec, Decision_deny);
+	assert_int_equal(code, PolicyReason_packPathInvalid);
+
+	snprintf(mixed, sizeof(mixed), "%s:%s", product, evil);
+	rc = phronesis_shell_pack_reload(mixed);
+	assert_int_equal(rc, PHRONESIS_ERR_INVAL);
+	capnp_reload(f->sup, mixed, &dec, &code);
+	assert_int_equal(dec, Decision_deny);
+	assert_int_equal(code, PolicyReason_packPathInvalid);
+
+	assert_bare_python_still_denied(f);
+
+	setenv("PHRONESIS_DEV_PACK", "1", 1);
+}
+
+/*
+ * Allow path with DEV_PACK unset: file and directory under
+ * PHRONESIS_PREFIX/share/phronesis. Cap'n reload on a fresh handle
+ * (product agent: open, no start/bind).
+ */
+static void test_reload_trusted_prefix_without_dev_pack(void **state)
+{
+	struct shell_fix *f = *state;
+	phronesis_supervisor_t *fresh = NULL;
+	char product[PHRONESIS_PATH_MAX], prefix[PHRONESIS_PATH_MAX], pack[PHRONESIS_PATH_MAX];
+	char dir[PHRONESIS_PATH_MAX], st[PHRONESIS_PATH_MAX], rt[PHRONESIS_PATH_MAX];
+	enum Decision dec;
+	enum PolicyReason code;
+	int rc;
+
+	product_pack_path(product, sizeof(product));
+	assert_int_equal(phronesis_shell_pack_reload(product), PHRONESIS_OK);
+	assert_bare_python_still_denied(f);
+
+	write_trusted_prefix_pack(f->rt, prefix, sizeof(prefix), pack,
+				  sizeof(pack));
+	assert_true(snprintf(dir, sizeof(dir), "%s/share/phronesis",
+			     prefix) < (int)sizeof(dir));
+
+	unsetenv("PHRONESIS_DEV_PACK");
+	setenv("PHRONESIS_PREFIX", prefix, 1);
+
+	rc = phronesis_shell_pack_reload(pack);
+	assert_int_equal(rc, PHRONESIS_OK);
+	assert_bare_python_allowed(f);
+
+	rc = phronesis_shell_pack_reload(dir);
+	assert_int_equal(rc, PHRONESIS_OK);
+	assert_bare_python_allowed(f);
+
+	assert_int_equal(t_open_pair(&fresh, st, sizeof(st), rt, sizeof(rt),
+				     "fresh"),
+			 PHRONESIS_OK);
+	capnp_reload(fresh, pack, &dec, &code);
+	assert_int_equal(dec, Decision_allow);
+	assert_int_equal(code, PolicyReason_packReloaded);
+	phronesis_supervisor_close(fresh);
+	t_rm_rf(st);
+	t_rm_rf(rt);
+
+	unsetenv("PHRONESIS_PREFIX");
+	setenv("PHRONESIS_DEV_PACK", "1", 1);
+	{
+		const char *src = getenv("PHRONESIS_SOURCE_ROOT");
+		char root[PHRONESIS_PATH_MAX];
+
+		if (!src || !src[0])
+			src = ".";
+		assert_true(snprintf(root, sizeof(root), "%s/policy", src) <
+			    (int)sizeof(root));
+		setenv("PHRONESIS_PACK_ROOT", root, 1);
+	}
+	assert_int_equal(phronesis_shell_pack_reload(product), PHRONESIS_OK);
+}
+
+/*
+ * Distinctive trusted allow-all, then reject workspace / mixed / ...
+ * Product default would deny bare python; allow must stay allow.
+ */
+static void test_reload_reject_keeps_trusted_allow_pack(void **state)
+{
+	struct shell_fix *f = *state;
+	char prefix[PHRONESIS_PATH_MAX], trusted[PHRONESIS_PATH_MAX];
+	char evil[PHRONESIS_PATH_MAX], mixed[PHRONESIS_PATH_MAX * 2];
+	char dotdot[PHRONESIS_PATH_MAX];
+	enum Decision dec;
+	enum PolicyReason code;
+	int rc;
+
+	write_trusted_prefix_pack(f->rt, prefix, sizeof(prefix), trusted,
+				  sizeof(trusted));
+	unsetenv("PHRONESIS_DEV_PACK");
+	setenv("PHRONESIS_PREFIX", prefix, 1);
+	assert_int_equal(phronesis_shell_pack_reload(trusted), PHRONESIS_OK);
+	assert_bare_python_allowed(f);
+
+	snprintf(evil, sizeof(evil), "%s/allow_all.janet", f->ws);
+	write_allow_all_pack(evil);
+	rc = phronesis_shell_pack_reload(evil);
+	assert_int_equal(rc, PHRONESIS_ERR_INVAL);
+	assert_bare_python_allowed(f);
+
+	assert_true(snprintf(mixed, sizeof(mixed), "%s:%s", trusted, evil) <
+		    (int)sizeof(mixed));
+	rc = phronesis_shell_pack_reload(mixed);
+	assert_int_equal(rc, PHRONESIS_ERR_INVAL);
+	capnp_reload(f->sup, mixed, &dec, &code);
+	assert_int_equal(dec, Decision_deny);
+	assert_int_equal(code, PolicyReason_packPathInvalid);
+	assert_bare_python_allowed(f);
+
+	assert_true(snprintf(dotdot, sizeof(dotdot), "%s/../ws/allow_all.janet",
+			     prefix) < (int)sizeof(dotdot));
+	rc = phronesis_shell_pack_reload(dotdot);
+	assert_int_equal(rc, PHRONESIS_ERR_INVAL);
+	assert_bare_python_allowed(f);
+
+	unsetenv("PHRONESIS_PREFIX");
+	setenv("PHRONESIS_DEV_PACK", "1", 1);
 }
 
 /* Multi-pack: allow-all + deny-true compose to deny (fail-closed). */
@@ -411,6 +680,7 @@ static void test_multi_pack_compose_deny(void **state)
 	enum PolicyReason code;
 	int rc;
 
+	setenv("PHRONESIS_PACK_ROOT", f->ws, 1);
 	snprintf(pack_allow, sizeof(pack_allow), "%s/allow_all.janet", f->ws);
 	snprintf(pack_deny, sizeof(pack_deny), "%s/deny_true.janet", f->ws);
 	write_file(pack_allow,
@@ -460,6 +730,7 @@ static void test_multi_pack_dir(void **state)
 	int rc;
 	char p1[PHRONESIS_PATH_MAX], p2[PHRONESIS_PATH_MAX], pdoc[PHRONESIS_PATH_MAX];
 
+	setenv("PHRONESIS_PACK_ROOT", f->ws, 1);
 	snprintf(dir, sizeof(dir), "%s/packs.d", f->ws);
 	assert_int_equal(mkdir(dir, 0700), 0);
 	snprintf(p1, sizeof(p1), "%s/01-allow.janet", dir);
@@ -550,7 +821,7 @@ static void *view_stack_thread(void *arg)
 	struct view_stack_job *j = arg;
 
 	j->rc = phronesis_build_shell_view(j->ws, j->cwd, j->argv, &j->flat,
-					   &j->flat_len);
+					     &j->flat_len);
 	return NULL;
 }
 
@@ -594,6 +865,43 @@ static void test_shell_view_256_args_fits_128k_stack(void **state)
 	capn_free(&c);
 }
 
+/* Operator PACK_ROOT may include a test/dev tree; then swap is allowed. */
+static void test_reload_pack_root_allows_swap(void **state)
+{
+	struct shell_fix *f = *state;
+	char pack_b[PHRONESIS_PATH_MAX];
+	int rc;
+
+	setenv("PHRONESIS_PACK_ROOT", f->ws, 1);
+	snprintf(pack_b, sizeof(pack_b), "%s/allow_all.janet", f->ws);
+	write_allow_all_pack(pack_b);
+	rc = phronesis_shell_pack_reload(pack_b);
+	assert_int_equal(rc, PHRONESIS_OK);
+	assert_bare_python_allowed(f);
+}
+
+static void test_reload_rejects_pack_root_slash(void **state)
+{
+	char pack_a[PHRONESIS_PATH_MAX];
+
+	(void)state;
+	product_pack_path(pack_a, sizeof(pack_a));
+	setenv("PHRONESIS_PACK_ROOT", "/", 1);
+	assert_int_equal(phronesis_shell_pack_reload(pack_a), PHRONESIS_ERR_INVAL);
+}
+
+static void test_reload_rejects_symlink(void **state)
+{
+	struct shell_fix *f = *state;
+	char pack_a[PHRONESIS_PATH_MAX], linkp[PHRONESIS_PATH_MAX];
+
+	product_pack_path(pack_a, sizeof(pack_a));
+	snprintf(linkp, sizeof(linkp), "%s/sneak.janet", f->ws);
+	assert_int_equal(symlink(pack_a, linkp), 0);
+	setenv("PHRONESIS_PACK_ROOT", f->ws, 1);
+	assert_int_equal(phronesis_shell_pack_reload(linkp), PHRONESIS_ERR_INVAL);
+}
+
 int run_shell_pack_tests(void)
 {
 	const struct CMUnitTest tests[] = {
@@ -611,6 +919,8 @@ int run_shell_pack_tests(void)
 						shell_setup, shell_teardown),
 		cmocka_unit_test_setup_teardown(test_glpat_in_argv_deny,
 						shell_setup, shell_teardown),
+		cmocka_unit_test_setup_teardown(test_cwd_pack_not_loaded,
+						shell_setup, shell_teardown),
 		cmocka_unit_test_setup_teardown(test_overlong_argv_denies,
 						shell_setup, shell_teardown),
 		cmocka_unit_test_setup_teardown(test_overcount_argv_denies,
@@ -620,10 +930,25 @@ int run_shell_pack_tests(void)
 			shell_teardown),
 		cmocka_unit_test_setup_teardown(test_reload_shell_pack_hot_load,
 						shell_setup, shell_teardown),
+		cmocka_unit_test_setup_teardown(
+			test_reload_untrusted_workspace_pack_denied, shell_setup,
+			shell_teardown),
+		cmocka_unit_test_setup_teardown(
+			test_reload_trusted_prefix_without_dev_pack, shell_setup,
+			shell_teardown),
+		cmocka_unit_test_setup_teardown(
+			test_reload_reject_keeps_trusted_allow_pack, shell_setup,
+			shell_teardown),
 		cmocka_unit_test_setup_teardown(test_multi_pack_compose_deny,
 						shell_setup, shell_teardown),
 		cmocka_unit_test_setup_teardown(test_multi_pack_dir, shell_setup,
 						shell_teardown),
+		cmocka_unit_test_setup_teardown(test_reload_pack_root_allows_swap,
+						shell_setup, shell_teardown),
+		cmocka_unit_test_setup_teardown(test_reload_rejects_symlink,
+						shell_setup, shell_teardown),
+		cmocka_unit_test_setup_teardown(test_reload_rejects_pack_root_slash,
+						shell_setup, shell_teardown),
 	};
 	return cmocka_run_group_tests_name("shell_pack", tests, NULL, NULL);
 }
