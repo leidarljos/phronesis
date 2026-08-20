@@ -47,9 +47,25 @@ static int has_dotdot(const char *p)
 	return 0;
 }
 
+static int is_fs_root(const char *root)
+{
+	const char *p;
+
+	if (!root || root[0] != '/')
+		return 0;
+	for (p = root; *p; p++) {
+		if (*p == '/')
+			continue;
+		if (p[0] == '.' && (p[1] == '/' || p[1] == '\0'))
+			continue;
+		return 0;
+	}
+	return 1;
+}
+
 static int bad_root(const char *root)
 {
-	if (!root || root[0] != '/' || strcmp(root, "/") == 0)
+	if (!root || root[0] != '/' || is_fs_root(root))
 		return 1;
 	return has_dotdot(root);
 }
