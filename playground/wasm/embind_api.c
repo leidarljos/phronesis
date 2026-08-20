@@ -33,6 +33,8 @@ policyd_supervisor_t *pd_supervisor_open(const char *state, const char *runtime)
 	const char *rt = runtime && runtime[0] ? runtime : "/pd-runtime";
 
 	/* Prefer multi-pack colon list under MEMFS; do not override if already set. */
+	setenv("GROKOS_POLICYD_DEV_PACK", "1", 0);
+	setenv("GROKOS_POLICYD_PACK_ROOT", "/policy", 0);
 	setenv("GROKOS_POLICYD_JANET_PACK", PD_DEFAULT_PACK_SPEC, 0);
 	if (policyd_supervisor_open(&s, st, rt) != POLICYD_OK)
 		return NULL;

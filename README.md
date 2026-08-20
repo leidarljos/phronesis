@@ -66,8 +66,14 @@ eval path. It wins over `GROKOS_POLICYD_AUDIO_ALLOW`.
 
 `reloadShellPack` opens pack files under one pack-root directory: the
 compile-time install policy directory, or `GROKOS_POLICYD_PACK_ROOT` when
-set. That root cannot be `/`. Each file is opened beneath that directory
-(no symlink steps).
+set. That root cannot be `/` (including `//` and `/.`). Each file is opened
+beneath that directory (no symlink steps). Reload and
+`GROKOS_POLICYD_JANET_PACK` accept a colon list of files and directories.
+Each segment must sit under a trusted prefix (`/usr/local/share/grok-policyd`,
+`/usr/share/grok-policyd`, `$GROKOS_PREFIX/share/grok-policyd`, the
+compile-time default pack directory, or `GROKOS_POLICYD_PACK_ROOT`) unless
+`GROKOS_POLICYD_DEV_PACK=1`. Directory children are opened beneath that root
+before teardown.
 
 ## Build / test / coverage (pixi only)
 
