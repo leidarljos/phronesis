@@ -89,6 +89,23 @@ static int env_flag_on(const char *name)
 	       strcasecmp(e, "yes") == 0;
 }
 
+/* "/" after collapsing "/" and "." components (`/`, `//`, `/.`, `/./`). */
+static int path_is_fs_root(const char *path)
+{
+	const char *p;
+
+	if (!path || path[0] != '/')
+		return 0;
+	for (p = path; *p; p++) {
+		if (*p == '/')
+			continue;
+		if (p[0] == '.' && (p[1] == '/' || p[1] == '\0'))
+			continue;
+		return 0;
+	}
+	return 1;
+}
+
 static int path_under_prefix(const char *path, const char *prefix)
 {
 	size_t n;
@@ -98,6 +115,8 @@ static int path_under_prefix(const char *path, const char *prefix)
 	n = strlen(prefix);
 	while (n > 0 && prefix[n - 1] == '/')
 		n--;
+	if (n == 0)
+		return 0;
 	if (strncmp(path, prefix, n) != 0)
 		return 0;
 	return path[n] == '\0' || path[n] == '/';
@@ -134,7 +153,7 @@ static int pack_under_trusted_prefix(const char *path)
 		}
 	}
 	root = getenv("PHRONESIS_PACK_ROOT");
-	if (root && root[0] == '/' && strcmp(root, "/") != 0 &&
+	if (root && root[0] == '/' && !path_is_fs_root(root) &&
 	    path_under_prefix(path, root))
 		return 1;
 	return 0;
@@ -352,7 +371,7 @@ static int pack_root_path(char *out, size_t n)
 	const char *e = getenv("PHRONESIS_PACK_ROOT");
 
 	if (e && e[0]) {
-		if (e[0] != '/' || strcmp(e, "/") == 0 || path_has_dotdot(e))
+		if (e[0] != '/' || path_is_fs_root(e) || path_has_dotdot(e))
 			return -1;
 		if (strlen(e) >= n)
 			return -1;

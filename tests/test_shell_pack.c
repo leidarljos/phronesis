@@ -953,11 +953,16 @@ static void test_reload_dir_symlink_child_keeps_law(void **state)
 static void test_reload_rejects_pack_root_slash(void **state)
 {
 	char pack_a[PHRONESIS_PATH_MAX];
+	const char *roots[] = { "/", "//", "/.", "///" };
+	size_t i;
 
 	(void)state;
 	product_pack_path(pack_a, sizeof(pack_a));
-	setenv("PHRONESIS_PACK_ROOT", "/", 1);
-	assert_int_equal(phronesis_shell_pack_reload(pack_a), PHRONESIS_ERR_INVAL);
+	for (i = 0; i < sizeof(roots) / sizeof(roots[0]); i++) {
+		setenv("PHRONESIS_PACK_ROOT", roots[i], 1);
+		assert_int_equal(phronesis_shell_pack_reload(pack_a),
+				 PHRONESIS_ERR_INVAL);
+	}
 }
 
 static void test_reload_rejects_symlink(void **state)
