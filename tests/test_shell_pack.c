@@ -872,12 +872,82 @@ static void test_reload_pack_root_allows_swap(void **state)
 	char pack_b[PHRONESIS_PATH_MAX];
 	int rc;
 
+	unsetenv("PHRONESIS_DEV_PACK");
 	setenv("PHRONESIS_PACK_ROOT", f->ws, 1);
 	snprintf(pack_b, sizeof(pack_b), "%s/allow_all.janet", f->ws);
 	write_allow_all_pack(pack_b);
 	rc = phronesis_shell_pack_reload(pack_b);
 	assert_int_equal(rc, PHRONESIS_OK);
 	assert_bare_python_allowed(f);
+}
+
+/*
+ * PHRONESIS_JANET_PACK colon list (file + directory) is the documented
+ * env form. First load after reset must honor both segments.
+ */
+static void test_janet_pack_colon_list_first_load(void **state)
+{
+	struct shell_fix *f = *state;
+	char pack_allow[PHRONESIS_PATH_MAX], dir[PHRONESIS_PATH_MAX];
+	char pack_deny[PHRONESIS_PATH_MAX], spec[PHRONESIS_PATH_MAX * 2];
+	char *argv[] = { "true", NULL };
+	uint8_t *in = NULL, *out = NULL;
+	size_t in_len = 0, out_len = 0;
+	enum Decision dec;
+	enum PolicyReason code;
+
+	unsetenv("PHRONESIS_DEV_PACK");
+	setenv("PHRONESIS_PACK_ROOT", f->ws, 1);
+	snprintf(pack_allow, sizeof(pack_allow), "%s/allow_all.janet", f->ws);
+	snprintf(dir, sizeof(dir), "%s/packs.d", f->ws);
+	assert_int_equal(mkdir(dir, 0700), 0);
+	snprintf(pack_deny, sizeof(pack_deny), "%s/01-deny.janet", dir);
+	write_allow_all_pack(pack_allow);
+	write_file(pack_deny,
+		   "(defn shell-check [buf]\n"
+		   "  (capnp/build-message 1 2\n"
+		   "    @[[:u16 0 0] [:u16 2 25] [:text 0 \"deny pack\"]]))\n");
+	assert_true(snprintf(spec, sizeof(spec), "%s:%s", pack_allow, dir) <
+		    (int)sizeof(spec));
+	setenv("PHRONESIS_JANET_PACK", spec, 1);
+	phronesis_policy_pack_reset();
+
+	build_shell_check(f->ws, argv, 1, &in, &in_len);
+	phronesis_check_shell(f->sup, in, in_len, &out, &out_len);
+	free(in);
+	read_decision(out, out_len, &dec, &code, NULL, 0);
+	free(out);
+	assert_int_equal(dec, Decision_deny);
+	assert_int_equal(code, 25);
+}
+
+/*
+ * A symlink child in a reload directory must fail before unload so
+ * product law stays.
+ */
+static void test_reload_dir_symlink_child_keeps_law(void **state)
+{
+	struct shell_fix *f = *state;
+	char product[PHRONESIS_PATH_MAX], dir[PHRONESIS_PATH_MAX];
+	char ok[PHRONESIS_PATH_MAX], sneak[PHRONESIS_PATH_MAX];
+	int rc;
+
+	product_pack_path(product, sizeof(product));
+	assert_int_equal(phronesis_shell_pack_reload(product), PHRONESIS_OK);
+	assert_bare_python_denied(f);
+
+	snprintf(dir, sizeof(dir), "%s/packs.d", f->ws);
+	assert_int_equal(mkdir(dir, 0700), 0);
+	snprintf(ok, sizeof(ok), "%s/ok.janet", dir);
+	snprintf(sneak, sizeof(sneak), "%s/sneak.janet", dir);
+	write_allow_all_pack(ok);
+	assert_int_equal(symlink(product, sneak), 0);
+
+	unsetenv("PHRONESIS_DEV_PACK");
+	setenv("PHRONESIS_PACK_ROOT", f->ws, 1);
+	rc = phronesis_shell_pack_reload(dir);
+	assert_int_equal(rc, PHRONESIS_ERR_INVAL);
+	assert_bare_python_denied(f);
 }
 
 static void test_reload_rejects_pack_root_slash(void **state)
@@ -945,6 +1015,12 @@ int run_shell_pack_tests(void)
 						shell_teardown),
 		cmocka_unit_test_setup_teardown(test_reload_pack_root_allows_swap,
 						shell_setup, shell_teardown),
+		cmocka_unit_test_setup_teardown(
+			test_janet_pack_colon_list_first_load, shell_setup,
+			shell_teardown),
+		cmocka_unit_test_setup_teardown(
+			test_reload_dir_symlink_child_keeps_law, shell_setup,
+			shell_teardown),
 		cmocka_unit_test_setup_teardown(test_reload_rejects_symlink,
 						shell_setup, shell_teardown),
 		cmocka_unit_test_setup_teardown(test_reload_rejects_pack_root_slash,

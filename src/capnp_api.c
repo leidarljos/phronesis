@@ -167,27 +167,20 @@ static int deny_if_all(struct AgentId agent, uint8_t **out, size_t *out_len)
 /**
  * Admit plane: null AgentId, missing supervisor, unknown slot, and
  * non-running slot are deny. Running slot is the only allow path.
+ * @return 0 if running, -1 and *code set if the caller must deny.
  */
-static int agent_running(phronesis_supervisor_t *sup, struct AgentId agent)
+static int admit_running_agent(phronesis_supervisor_t *sup,
+			       struct AgentId agent,
+			       phronesis_policy_reason_t *code)
 {
 	char hex[PHRONESIS_ID_MAX];
-	phronesis_agent_status_t st;
 
-	if (!sup || (agent.hi == 0 && agent.lo == 0))
-		return 0;
+	if (agent.hi == 0 && agent.lo == 0) {
+		*code = PHRONESIS_REASON_INVALID_MESSAGE;
+		return -1;
+	}
 	phronesis_agent_id_to_hex(agent.hi, agent.lo, hex);
-	if (!hex[0])
-		return 0;
-	if (phronesis_supervisor_status(sup, hex, &st) != PHRONESIS_OK)
-		return 0;
-	return st.state == PHRONESIS_AGENT_RUNNING;
-}
-
-static phronesis_policy_reason_t admit_deny_code(struct AgentId agent)
-{
-	if (agent.hi == 0 && agent.lo == 0)
-		return PHRONESIS_REASON_INVALID_MESSAGE;
-	return PHRONESIS_REASON_TOOLS_DEFAULT_DENY;
+	return phronesis_policy_require_running_agent(sup, hex, code);
 }
 
 static int open_in(const uint8_t *in, size_t in_len, struct capn *c)
@@ -252,10 +245,14 @@ void phronesis_check_seat(phronesis_supervisor_t *sup, const uint8_t *in,
 		capn_free(&c);
 		return;
 	}
-	if (!agent_running(sup, agent)) {
-		deny_msg(agent, admit_deny_code(agent), out, out_len);
-		capn_free(&c);
-		return;
+	{
+		phronesis_policy_reason_t code;
+
+		if (admit_running_agent(sup, agent, &code) != 0) {
+			deny_msg(agent, code, out, out_len);
+			capn_free(&c);
+			return;
+		}
 	}
 	switch (sc.action) {
 	case SeatAction_publishRun:
@@ -295,10 +292,14 @@ void phronesis_check_model(phronesis_supervisor_t *sup, const uint8_t *in,
 		capn_free(&c);
 		return;
 	}
-	if (!agent_running(sup, agent)) {
-		deny_msg(agent, admit_deny_code(agent), out, out_len);
-		capn_free(&c);
-		return;
+	{
+		phronesis_policy_reason_t code;
+
+		if (admit_running_agent(sup, agent, &code) != 0) {
+			deny_msg(agent, code, out, out_len);
+			capn_free(&c);
+			return;
+		}
 	}
 	phronesis_policy_result_set(&pr, PHRONESIS_DECISION_ALLOW,
 			       PHRONESIS_REASON_MODEL_START_ALLOW);

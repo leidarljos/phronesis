@@ -33,6 +33,8 @@ phronesis_supervisor_t *pd_supervisor_open(const char *state, const char *runtim
 	const char *rt = runtime && runtime[0] ? runtime : "/pd-runtime";
 
 	/* Prefer multi-pack colon list under MEMFS; do not override if already set. */
+	setenv("PHRONESIS_DEV_PACK", "1", 0);
+	setenv("PHRONESIS_PACK_ROOT", "/policy", 0);
 	setenv("PHRONESIS_JANET_PACK", PD_DEFAULT_PACK_SPEC, 0);
 	if (phronesis_supervisor_open(&s, st, rt) != PHRONESIS_OK)
 		return NULL;
