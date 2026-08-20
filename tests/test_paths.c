@@ -145,6 +145,47 @@ static void test_map_admit_kind_unknown_fail_closed(void **state)
 	assert_int_equal(phronesis_map_admit_kind(NULL, &tool, &action), -1);
 }
 
+static void test_open_creates_three_deep_missing_state(void **state)
+{
+	phronesis_supervisor_t *s = NULL;
+	char root[PHRONESIS_PATH_MAX], st[PHRONESIS_PATH_MAX], rt[PHRONESIS_PATH_MAX];
+	struct stat sb;
+
+	(void)state;
+	assert_int_equal(t_tmpdir(root, sizeof(root), "gp-deep"), 0);
+	t_rm_rf(root);
+	snprintf(st, sizeof(st), "%s/a/b/c", root);
+	snprintf(rt, sizeof(rt), "%s/run", root);
+	assert_int_equal(phronesis_supervisor_open(&s, st, rt), PHRONESIS_OK);
+	assert_non_null(s);
+	assert_int_equal(stat(st, &sb), 0);
+	assert_true(S_ISDIR(sb.st_mode));
+	assert_int_equal(sb.st_mode & 0777, 0700);
+	assert_int_equal(stat(rt, &sb), 0);
+	assert_true(S_ISDIR(sb.st_mode));
+	assert_int_equal(sb.st_mode & 0777, 0700);
+	phronesis_supervisor_close(s);
+	t_rm_rf(root);
+}
+
+static void test_ensure_dir_leaves_existing_parent_mode(void **state)
+{
+	char root[PHRONESIS_PATH_MAX], child[PHRONESIS_PATH_MAX];
+	struct stat sb;
+
+	(void)state;
+	assert_int_equal(t_tmpdir(root, sizeof(root), "gp-parent"), 0);
+	assert_int_equal(chmod(root, 0755), 0);
+	snprintf(child, sizeof(child), "%s/leaf", root);
+	assert_int_equal(phronesis_paths_ensure_dir(child, 0700), PHRONESIS_OK);
+	assert_int_equal(stat(root, &sb), 0);
+	assert_int_equal(sb.st_mode & 0777, 0755);
+	assert_int_equal(stat(child, &sb), 0);
+	assert_true(S_ISDIR(sb.st_mode));
+	assert_int_equal(sb.st_mode & 0777, 0700);
+	t_rm_rf(root);
+}
+
 int run_paths_tests(void)
 {
 	const struct CMUnitTest tests[] = {
@@ -152,6 +193,8 @@ int run_paths_tests(void)
 		cmocka_unit_test(test_refuse_tmp_runtime),
 		cmocka_unit_test(test_creates_state_tree_and_modes),
 		cmocka_unit_test(test_env_action_log_override),
+		cmocka_unit_test(test_open_creates_three_deep_missing_state),
+		cmocka_unit_test(test_ensure_dir_leaves_existing_parent_mode),
 		cmocka_unit_test(test_env_state_runtime_override),
 		cmocka_unit_test(test_map_admit_kind_known),
 		cmocka_unit_test(test_map_admit_kind_unknown_fail_closed),

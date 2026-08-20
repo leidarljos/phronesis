@@ -13,12 +13,20 @@
 int t_tmpdir(char *buf, size_t n, const char *prefix)
 {
 	const char *base = getenv("TMPDIR");
+	char basedir[PHRONESIS_PATH_MAX];
 	char tmpl[PHRONESIS_PATH_MAX];
+	size_t bl;
 	int r;
 
 	if (!base || !base[0])
 		base = "/tmp";
-	r = snprintf(tmpl, sizeof(tmpl), "%s/%s.XXXXXX", base, prefix);
+	bl = strlen(base);
+	if (bl >= sizeof(basedir))
+		return -1;
+	memcpy(basedir, base, bl + 1);
+	while (bl > 1 && basedir[bl - 1] == '/')
+		basedir[--bl] = '\0';
+	r = snprintf(tmpl, sizeof(tmpl), "%s/%s.XXXXXX", basedir, prefix);
 	if (r < 0 || (size_t)r >= sizeof(tmpl))
 		return -1;
 	if (!mkdtemp(tmpl))

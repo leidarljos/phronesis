@@ -324,7 +324,14 @@ PHRONESIS_API int phronesis_supervisor_start(phronesis_supervisor_t *s,
  * Admit @a agent_id as a running slot without fork/exec.
  *
  * sessiond binds after Cap'n admit. @a pid 0 leaves the slot running
- * with no process to reap or kill.
+ * with no process to reap or kill. A live @a pid is recorded and reaped
+ * like @ref phronesis_supervisor_start.
+ *
+ * A running slot with an empty workspace may be filled by a later bind
+ * (sessiond often admits first, the agent then bind-fills cwd). A
+ * non-empty workspace is sticky and returns @ref PHRONESIS_ERR_EXISTS.
+ * An empty incoming workspace on a later bind (including after stop)
+ * leaves the committed root in place.
  *
  * @return @ref PHRONESIS_OK or @ref PHRONESIS_ERR_EXISTS / @ref PHRONESIS_ERR_INVAL.
  */
@@ -470,7 +477,8 @@ PHRONESIS_API void phronesis_check_risk(phronesis_supervisor_t *sup,
  * alwaysListen / networkStt / inject deny; listenArm prompt; unknown deny.
  * Host TCB: truthy @c PHRONESIS_AUDIO_ALLOW allows all actions
  * (fixture/CI only; leave unset in production); @c PHRONESIS_DENY_ALL
- * still wins. No waveforms / PCM on the wire.
+ * still wins (same hard deny as every other Cap'n PolicyDecision entry).
+ * No waveforms / PCM on the wire.
  */
 PHRONESIS_API void phronesis_check_audio(phronesis_supervisor_t *sup,
 					       const uint8_t *in,
@@ -511,7 +519,10 @@ PHRONESIS_API void phronesis_reload_shell_pack(phronesis_supervisor_t *sup,
  *
  * @param path  Colon-separated list of absolute .janet pack files and/or
  *              absolute directories of top-level *.janet packs. Empty is
- *              invalid. Each pack loads into its own sealed env; checkShell /
+ *              invalid. Each file is opened under the pack root
+ *              (install policy directory or @c PHRONESIS_PACK_ROOT;
+ *              not "/"). Symlink steps in the pack tree fail the open.
+ *              Each pack loads into its own sealed env; checkShell /
  *              checkAudio compose fail-closed across packs that define the
  *              entry (deny > prompt > allow).
  * @return @ref PHRONESIS_OK on successful load; @ref PHRONESIS_ERR_INVAL for bad path;

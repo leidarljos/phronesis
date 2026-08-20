@@ -13,6 +13,9 @@ int phronesis_paths_resolve(char *state_dir, size_t state_len,
 		       const char *runtime_override);
 int phronesis_paths_ensure_dir(const char *path, int mode);
 
+/** Drop loaded Janet packs so the next check re-reads default_pack_spec(). */
+void phronesis_policy_pack_reset(void);
+
 int phronesis_action_log_append(const char *path,
 			   const char *agent_id,
 			   const char *kind,
@@ -42,6 +45,22 @@ int phronesis_policy_eval(const char *workspace,
 		     const char *path,
 		     phronesis_policy_result_t *out);
 
+/** Truthy env for TCB gates: 1 / true / yes (any case of true/yes). */
+int phronesis_env_truthy(const char *name);
+
+/** Truthy PHRONESIS_DENY_ALL — hard deny for Cap'n PolicyDecision entries. */
+int phronesis_policy_deny_all(void);
+
+/**
+ * Admit identity: @a agent_id must name a running supervisor slot.
+ * Unset / empty id → INVALID_MESSAGE. Missing supervisor, unknown slot, or
+ * non-running slot → TOOLS_DEFAULT_DENY. Writes the deny code into @a code.
+ * @return 0 if the slot is running, -1 if the caller must deny.
+ */
+int phronesis_policy_require_running_agent(phronesis_supervisor_t *sup,
+					  const char *agent_id,
+					  phronesis_policy_reason_t *code);
+
 #include <capnp_c.h>
 
 /** Resolve script path against cwd (workspace-bound callers only). */
@@ -56,5 +75,12 @@ int phronesis_resolve_script(const char *cwd, const char *script, char *out,
 int phronesis_build_shell_view(const char *workspace, const char *cwd,
 			       capn_ptr argv, uint8_t **flat_out,
 			       size_t *flat_len);
+
+/** Open @a root as a directory. Rejects "/". Follows the root path itself. */
+int phronesis_beneath_dir(const char *root, int *outfd);
+/** @a path relative to @a root, or already-relative. Rejects `..`. */
+int phronesis_beneath_rel(const char *root, const char *path, char *rel, size_t n);
+/** Open @a rel under @a rootfd. No symlink steps. Caller closes *@a outfd. */
+int phronesis_beneath_open(int rootfd, const char *rel, int flags, int *outfd);
 
 #endif
