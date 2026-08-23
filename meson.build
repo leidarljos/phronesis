@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: Apache-2.0
 #
 # phronesis: Cap'n language in-process (lib) + cmocka.
 # Callers FFI with policy.capnp bodies.
@@ -12,7 +12,7 @@ project(
     'tr -d "[:space:]" < VERSION',
     check: true,
   ).stdout().strip(),
-  license: 'MIT',
+  license: 'Apache-2.0',
   # meson_version >=1.3 (wrap / schema codegen).
   meson_version: '>=1.3.0',
   default_options: [

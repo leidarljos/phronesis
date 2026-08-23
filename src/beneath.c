@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MIT */
+/* SPDX-License-Identifier: Apache-2.0 */
 /*
  * Open a path only under an already-open root directory.
  * Pack load consumes the fd. checkPath does not use this.

@@ -11,7 +11,7 @@ code. Protocol failures deny.
 | **Language** | Cap'n interface: `schema/policy.capnp` + `schema/util.capnp` in this tree |
 | **Product API** | typed C entry points in `include/phronesis/supervisor.h` |
 | **C helpers** | `include/phronesis/supervisor.h` |
-| **License** | MIT (`LICENSE`); third-party notes in `NOTICE` |
+| **License** | Apache 2.0 (`LICENSE`); third-party notes in `NOTICE` |
 | **Migration** | [`MIGRATION.md`](MIGRATION.md) |
 
 ## Build (no private remotes)
@@ -141,7 +141,7 @@ Root **README.md only**. No `docs/`, no satellite handbooks, no Makefile. mesonâ
 
 ## License
 
-MIT for first-party code. See `LICENSE` and `NOTICE`.
+Apache License 2.0 for first-party code. See `LICENSE` and `NOTICE`.
 
 ## Deny-all and audio fixture (tests / lockdown)
 

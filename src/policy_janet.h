@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MIT */
+/* SPDX-License-Identifier: Apache-2.0 */
 #ifndef PHRONESIS_POLICY_JANET_H
 #define PHRONESIS_POLICY_JANET_H
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: Apache-2.0
 """Generate PolicyReason encyclopedia maps from schema/policy.capnp.
 
 Parses the Cap'n enum PolicyReason (authoritative ordinals + names + nearby

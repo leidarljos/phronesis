@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MIT */
+/* SPDX-License-Identifier: Apache-2.0 */
 /*
  * Pure unit tests for policy/lib .janet files files (no Cap'n, no supervisor).
  * Loads the same files the pack host loads before shell.janet.

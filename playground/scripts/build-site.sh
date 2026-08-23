@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: Apache-2.0
 #
 # Build the Astro playground site (no emcc).
 # Requires: node/npm, optional playground/dist-wasm for evaluator assets.

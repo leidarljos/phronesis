@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MIT */
+/* SPDX-License-Identifier: Apache-2.0 */
 /**
  * @file supervisor.h
  * @brief Stable C ABI for the phronesis multi-agent supervisor.

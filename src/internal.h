@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MIT */
+/* SPDX-License-Identifier: Apache-2.0 */
 #ifndef PHRONESIS_INTERNAL_H
 #define PHRONESIS_INTERNAL_H
 

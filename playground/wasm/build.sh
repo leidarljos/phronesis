@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: Apache-2.0
 #
 # Direct-emcc playground build (v1). Produces:
 #   playground/dist-wasm/phronesis-playground.js

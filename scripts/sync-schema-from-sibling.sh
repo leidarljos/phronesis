@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: Apache-2.0
 # Copy policy.capnp + util.capnp from another schema directory.
 # This package's public interface is schema/; this script is optional
 # refresh, not a build step. Pass the directory that contains both files.

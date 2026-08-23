@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: Apache-2.0
 # Generate c-capnproto C from schemadir (policy + util) into Meson OUTDIR.
 # Both .capnp files must live in SCHEMA_DIR (default: repo schema/); no
 # silent mix of policy with a different util.

@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MIT */
+/* SPDX-License-Identifier: Apache-2.0 */
 #include "phronesis/supervisor.h"
 
 const char *phronesis_version_string(void)

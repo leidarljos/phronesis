@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: Apache-2.0
 # Seed playground/wasm/memfs for --preload-file (Emscripten MEMFS root).
 #
 # Multi-pack layout (matches product PHRONESIS_JANET_PACK colon / packs.d):

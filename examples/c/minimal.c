@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MIT */
+/* SPDX-License-Identifier: Apache-2.0 */
 /*
  * Minimal C consumer of the phronesis stable ABI.
  * Build: pixi run example  (links build/libphronesis.a)
