@@ -21,7 +21,7 @@ Cap'n file names and types stay `policy.capnp`, `util.capnp`,
 | `GROK_POLICYD_DIR` pointing at a prefix with `libgrok_policyd.a` | directory that contains `libphronesis.a` (session `link_static_c.rs` / `build.rs`) |
 
 GitHub snapshot (no version tag):
-https://github.com/indynull/phronesis/releases/tag/snapshot
+https://github.com/leidarljos/phronesis/releases/tag/snapshot
 
 Version tags `vX.Y.Z` publish the same four files: `libphronesis.a`,
 `SCHEMA_PIN`, `policy.capnp`, `util.capnp`.
