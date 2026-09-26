@@ -922,6 +922,69 @@ static void test_janet_pack_colon_list_first_load(void **state)
 }
 
 /*
+ * PACK_ROOT filesystem-root spellings (`/`, `//`, `/.`, `///`) are not a
+ * trusted prefix. A workspace colon JANET_PACK must not load on first
+ * check after reset; product law stays or the env list is ignored
+ * (fail closed).
+ */
+static void test_janet_pack_fs_root_pack_root_first_load(void **state)
+{
+	struct shell_fix *f = *state;
+	char pack_allow[PHRONESIS_PATH_MAX], dir[PHRONESIS_PATH_MAX];
+	char pack_deny[PHRONESIS_PATH_MAX], spec[PHRONESIS_PATH_MAX * 2];
+	char product[PHRONESIS_PATH_MAX], root[PHRONESIS_PATH_MAX];
+	const char *src;
+	const char *roots[] = { "/", "//", "/.", "///" };
+	size_t i;
+	char *argv[] = { "python3", "script.py", NULL };
+
+	product_pack_path(product, sizeof(product));
+	snprintf(pack_allow, sizeof(pack_allow), "%s/allow_all.janet", f->ws);
+	snprintf(dir, sizeof(dir), "%s/packs.d", f->ws);
+	assert_int_equal(mkdir(dir, 0700), 0);
+	snprintf(pack_deny, sizeof(pack_deny), "%s/01-deny.janet", dir);
+	write_allow_all_pack(pack_allow);
+	write_file(pack_deny,
+		   "(defn shell-check [buf]\n"
+		   "  (capnp/build-message 1 2\n"
+		   "    @[[:u16 0 0] [:u16 2 25] [:text 0 \"deny pack\"]]))\n");
+	assert_true(snprintf(spec, sizeof(spec), "%s:%s", pack_allow, dir) <
+		    (int)sizeof(spec));
+
+	unsetenv("PHRONESIS_DEV_PACK");
+	for (i = 0; i < sizeof(roots) / sizeof(roots[0]); i++) {
+		uint8_t *in = NULL, *out = NULL;
+		size_t in_len = 0, out_len = 0;
+		enum Decision dec;
+		enum PolicyReason code;
+
+		setenv("PHRONESIS_PACK_ROOT", roots[i], 1);
+		setenv("PHRONESIS_JANET_PACK", spec, 1);
+		phronesis_policy_pack_reset();
+
+		build_shell_check(f->ws, argv, 2, &in, &in_len);
+		phronesis_check_shell(f->sup, in, in_len, &out, &out_len);
+		free(in);
+		read_decision(out, out_len, &dec, &code, NULL, 0);
+		free(out);
+
+		assert_int_equal(dec, Decision_deny);
+		assert_int_not_equal(code, PolicyReason_shellExecAllow);
+		assert_int_not_equal(code, 25);
+	}
+
+	src = getenv("PHRONESIS_SOURCE_ROOT");
+	if (!src || !src[0])
+		src = ".";
+	assert_true(snprintf(root, sizeof(root), "%s/policy", src) <
+		    (int)sizeof(root));
+	setenv("PHRONESIS_PACK_ROOT", root, 1);
+	setenv("PHRONESIS_DEV_PACK", "1", 1);
+	setenv("PHRONESIS_JANET_PACK", product, 1);
+	assert_int_equal(phronesis_shell_pack_reload(product), PHRONESIS_OK);
+}
+
+/*
  * A symlink child in a reload directory must fail before unload so
  * product law stays.
  */
@@ -1023,6 +1086,9 @@ int run_shell_pack_tests(void)
 		cmocka_unit_test_setup_teardown(
 			test_janet_pack_colon_list_first_load, shell_setup,
 			shell_teardown),
+		cmocka_unit_test_setup_teardown(
+			test_janet_pack_fs_root_pack_root_first_load,
+			shell_setup, shell_teardown),
 		cmocka_unit_test_setup_teardown(
 			test_reload_dir_symlink_child_keeps_law, shell_setup,
 			shell_teardown),
