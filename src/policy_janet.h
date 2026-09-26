@@ -29,7 +29,7 @@ void phronesis_audio_pack(const uint8_t *in, size_t in_len, uint8_t **out,
  * Unload any loaded packs and load @a path (colon-separated absolute
  * .janet files and/or directories of top-level *.janet packs). Each
  * file is opened under the pack root (install policy directory or
- * PHRONESIS_PACK_ROOT; not "/").
+ * PHRONESIS_PACK_ROOT; not the filesystem root "/", "//", "/.", "///").
  * Returns 0 on success, -1 path invalid, -2 load failed.
  */
 int phronesis_shell_pack_reload_internal(const char *path);

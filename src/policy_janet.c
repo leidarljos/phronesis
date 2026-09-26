@@ -11,7 +11,8 @@
  * its own sealed env. checkShell / checkAudio run every pack that defines
  * the entry and compose fail-closed (deny > prompt > allow).
  * Pack bytes are read through phronesis_beneath_open on one pack-root fd
- * (install policy directory or PHRONESIS_PACK_ROOT; never "/").
+ * (install policy directory or PHRONESIS_PACK_ROOT; never the filesystem
+ * root: "/", "//", "/.", "///").
  */
 #include "policy_janet.h"
 #include "internal.h"

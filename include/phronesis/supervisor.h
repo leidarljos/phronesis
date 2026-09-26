@@ -521,7 +521,8 @@ PHRONESIS_API void phronesis_reload_shell_pack(phronesis_supervisor_t *sup,
  *              absolute directories of top-level *.janet packs. Empty is
  *              invalid. Each file is opened under the pack root
  *              (install policy directory or @c PHRONESIS_PACK_ROOT;
- *              not "/"). Symlink steps in the pack tree fail the open.
+ *              not the filesystem root "/", "//", "/.", "///").
+ *              Symlink steps in the pack tree fail the open.
  *              Each pack loads into its own sealed env; checkShell /
  *              checkAudio compose fail-closed across packs that define the
  *              entry (deny > prompt > allow).
