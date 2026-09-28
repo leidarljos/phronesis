@@ -423,8 +423,8 @@ void phronesis_check_shell(phronesis_supervisor_t *sup, const uint8_t *in,
 		return;
 	}
 	/*
-	 * Generated ShellCheck.argv is capn_ptr_list. capn_len resolves a
-	 * far pointer (read_ShellCheck uses capn_getp(..., 0)).
+	 * Generated ShellCheck.argv is a capn_ptr. capn_len resolves a
+	 * far pointer (read_ShellCheck uses capn_getp).
 	 */
 	if (capn_len(sc.argv) > 0) {
 		uint8_t *pack_out = NULL;
@@ -433,7 +433,7 @@ void phronesis_check_shell(phronesis_supervisor_t *sup, const uint8_t *in,
 		PD_TRACE_EVENT(PD_TRACE_LAYER_HOST, PD_TRACE_PHASE_ENTER,
 			       "checkShell/pack", "multi-pack shell-check compose", -1,
 			       NULL, 0);
-		phronesis_shell_pack(ws, cwd, sc.argv.p, &pack_out, &pack_len);
+		phronesis_shell_pack(ws, cwd, sc.argv, &pack_out, &pack_len);
 		capn_free(&c);
 		if (pack_out && pack_len) {
 			/* Passthrough pack Cap'n PolicyDecision (reason from pack). */
