@@ -423,10 +423,12 @@ void phronesis_check_shell(phronesis_supervisor_t *sup, const uint8_t *in,
 		return;
 	}
 	/*
-	 * Generated ShellCheck.argv is a capn_ptr. capn_len resolves a
-	 * far pointer (read_ShellCheck uses capn_getp).
+	 * Generated ShellCheck.argv is a capn_ptr. capn_len() wants a
+	 * typed list with a .p field, so resolve a far pointer here.
 	 */
-	if (capn_len(sc.argv) > 0) {
+	if (sc.argv.type == CAPN_FAR_POINTER)
+		capn_resolve(&sc.argv);
+	if (sc.argv.len > 0) {
 		uint8_t *pack_out = NULL;
 		size_t pack_len = 0;
 
