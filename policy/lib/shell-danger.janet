@@ -101,6 +101,65 @@
           (set hit true)))))
   hit)
 
+# The commands of a line: words split at ; && || | & and at a trailing ;.
+(defn- commands [argv]
+  (def out @[@[]])
+  (each t argv
+    (if (member? [";" "&&" "||" "|" "&"] t)
+      (array/push out @[])
+      (let [closes (string/has-suffix? ";" t)
+            tok (if closes (string/slice t 0 -2) t)]
+        (when (> (length tok) 0) (array/push (last out) tok))
+        (when closes (array/push out @[])))))
+  (filter (fn [c] (> (length c) 0)) out))
+
+(defn- redirection? [t]
+  (def rest (string/triml t "0123456789&"))
+  (or (string/has-prefix? ">" rest) (string/has-prefix? "<" rest)))
+
+(defn- under-tmp? [p]
+  (or (= p "/tmp") (string/has-prefix? "/tmp/" p)
+      (= p "/var/tmp") (string/has-prefix? "/var/tmp/" p)))
+
+# A recursive rm or rtrash whose own operands reach outside /tmp and
+# /var/tmp. Flags and redirections are not operands; every command on
+# the line is judged by its own words.
+(defn recursive-delete-off-tmp? [argv]
+  (truthy?
+    (find
+      (fn [cmd]
+        (def b (argv-base (in cmd 0)))
+        (and (or (= b "rm") (= b "rtrash"))
+             (or (find (fn [a] (and (string/has-prefix? "-" a)
+                                    (not (string/has-prefix? "--" a))
+                                    (string/find "r" a) (string/find "f" a)))
+                       (slice cmd 1))
+                 (and (find (fn [a] (member? ["-r" "-R" "--recursive"] a)) cmd)
+                      (find (fn [a] (member? ["-f" "--force"] a)) cmd)))
+             (find (fn [a] (and (not (string/has-prefix? "-" a))
+                                (not (redirection? a))
+                                (not (under-tmp? a))))
+                   (slice cmd 1))))
+      (commands argv))))
+
+# chmod setting the setuid bit: +s, or a four-digit mode starting with 4.
+(defn setuid-chmod? [argv]
+  (and (> (length argv) 0)
+       (= (argv-base (in argv 0)) "chmod")
+       (truthy?
+         (find (fn [a] (or (string/find "+s" a)
+                           (and (string/has-prefix? "4" a) (>= (length a) 3)
+                                (peg/match ~(* (some (range "09")) -1) a))))
+               argv))))
+
+# Writing a disk directly: mkfs*, or dd with of=/dev/...
+(defn raw-disk? [argv]
+  (and (> (length argv) 0)
+       (let [b (argv-base (in argv 0))]
+         (or (string/has-prefix? "mkfs" b)
+             (and (= b "dd")
+                  (truthy? (find (fn [a] (string/has-prefix? "of=/dev/" a)) argv)))))))
+
 # git push --force / -f, reset --hard, clean -fdx
 (defn git-dangerous? [argv]
   (unless (find (fn [t] (= (argv-base t) "git")) argv)
@@ -145,6 +204,12 @@
   (when (remote-exec? argv)
     (break [PolicyReason-shellRemoteExec
             "remote-exec denied: a download handed to a shell"]))
+  (when (setuid-chmod? argv)
+    (break [PolicyReason-shellDangerousRunner "chmod setuid denied"]))
+  (when (raw-disk? argv)
+    (break [PolicyReason-shellDangerousRunner "raw disk write denied (mkfs, dd of=/dev/)"]))
+  (when (recursive-delete-off-tmp? argv)
+    (break [PolicyReason-shellDangerousRunner "recursive delete outside /tmp denied"]))
   (when (pip-install? argv)
     (break [PolicyReason-shellDangerousRunner
             "pip install denied; use pixi / workspace-declared env"]))

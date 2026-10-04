@@ -214,6 +214,11 @@ static void test_shell_danger_laws(void **state)
 	const char *pipi[] = { "pip", "install", "requests" };
 	const char *force[] = { "git", "push", "--force", "origin", "main" };
 	const char *okgit[] = { "git", "status" };
+	const char *rmhome[] = { "rm", "-rf", "/home/u" };
+	const char *rmtmp[] = { "rm", "-rf", "/tmp/x" };
+	const char *setuid[] = { "chmod", "4755", "x" };
+	const char *mkfs[] = { "mkfs.ext4", "/dev/sdb1" };
+	const char *ddfile[] = { "dd", "if=x", "of=disk.img" };
 	Janet v;
 	(void)state;
 
@@ -236,6 +241,16 @@ static void test_shell_danger_laws(void **state)
 	v = call1("shell-danger-deny", make_string_array(force, 5));
 	assert_false(janet_checktype(v, JANET_NIL));
 	v = call1("shell-danger-deny", make_string_array(okgit, 2));
+	assert_true(janet_checktype(v, JANET_NIL));
+	v = call1("shell-danger-deny", make_string_array(rmhome, 3));
+	assert_false(janet_checktype(v, JANET_NIL));
+	v = call1("shell-danger-deny", make_string_array(rmtmp, 3));
+	assert_true(janet_checktype(v, JANET_NIL));
+	v = call1("shell-danger-deny", make_string_array(setuid, 3));
+	assert_false(janet_checktype(v, JANET_NIL));
+	v = call1("shell-danger-deny", make_string_array(mkfs, 2));
+	assert_false(janet_checktype(v, JANET_NIL));
+	v = call1("shell-danger-deny", make_string_array(ddfile, 3));
 	assert_true(janet_checktype(v, JANET_NIL));
 }
 
