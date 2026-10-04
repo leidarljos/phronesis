@@ -41,27 +41,65 @@
     (set prev-py (python-interp? b)))
   hit)
 
-# curl|sh / wget|bash: argv contains a downloader and a shell as separate tokens
-# (agent-tokenized). Also catch `sh -c` with curl in the string (substring).
-(defn remote-exec? [argv]
-  (var has-fetch false)
-  (var has-shell false)
-  (var hit false)
-  (each t argv
+(def- fetchers ["curl" "wget" "fetch"])
+(def- shells ["sh" "bash" "zsh" "dash" "ksh" "fish"])
+(def- wrappers ["sudo" "doas" "env" "nohup" "time" "exec" "command" "nice"])
+
+(defn- member? [xs x] (truthy? (find (fn [y] (= y x)) xs)))
+
+# The command a pipeline stage runs: its first word past wrappers,
+# assignments and flags, by base name.
+(defn- command-word [stage]
+  (var word nil)
+  (each t stage
     (def b (argv-base t))
-    (when (or (= b "curl") (= b "wget") (= b "fetch"))
-      (set has-fetch true))
-    (when (or (= b "sh") (= b "bash") (= b "zsh") (= b "dash"))
-      (set has-shell true))
-    # sh -c 'curl … | bash' style single token
-    (when (or (string/find "curl " t)
-              (string/find "wget " t))
-      (when (or (string/find "| sh" t)
-                (string/find "|sh" t)
-                (string/find "| bash" t)
-                (string/find "|bash" t))
-        (set hit true))))
-  (or hit (and has-fetch has-shell)))
+    (when (and (nil? word)
+               (not (member? wrappers b))
+               (not (string/has-prefix? "-" t))
+               (not (and (string/find "=" t) (not (string/has-prefix? "=" t)))))
+      (set word b)))
+  word)
+
+# The stages of a pipeline: a token `|` separates them, and so does a `|`
+# inside a token with no space (`url|sh`). `||` is not a pipe.
+(defn- stages [argv]
+  (def out @[@[]])
+  (each t argv
+    (cond
+      (= t "|") (array/push out @[])
+      (and (string/find "|" t) (not (string/find "||" t)) (not (string/find " " t)))
+      (let [parts (string/split "|" t)]
+        (eachp [k part] parts
+          (when (> (length part) 0) (array/push (last out) part))
+          (when (< k (- (length parts) 1)) (array/push out @[]))))
+      (array/push (last out) t)))
+  (filter (fn [s] (> (length s) 0)) out))
+
+(defn- runs-download? [t]
+  (truthy?
+    (find (fn [open] (find (fn [f] (string/find (string open f) t)) fetchers))
+          ["$(" "<(" "`"])))
+
+# A download handed to a shell: a fetching stage piped into a shell stage,
+# or a shell that runs a download through $( ), <( ), backticks, or -c with
+# a script that does either. Naming a download tool and a shell on one
+# line is not that: `git fetch`, then `bash build.sh`, runs nothing fetched.
+(defn remote-exec? [argv]
+  (def st (stages argv))
+  (var hit false)
+  (for k 0 (- (length st) 1)
+    (when (and (member? fetchers (command-word (in st k)))
+               (member? shells (command-word (in st (+ k 1)))))
+      (set hit true)))
+  (each s st
+    (when (member? shells (command-word s))
+      (when (find runs-download? s) (set hit true))
+      (for k 0 (- (length s) 1)
+        (when (and (= (in s k) "-c")
+                   (remote-exec? (filter (fn [w] (> (length w) 0))
+                                         (string/split " " (in s (+ k 1))))))
+          (set hit true)))))
+  hit)
 
 # git push --force / -f, reset --hard, clean -fdx
 (defn git-dangerous? [argv]
@@ -106,7 +144,7 @@
             "privilege runner denied (sudo/su/doas/pkexec)"]))
   (when (remote-exec? argv)
     (break [PolicyReason-shellRemoteExec
-            "remote-exec pattern denied (curl|sh / fetch+shell)"]))
+            "remote-exec denied: a download handed to a shell"]))
   (when (pip-install? argv)
     (break [PolicyReason-shellDangerousRunner
             "pip install denied; use pixi / workspace-declared env"]))
