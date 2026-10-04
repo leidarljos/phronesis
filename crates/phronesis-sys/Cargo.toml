@@ -1,0 +1,21 @@
+[package]
+name = "phronesis-sys"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.85"
+license = "MIT"
+description = "phronesis compiled in: the Cap'n Proto shell law over the phronesis schema, its Janet policy pack, c-capnproto and the generated schema C, with no meson or install prefix needed"
+repository = "https://github.com/leidarljos/phronesis"
+readme = "README.md"
+keywords = ["policy", "argv", "ljos", "capnp"]
+categories = ["external-ffi-bindings"]
+links = "phronesis"
+include = ["src/**", "build.rs", "vendor/**", "README.md"]
+
+[dependencies]
+
+[build-dependencies]
+cc = "1"
+
+[dev-dependencies]
+tempfile = "3"
