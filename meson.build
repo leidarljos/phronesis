@@ -42,6 +42,10 @@ cmocka_dep = dependency('cmocka', required: true)
 # Cap'n C runtime: system pkg-config, else public wrap (HaoZeke/c-capnproto).
 capn_c_dep = dependency('c-capnproto', required: false)
 capnpc_c = find_program('capnpc-c', required: false)
+# The pinned wrap's capnpc-c types List(Text) as capn_ptr_list. The
+# 0.1 pkg-config capnpc-c types it as capn_ptr. The flag follows the
+# generator, which is what writes policy.capnp.h.
+capnpc_from_wrap = false
 if not capn_c_dep.found() or not capnpc_c.found()
   capn_sp = subproject(
     'c-capnproto',
@@ -52,10 +56,22 @@ if not capn_c_dep.found() or not capnpc_c.found()
   endif
   if not capnpc_c.found()
     capnpc_c = capn_sp.get_variable('capnpc_c')
+    capnpc_from_wrap = true
   endif
   message('c-capnproto via wrap')
 else
   message('c-capnproto via pkg-config')
+endif
+argv_is_list = capnpc_from_wrap
+if not argv_is_list and capn_c_dep.type_name() != 'internal'
+  argv_is_list = cc.compiles(
+    '#include <capnp_c.h>\ncapn_ptr_list x;',
+    dependencies: capn_c_dep,
+    name: 'List(Text) is capn_ptr_list',
+  )
+endif
+if argv_is_list
+  add_project_arguments('-DPHRONESIS_ARGV_LIST=1', language: 'c')
 endif
 capnp = find_program('capnp', required: true)
 gen_capnp = find_program('scripts/gen-capnp-c.sh', required: true)

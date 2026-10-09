@@ -6,6 +6,20 @@
 #include <stddef.h>
 #include <stdint.h>
 
+/* List(Text) is a capn_ptr under c-capnproto 0.1. The pinned wrap's
+ * capnpc-c emits a capn_ptr_list and keeps that pointer in .p. Meson
+ * defines PHRONESIS_ARGV_LIST when capnpc-c comes from that wrap, and
+ * when an external header's compile probe sees capn_ptr_list. */
+#ifdef PHRONESIS_ARGV_LIST
+static inline capn_ptr *phronesis_argv_slot_list(capn_ptr_list *list)
+{
+	return &list->p;
+}
+#define phronesis_argv_slot(field) phronesis_argv_slot_list(&(field))
+#else
+#define phronesis_argv_slot(field) (&(field))
+#endif
+
 /**
  * Shell content pack path.
  * Seals Cap'n ShellView, runs Janet pack, returns Cap'n PolicyDecision bytes

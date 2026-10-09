@@ -423,28 +423,34 @@ void phronesis_check_shell(phronesis_supervisor_t *sup, const uint8_t *in,
 		return;
 	}
 	/*
-	 * Generated ShellCheck.argv is a capn_ptr. capn_len() wants a
-	 * typed list with a .p field, so resolve a far pointer here.
+	 * ShellCheck.argv is the list pointer, either a capn_ptr or the
+	 * wrap's capn_ptr_list. A far pointer has to be resolved before
+	 * its length is read.
 	 */
-	if (sc.argv.type == CAPN_FAR_POINTER)
-		capn_resolve(&sc.argv);
-	if (sc.argv.len > 0) {
-		uint8_t *pack_out = NULL;
-		size_t pack_len = 0;
+	{
+		capn_ptr *argv = phronesis_argv_slot(sc.argv);
 
-		PD_TRACE_EVENT(PD_TRACE_LAYER_HOST, PD_TRACE_PHASE_ENTER,
-			       "checkShell/pack", "multi-pack shell-check compose", -1,
-			       NULL, 0);
-		phronesis_shell_pack(ws, cwd, sc.argv, &pack_out, &pack_len);
-		capn_free(&c);
-		if (pack_out && pack_len) {
-			/* Passthrough pack Cap'n PolicyDecision (reason from pack). */
-			*out = pack_out;
-			*out_len = pack_len;
+		if (argv->type == CAPN_FAR_POINTER)
+			capn_resolve(argv);
+		if (argv->len > 0) {
+			uint8_t *pack_out = NULL;
+			size_t pack_len = 0;
+
+			PD_TRACE_EVENT(PD_TRACE_LAYER_HOST, PD_TRACE_PHASE_ENTER,
+				       "checkShell/pack",
+				       "multi-pack shell-check compose", -1, NULL, 0);
+			phronesis_shell_pack(ws, cwd, *argv, &pack_out, &pack_len);
+			capn_free(&c);
+			if (pack_out && pack_len) {
+				/* Passthrough pack Cap'n PolicyDecision. */
+				*out = pack_out;
+				*out_len = pack_len;
+				return;
+			}
+			deny_msg(agent, PHRONESIS_REASON_PACK_BAD_RESULT, out,
+				 out_len);
 			return;
 		}
-		deny_msg(agent, PHRONESIS_REASON_PACK_BAD_RESULT, out, out_len);
-		return;
 	}
 	capn_free(&c);
 	emit_decision(&pr, agent, out, out_len);

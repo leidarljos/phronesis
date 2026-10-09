@@ -1085,10 +1085,13 @@ int phronesis_build_shell_view(const char *workspace, const char *cwd,
 	memset(&view, 0, sizeof(view));
 	view.underWorkspace = under ? 1 : 0;
 	view.cwd = ctext(cwd ? cwd : "");
-	/* List(Text) is a capn_ptr. capn_new_ptr_list returns that pointer. */
-	view.argv = capn_new_ptr_list(capn_root(&c).seg, argv_n);
-	for (i = 0; i < argv_n; i++)
-		capn_set_text(view.argv, i, ctext(argv_store[i]));
+	{
+		capn_ptr *argv = phronesis_argv_slot(view.argv);
+
+		*argv = capn_new_ptr_list(capn_root(&c).seg, argv_n);
+		for (i = 0; i < argv_n; i++)
+			capn_set_text(*argv, i, ctext(argv_store[i]));
+	}
 
 	view.pathProbes = new_PathProbe_list(capn_root(&c).seg, pcount);
 	for (i = 0; i < pcount; i++) {
