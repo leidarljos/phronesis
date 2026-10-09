@@ -84,6 +84,22 @@ Lexical paths: absolute only; reject `//`, `.`, `..`. No `realpath`.
 
 `PHRONESIS_DENY_ALL` forces deny on the CLI/string eval path and on every Cap'n `PolicyDecision` entry (`checkSeat` / `checkModel` / `checkPath` / `checkShell` / `checkRisk` / `checkAudio` / `reloadShellPack`). It wins over `PHRONESIS_AUDIO_ALLOW`.
 
+## Where this sits
+
+Policy engines divide by where they run. The Open Policy Agent
+([openpolicyagent.org](https://www.openpolicyagent.org)) is a sidecar
+or a server. It evaluates Rego over JSON. This library is in-process
+C. Cap'n Proto carries the input and the output. It runs no server and
+reads no JSON document. A protocol failure denies. Cedar
+([cedarpolicy.com](https://www.cedarpolicy.com)) is a typed
+authorization language with a verified core. The packs in this tree
+are Janet, over argv and paths. Across packs, a deny outranks a
+prompt, and a prompt outranks an allow. `pledge` and `unveil`
+([pledge(2)](https://man.openbsd.org/pledge)), and seccomp-bpf,
+restrict the calls a process may make. This library judges the words
+before a process exists. The kernel restriction follows that
+judgement.
+
 ## Build / test / coverage (pixi only)
 
 ```bash
