@@ -1,3 +1,0 @@
-# Public Cap'n interface for this library. Codegen uses policy + util only.
-interface_version=0.3.10
-files=util.capnp,policy.capnp
