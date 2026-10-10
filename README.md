@@ -16,7 +16,10 @@ code. Protocol failures deny.
 
 ## Build (no private remotes)
 
-Needs: `meson` ≥ 1.3, `ninja`, `pkg-config`, `capnp` (compiler), `cmocka`.
+Needs: `meson` ≥ 1.3, `ninja`, `pkg-config`, `capnp` (compiler). The unit
+tests also need `cmocka`; without it they are skipped (`-Dtests=disabled`
+skips them on purpose). Libraries install to `$prefix/lib` unless you pass
+`--libdir`.
 If `c-capnproto` / `capnpc-c` are not installed, Meson fetches
 https://github.com/HaoZeke/c-capnproto. `capnp-janet` is the same via wrap.
 
@@ -27,7 +30,27 @@ meson test -C build --print-errorlogs
 ```
 
 Or `just meson-test`. Embedders find the interface at
-`pkg-config --variable=schemadir phronesis` after install.
+`pkg-config --variable=schemadir phronesis` after install, the schema C the
+library was built with (`policy.capnp.c`, `util.capnp.c` and their headers)
+at `--variable=cdir`, and the packs at `--variable=packdir`. Static archives
+(`libphronesis.a`, `libcapnp_janet.a`, `libcapnp_c.a`) install beside the
+shared libraries, so an embedder can link with no runtime path.
+
+### Packs
+
+`policy/shell.janet` is the default law: privilege, a download or decoded
+script handed to a shell, raw disks, setuid and sweeping recursive modes,
+recursive deletes and `find -delete` outside `/tmp`, git calls that drop
+work, and secrets in argv. It matches ljos-policyd's built-in table, the
+allowances included: a lease push, a recursive delete of a build output
+directory in the tree (`target`, `node_modules`, `build`, ...), and `mkfs`
+or `dd` on an image file.
+
+`policy/seat.janet` is opt-in. It adds a seat's package and Python rules to
+the default law: Python runs through `uv run` with PEP 723 metadata, no
+`python -c`, and pixi in place of `pip`, `npm`, `yarn`, `pnpm`, `bun` and
+`poetry`. Load it in place of `shell.janet`, or beside it:
+`PHRONESIS_JANET_PACK=$prefix/share/phronesis/policy/seat.janet`.
 
 `pixi install --locked` still uses a private conda channel for
 `c-capnproto`. The Meson path above is the standalone door.
