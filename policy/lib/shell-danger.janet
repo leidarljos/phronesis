@@ -179,9 +179,24 @@
           false))
       (commands argv))))
 
+# Scratch directories a project keeps at its top for throwaway output.
+(def scratch-dirs ["tmp" ".tmp" "temp"])
+
+# A plain relative path under a scratch directory at the top of the tree,
+# or the directory itself: tmp/, ./tmp/test-output. A scratch name deeper
+# down (src/tmp) says nothing about what the path holds.
+(defn scratch? [p]
+  (var rest p)
+  (while (pre? "./" rest) (set rest (string/slice rest 2)))
+  (def parts (string/split "/" rest))
+  (and (plain-relative? p)
+       (member? scratch-dirs (in parts 0))
+       (not (member? parts ".git"))))
+
 # A recursive rm or rtrash with an operand that is neither under /tmp or
-# /var/tmp nor a build output directory named as a plain relative path.
-# When the line can cd out of the tree, only /tmp operands pass.
+# /var/tmp, nor a build output directory or a top-level scratch directory
+# named as a plain relative path. When the line can cd out of the tree,
+# only /tmp operands pass.
 (defn- recursive-delete? [cmd moved]
   (def b (argv-base (in cmd 0)))
   (and (or (= b "rm") (= b "rtrash"))
@@ -192,16 +207,57 @@
        (truthy? (find (fn [a] (and (not (pre? "-" a))
                                    (not (redirection? a))
                                    (not (under-tmp? a))
-                                   (or moved (not (build-output? a)))))
+                                   (or moved (not (or (build-output? a) (scratch? a))))))
                       (slice cmd 1)))))
 
 (defn recursive-delete-off-tmp? [argv]
   (def moved (leaves-tree? argv))
   (truthy? (find (fn [cmd] (recursive-delete? cmd moved)) (commands argv))))
 
+# Names a compiler, an interpreter, an editor or a desktop writes and
+# writes again: bytecode, objects, patch leftovers, editor swap files and
+# folder metadata. A find -name cleanup of these loses no work.
+(def regenerable-names
+  ["*.pyc" "*.pyo" "__pycache__" ".pytest_cache" ".mypy_cache" ".ruff_cache"
+   "*.o" "*.obj" "*.class" "*.gcda" "*.gcno" "*.orig" "*.rej" "*.swp" "*.swo"
+   "*~" ".DS_Store" "._*" "Thumbs.db" "desktop.ini"])
+
+# A find cleanup inside the working tree: every starting point is . or a
+# plain relative path outside .git, and every name test names a file in
+# regenerable-names, with at least one. An -o, a !, a -not or a group can
+# turn a name test around, so none passes. `find . -delete` has no name
+# test and `find . -name '*.rs' -delete` names source, so both stay refused.
+(defn- regenerable-cleanup? [starts expr]
+  (defn in-tree? [p]
+    (def q (string/trimr p "/"))
+    (and (or (= q ".") (plain-relative? q))
+         (not (member? (string/split "/" q) ".git"))))
+  (var ok (and (all in-tree? starts)
+               (not (find (fn [a] (member? ["-o" "-or" "!" "-not" "," "(" ")" "\\(" "\\)"] a))
+                          expr))))
+  (var named 0)
+  (def n (length expr))
+  (for k 0 (- n 1)
+    (def test (in expr k))
+    (def value (in expr (+ k 1)))
+    (cond
+      (member? ["-name" "-iname"] test)
+      (if (member? regenerable-names value) (++ named) (set ok false))
+      (member? ["-path" "-ipath" "-wholename"] test)
+      (let [parts (filter (fn [part] (and (not= part "*") (not= part ".")))
+                          (string/split "/" value))]
+        (if (and (> (length parts) 0) (all (fn [part] (member? regenerable-names part)) parts))
+          (++ named)
+          (set ok false)))
+      (member? ["-regex" "-iregex" "-lname" "-ilname"] test)
+      (set ok false)))
+  (and ok (> named 0)))
+
 # find ... -delete, or -exec rm (also -execdir, -ok, shred, unlink), whose
-# starting points are not all under /tmp. No starting point is `.`.
-(defn- find-delete? [cmd]
+# starting points are not all under /tmp. No starting point is `.`. A
+# cleanup of files a tool writes again inside the working tree is allowed,
+# unless the line can cd out of the tree first.
+(defn- find-delete? [cmd moved]
   (def n (length cmd))
   (var exec-delete false)
   (for k 0 (- n 1)
@@ -212,8 +268,14 @@
        (or (member? cmd "-delete") exec-delete)
        (let [starts (take-while (fn [a] (and (not (pre? "-" a))
                                              (not (member? ["(" "!" "\\("] a))))
-                                (slice cmd 1))]
-         (or (empty? starts) (not (all under-tmp? starts))))))
+                                (slice cmd 1))
+             expr (slice cmd (+ 1 (length starts)))]
+         (and (not (and (not (empty? starts)) (all under-tmp? starts)))
+              (or moved (not (regenerable-cleanup? starts expr)))))))
+
+(defn find-delete-off-tmp? [argv]
+  (def moved (leaves-tree? argv))
+  (truthy? (find (fn [cmd] (find-delete? cmd moved)) (commands argv))))
 
 # chmod setting the setuid bit: +s, or a mode of three or more digits
 # starting with 4.
@@ -494,7 +556,7 @@
   (when (recursive-delete-off-tmp? argv)
     (break [PolicyReason-shellDangerousRunner
             "rm-rf-outside-tmp: recursive delete outside /tmp and the build output directories denied"]))
-  (when (find find-delete? (commands argv))
+  (when (find-delete-off-tmp? argv)
     (break [PolicyReason-shellDangerousRunner
             "find-delete-outside-tmp: find -delete outside /tmp denied"]))
   (def g (git-dangerous? argv))

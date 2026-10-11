@@ -43,8 +43,10 @@ script handed to a shell, raw disks, setuid and sweeping recursive modes,
 recursive deletes and `find -delete` outside `/tmp`, git calls that drop
 work, and secrets in argv. It matches ljos-policyd's built-in table, the
 allowances included: a lease push, a recursive delete of a build output
-directory in the tree (`target`, `node_modules`, `build`, ...), and `mkfs`
-or `dd` on an image file.
+directory in the tree (`target`, `node_modules`, `build`, ...) or of a
+top-level scratch directory (`tmp`, `.tmp`, `temp`), a `find -delete` of
+files a tool writes again (`*.pyc`, `.DS_Store`, `*.o`, ...) inside the
+tree, and `mkfs` or `dd` on an image file.
 
 `policy/seat.janet` is opt-in. It adds a seat's package and Python rules to
 the default law: Python runs through `uv run` with PEP 723 metadata, no
