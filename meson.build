@@ -21,6 +21,9 @@ project(
     'werror=true',
     'buildtype=release',
     'default_library=both',
+    # Libraries in $prefix/lib on every host, so an embedder that links the
+    # static archives finds them at one path. Distros pass --libdir.
+    'libdir=lib',
   ],
 )
 
@@ -37,8 +40,10 @@ inc = include_directories(
   'tests',
 )
 
-# cmocka for unit tests (CI + Mull). Library itself only needs c-capnproto.
-cmocka_dep = dependency('cmocka', required: true)
+# cmocka for unit tests (CI + Mull). The library itself only needs
+# c-capnproto, so a build with no cmocka builds and installs everything
+# else (-Dtests=disabled skips them on purpose).
+cmocka_dep = dependency('cmocka', required: get_option('tests'))
 # Cap'n C runtime: system pkg-config, else public wrap (HaoZeke/c-capnproto).
 capn_c_dep = dependency('c-capnproto', required: false)
 capnpc_c = find_program('capnpc-c', required: false)
@@ -148,6 +153,9 @@ message('Cap\'n interface: schemadir=@0@'.format(schema_root))
 
 # policy imports util — gen script stages both .capnp and emits C into OUTDIR.
 # Outputs 4–5 are installable staged IDL (avoids subproject install sandbox).
+# The generated C and its headers go to $datadir/phronesis/c, so an embedder
+# that builds a ShellCheck with c-capnproto compiles the same schema code
+# this library was built with.
 schema_gen = custom_target(
   'policy_capnp',
   output: [
@@ -171,10 +179,10 @@ schema_gen = custom_target(
   build_by_default: true,
   install: true,
   install_dir: [
-    false,
-    false,
-    false,
-    false,
+    get_option('datadir') / 'phronesis' / 'c',
+    get_option('datadir') / 'phronesis' / 'c',
+    get_option('datadir') / 'phronesis' / 'c',
+    get_option('datadir') / 'phronesis' / 'c',
     get_option('datadir') / 'phronesis',
     get_option('datadir') / 'phronesis',
   ],
@@ -261,6 +269,7 @@ install_data(
 )
 install_data(
   'policy/shell.janet',
+  'policy/seat.janet',
   install_dir: policy_pack_install,
 )
 install_subdir(
@@ -304,7 +313,11 @@ pkg.generate(
   filebase: 'phronesis',
   subdirs: '.',
   requires: 'c-capnproto, capnp-janet',
-  variables: ['schemadir=${prefix}/share/phronesis'],
+  variables: [
+    'schemadir=${prefix}/share/phronesis',
+    'cdir=${prefix}/share/phronesis/c',
+    'packdir=${prefix}/share/phronesis/policy',
+  ],
 )
 
 cli = executable(
@@ -325,42 +338,44 @@ example = executable(
   install: false,
 )
 
-supervisor_test = executable(
-  'supervisor_test',
-  [schema_gen] + files(
-    'tests/harness.c',
-    'tests/test_paths.c',
-    'tests/test_lifecycle.c',
-    'tests/test_kill_tree.c',
-    'tests/test_action_log.c',
-    'tests/test_persist.c',
-    'tests/test_policy.c',
-    'tests/test_pack_lib.c',
-    'tests/test_shell_pack.c',
-    'tests/test_version.c',
-    'tests/test_capnp_ffi.c',
-    'tests/test_main.c',
-  ),
-  include_directories: [inc, schema_inc, janet_inc],
-  # Static so tests can use a few internal helpers without exporting them on the .so.
-  link_with: [phronesis_lib.get_static_lib(), janet_amalg],
-  dependencies: [cmocka_dep, capn_c_dep, capnp_janet_dep, m_dep, dl_dep, thread_dep],
-  c_args: ['-Wno-format-truncation', '-DJANET_API='] + mull_c_args,
-  install: false,
-)
+if cmocka_dep.found()
+  supervisor_test = executable(
+    'supervisor_test',
+    [schema_gen] + files(
+      'tests/harness.c',
+      'tests/test_paths.c',
+      'tests/test_lifecycle.c',
+      'tests/test_kill_tree.c',
+      'tests/test_action_log.c',
+      'tests/test_persist.c',
+      'tests/test_policy.c',
+      'tests/test_pack_lib.c',
+      'tests/test_shell_pack.c',
+      'tests/test_version.c',
+      'tests/test_capnp_ffi.c',
+      'tests/test_main.c',
+    ),
+    include_directories: [inc, schema_inc, janet_inc],
+    # Static so tests can use a few internal helpers without exporting them on the .so.
+    link_with: [phronesis_lib.get_static_lib(), janet_amalg],
+    dependencies: [cmocka_dep, capn_c_dep, capnp_janet_dep, m_dep, dl_dep, thread_dep],
+    c_args: ['-Wno-format-truncation', '-DJANET_API='] + mull_c_args,
+    install: false,
+  )
 
-test(
-  'cmocka',
-  supervisor_test,
-  protocol: 'exitcode',
-  timeout: 120,
-  workdir: meson.project_source_root(),
-  env: {
-    'PHRONESIS_BUILD_DIR': meson.project_build_root(),
-    'PHRONESIS_SOURCE_ROOT': meson.project_source_root(),
-    'PHRONESIS_PACK_ROOT': meson.project_source_root() / 'policy',
-  },
-)
+  test(
+    'cmocka',
+    supervisor_test,
+    protocol: 'exitcode',
+    timeout: 120,
+    workdir: meson.project_source_root(),
+    env: {
+      'PHRONESIS_BUILD_DIR': meson.project_build_root(),
+      'PHRONESIS_SOURCE_ROOT': meson.project_source_root(),
+      'PHRONESIS_PACK_ROOT': meson.project_source_root() / 'policy',
+    },
+  )
+endif
 
 # Product link-line for the shipped .so (export + Cap'n runtime + no peer stack).
 bash = find_program('bash', required: true)
@@ -373,7 +388,7 @@ test(
   workdir: meson.project_source_root(),
 )
 
-if get_option('mutation')
+if get_option('mutation') and cmocka_dep.found()
   # Optional mutation signal on policy/Cap'n. Soft on survivors until Cap'n
   # fail-closed asserts own more of the kill set.
   mull_report_dir = meson.current_build_dir() / 'mull-report'
@@ -403,7 +418,9 @@ endif
 alias_target('lib', phronesis_lib)
 alias_target('cli', cli)
 alias_target('example', example)
-alias_target('tests', supervisor_test)
+if cmocka_dep.found()
+  alias_target('tests', supervisor_test)
+endif
 
 # Playground WASM: playground/wasm/build.sh (direct emcc); not product CI graph.
 if get_option('playground')

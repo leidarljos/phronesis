@@ -1,6 +1,6 @@
 [workspace]
 name = "phronesis"
-version = "0.1.0"
+version = "0.2.0"
 description = "In-process policy library — Cap'n FFI + C ABI"
 authors = ["indynull", "HaoZeke"]
 channels = ["https://repo.prefix.dev/rg-forge", "conda-forge"]

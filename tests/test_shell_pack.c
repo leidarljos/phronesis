@@ -122,7 +122,8 @@ static const char *product_pack_path(char *buf, size_t n)
 
 	if (!src || !src[0])
 		src = ".";
-	assert_true(snprintf(buf, n, "%s/policy/shell.janet", src) < (int)n);
+	/* The seat pack: the default law plus the uv / PEP 723 Python law. */
+	assert_true(snprintf(buf, n, "%s/policy/seat.janet", src) < (int)n);
 	return buf;
 }
 
@@ -437,12 +438,84 @@ uint8_t *in = NULL, *out = NULL;
 	free(out);
 }
 
+/* One argv through the loaded pack; returns the decision, fills reason. */
+static enum Decision check_line(struct shell_fix *f, char **argv, int argc,
+				char *reason, size_t rn)
+{
+	uint8_t *in = NULL, *out = NULL;
+	size_t in_len = 0, out_len = 0;
+	enum Decision dec;
+	enum PolicyReason code;
+
+	build_shell_check(f->ws, argv, argc, &in, &in_len);
+	phronesis_check_shell(f->sup, in, in_len, &out, &out_len);
+	free(in);
+	read_decision(out, out_len, &dec, &code, reason, rn);
+	free(out);
+	return dec;
+}
+
+/*
+ * The default pack (policy/shell.janet) passes ordinary build and package
+ * work, lease pushes, build-output deletes and image-file mkfs, and its
+ * refusals carry the rule's own reason text.
+ */
+static void test_default_pack_law(void **state)
+{
+	struct shell_fix *f = *state;
+	char pack[PHRONESIS_PATH_MAX], seat[PHRONESIS_PATH_MAX];
+	char reason[256];
+	const char *src = getenv("PHRONESIS_SOURCE_ROOT");
+	char *npm[] = { "npm", "test", NULL };
+	char *pyc[] = { "python3", "-c", "print(1)", NULL };
+	char *poetry[] = { "poetry", "build", NULL };
+	char *lease[] = { "git", "push", "--force-with-lease", "origin", "x", NULL };
+	char *rmt[] = { "rm", "-rf", "target/", NULL };
+	char *mkfs[] = { "mkfs.ext4", "-F", "disk.img", NULL };
+	char *force[] = { "git", "push", "--force", "origin", "main", NULL };
+	char *rmh[] = { "rm", "-rf", "../src", NULL };
+	char *dev[] = { "mkfs.ext4", "/dev/sdb1", NULL };
+
+	if (!src || !src[0])
+		src = ".";
+	assert_true(snprintf(pack, sizeof(pack), "%s/policy/shell.janet", src) <
+		    (int)sizeof(pack));
+	setenv("PHRONESIS_JANET_PACK", pack, 1);
+	assert_int_equal(phronesis_shell_pack_reload(pack), PHRONESIS_OK);
+
+	assert_int_equal(check_line(f, npm, 2, NULL, 0), Decision_allow);
+	assert_int_equal(check_line(f, pyc, 3, NULL, 0), Decision_allow);
+	assert_int_equal(check_line(f, poetry, 2, NULL, 0), Decision_allow);
+	assert_int_equal(check_line(f, lease, 5, NULL, 0), Decision_allow);
+	assert_int_equal(check_line(f, rmt, 3, NULL, 0), Decision_allow);
+	assert_int_equal(check_line(f, mkfs, 3, NULL, 0), Decision_allow);
+
+	assert_int_equal(check_line(f, force, 5, reason, sizeof(reason)),
+			 Decision_deny);
+	assert_non_null(strstr(reason, "git-force-push"));
+	assert_int_equal(check_line(f, rmh, 3, reason, sizeof(reason)),
+			 Decision_deny);
+	assert_non_null(strstr(reason, "rm-rf-outside-tmp"));
+	assert_int_equal(check_line(f, dev, 2, reason, sizeof(reason)),
+			 Decision_deny);
+	assert_non_null(strstr(reason, "raw-disk"));
+
+	/* The seat pack keeps its package and Python rules. */
+	product_pack_path(seat, sizeof(seat));
+	setenv("PHRONESIS_JANET_PACK", seat, 1);
+	assert_int_equal(phronesis_shell_pack_reload(seat), PHRONESIS_OK);
+	assert_int_equal(check_line(f, npm, 2, reason, sizeof(reason)),
+			 Decision_deny);
+	assert_int_equal(check_line(f, pyc, 3, NULL, 0), Decision_deny);
+	assert_int_equal(check_line(f, lease, 5, NULL, 0), Decision_allow);
+}
+
 static void test_cwd_pack_not_loaded(void **state)
 {
 	struct shell_fix *f = *state;
 	char pdir[PHRONESIS_PATH_MAX], pack[PHRONESIS_PATH_MAX], oldcwd[PHRONESIS_PATH_MAX];
 	char srcpack[PHRONESIS_PATH_MAX];
-	char *argv[] = { "python3", "x.py", NULL };
+	char *argv[] = { "sudo", "true", NULL };
 	uint8_t *in = NULL, *out = NULL;
 	size_t in_len = 0, out_len = 0;
 	enum Decision dec;
@@ -451,7 +524,7 @@ static void test_cwd_pack_not_loaded(void **state)
 
 	if (!src || !src[0])
 		src = ".";
-	snprintf(srcpack, sizeof(srcpack), "%s/policy/shell.janet", src);
+	snprintf(srcpack, sizeof(srcpack), "%s/policy/seat.janet", src);
 	snprintf(pdir, sizeof(pdir), "%s/policy", f->rt);
 	assert_int_equal(mkdir(pdir, 0700), 0);
 	snprintf(pack, sizeof(pack), "%s/shell.janet", pdir);
@@ -1058,6 +1131,8 @@ int run_shell_pack_tests(void)
 						shell_setup, shell_teardown),
 		cmocka_unit_test_setup_teardown(test_glpat_in_argv_deny,
 						shell_setup, shell_teardown),
+		cmocka_unit_test_setup_teardown(test_default_pack_law, shell_setup,
+						shell_teardown),
 		cmocka_unit_test_setup_teardown(test_cwd_pack_not_loaded,
 						shell_setup, shell_teardown),
 		cmocka_unit_test_setup_teardown(test_overlong_argv_denies,

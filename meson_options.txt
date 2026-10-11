@@ -50,3 +50,11 @@ option(
   value: '',
   description: 'Path to capnp-janet janet_mod.c (system package; optional if pkg-config janet_mod is set)',
 )
+
+# Unit tests need cmocka. auto: build them when cmocka is found.
+option(
+  'tests',
+  type: 'feature',
+  value: 'auto',
+  description: 'Build and register the cmocka unit tests',
+)
