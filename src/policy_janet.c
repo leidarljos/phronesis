@@ -39,6 +39,8 @@
 #define SHELL_PROBE_MAX 32
 #define PACK_PATH_MAX 4096
 #define PACK_FILE_MAX (512 * 1024)
+/* A pack image holds the compiled closures of every file in the pack. */
+#define PACK_IMAGE_MAX (4 * 1024 * 1024)
 #define PACK_LIB_MAX_FILES 32
 #define PACK_MAX 16
 /* Spec stores colon-joined resolved absolute/relative paths for reload/env. */
@@ -563,17 +565,15 @@ static int parse_pack_spec(const char *spec, char out[][PACK_PATH_MAX],
 }
 
 /**
- * Read @a path into the pack env via janet_dobytes.
- * Returns 0 on success, -1 on I/O/size error, -2 on Janet load error.
+ * Read @a path, opened under the pack root, into a malloc buffer.
+ * Returns 0 on success, -1 on I/O or size error.
  */
-static int dobytes_file(JanetTable *env, const char *path)
+static int read_pack_file(const char *path, char **buf_out, size_t *len_out)
 {
 	char rel[PACK_PATH_MAX];
 	char *buf;
 	off_t sz;
-	Janet out;
 	int fd;
-	int rc;
 
 	if (ensure_pack_root() != 0)
 		return -1;
@@ -582,7 +582,7 @@ static int dobytes_file(JanetTable *env, const char *path)
 	if (phronesis_beneath_open(pack_rootfd, rel, O_RDONLY, &fd) != 0)
 		return -1;
 	sz = lseek(fd, 0, SEEK_END);
-	if (sz <= 0 || sz > PACK_FILE_MAX || lseek(fd, 0, SEEK_SET) != 0) {
+	if (sz <= 0 || sz > PACK_IMAGE_MAX || lseek(fd, 0, SEEK_SET) != 0) {
 		(void)close(fd);
 		return -1;
 	}
@@ -593,29 +593,50 @@ static int dobytes_file(JanetTable *env, const char *path)
 		return -1;
 	}
 	(void)close(fd);
+	*buf_out = buf;
+	*len_out = (size_t)sz;
+	return 0;
+}
+
+/**
+ * Read @a path into the pack env via janet_dobytes.
+ * Returns 0 on success, -1 on I/O/size error, -2 on Janet load error.
+ */
+static int dobytes_file(JanetTable *env, const char *path)
+{
+	char *buf;
+	size_t sz;
+	Janet out;
+	int rc;
+
+	if (read_pack_file(path, &buf, &sz) != 0)
+		return -1;
+	if (sz > PACK_FILE_MAX) {
+		free(buf);
+		return -1;
+	}
 	rc = janet_dobytes(env, (const uint8_t *)buf, (int32_t)sz, path, &out);
 	free(buf);
 	return rc == 0 ? 0 : -2;
 }
 
 /**
- * Load sorted .janet helpers from a sibling lib/ directory, if present.
- * Missing lib/ is OK (single-file packs / allow-all test packs).
- * Returns 0 on success (or no lib), -1 on failure.
+ * Sorted .janet helper names in the lib/ directory beside @a pack_path.
+ * Writes that directory to @a libdir and strdup'd names to @a names.
+ * A pack with no lib/ has none. Returns 0 on success, -1 on failure.
  */
-static int load_pack_libs(JanetTable *env, const char *pack_path)
+static int pack_lib_names(const char *pack_path, char *libdir, size_t libdir_n,
+			  char **names, int *n_out)
 {
 	char dir[PACK_PATH_MAX];
-	char libdir[PACK_PATH_MAX];
-	char path[PACK_PATH_MAX];
-	char *names[PACK_LIB_MAX_FILES];
 	int nnames = 0;
 	DIR *d;
 	struct dirent *ent;
 	const char *slash;
 	size_t dlen;
-	int i, rc;
 
+	*n_out = 0;
+	libdir[0] = '\0';
 	slash = strrchr(pack_path, '/');
 	if (!slash || slash == pack_path)
 		return 0;
@@ -624,8 +645,7 @@ static int load_pack_libs(JanetTable *env, const char *pack_path)
 		return -1;
 	memcpy(dir, pack_path, dlen);
 	dir[dlen] = '\0';
-	if (snprintf(libdir, sizeof(libdir), "%s/lib", dir) >=
-	    (int)sizeof(libdir))
+	if (snprintf(libdir, libdir_n, "%s/lib", dir) >= (int)libdir_n)
 		return -1;
 
 	d = opendir(libdir);
@@ -644,7 +664,9 @@ static int load_pack_libs(JanetTable *env, const char *pack_path)
 		names[nnames] = strdup(ent->d_name);
 		if (!names[nnames]) {
 			closedir(d);
-			goto fail_names;
+			while (nnames > 0)
+				free(names[--nnames]);
+			return -1;
 		}
 		nnames++;
 	}
@@ -652,26 +674,36 @@ static int load_pack_libs(JanetTable *env, const char *pack_path)
 
 	if (nnames > 1)
 		qsort(names, (size_t)nnames, sizeof(names[0]), cmp_strptr);
+	*n_out = nnames;
+	return 0;
+}
 
-	for (i = 0; i < nnames; i++) {
-		if (snprintf(path, sizeof(path), "%s/%s", libdir, names[i]) >=
-		    (int)sizeof(path)) {
-			rc = -1;
-			goto done;
-		}
-		rc = dobytes_file(env, path);
-		if (rc != 0)
-			goto done;
-	}
+/**
+ * Load sorted .janet helpers from a sibling lib/ directory, if present.
+ * Missing lib/ is OK (single-file packs / allow-all test packs).
+ * Returns 0 on success (or no lib), -1 on failure.
+ */
+static int load_pack_libs(JanetTable *env, const char *pack_path)
+{
+	char libdir[PACK_PATH_MAX];
+	char path[PACK_PATH_MAX];
+	char *names[PACK_LIB_MAX_FILES];
+	int nnames = 0;
+	int i, rc;
+
+	if (pack_lib_names(pack_path, libdir, sizeof(libdir), names, &nnames) != 0)
+		return -1;
 	rc = 0;
-done:
+	for (i = 0; i < nnames && rc == 0; i++) {
+		if (snprintf(path, sizeof(path), "%s/%s", libdir, names[i]) >=
+		    (int)sizeof(path))
+			rc = -1;
+		else
+			rc = dobytes_file(env, path);
+	}
 	for (i = 0; i < nnames; i++)
 		free(names[i]);
 	return rc;
-fail_names:
-	for (i = 0; i < nnames; i++)
-		free(names[i]);
-	return -1;
 }
 
 /**
@@ -695,31 +727,25 @@ static int resolve_fn(JanetTable *env, const char *name, Janet *out_fn)
 }
 
 /**
- * Load one .janet pack into a new sealed env and register a slot.
- * Files without a new local shell-check/audio-check are skipped (0) so packs.d
- * can hold non-entry helpers/docs. Entry Functions are GC-rooted at capture so
- * a later pack that redefines the same name cannot change earlier slots.
- * Does not set pack_loaded.
+ * Compile one .janet pack into a new sealed env.
+ * Sets the entry Functions this file defines (shell-check, audio-check);
+ * a file that defines neither is not a pack and sets both flags to 0.
+ * Returns 0 on success, -1 on a load error.
  */
-static int load_one_pack(const char *path)
+static int compile_pack(const char *path, Janet *shell_fn, int *has_shell,
+			Janet *audio_fn, int *has_audio)
 {
 	JanetTable *env;
 	int rc;
 	Janet shell_before = janet_wrap_nil();
 	Janet audio_before = janet_wrap_nil();
-	Janet shell_fn = janet_wrap_nil();
-	Janet audio_fn = janet_wrap_nil();
 	int had_shell_before;
 	int had_audio_before;
-	int has_shell;
-	int has_audio;
 
-	if (!path || !path[0] || npacks >= PACK_MAX)
-		return -1;
-	if (!janet_inited) {
-		janet_init();
-		janet_inited = 1;
-	}
+	*shell_fn = janet_wrap_nil();
+	*audio_fn = janet_wrap_nil();
+	*has_shell = 0;
+	*has_audio = 0;
 	env = janet_core_env(NULL);
 	if (!env)
 		return -1;
@@ -750,25 +776,299 @@ static int load_one_pack(const char *path)
 		return -1;
 	}
 
-	has_shell = 0;
-	has_audio = 0;
-	if (resolve_fn(env, "shell-check", &shell_fn)) {
+	if (resolve_fn(env, "shell-check", shell_fn)) {
 		if (!had_shell_before ||
-		    !janet_equals(shell_before, shell_fn))
-			has_shell = 1;
+		    !janet_equals(shell_before, *shell_fn))
+			*has_shell = 1;
 	}
-	if (resolve_fn(env, "audio-check", &audio_fn)) {
+	if (resolve_fn(env, "audio-check", audio_fn)) {
 		if (!had_audio_before ||
-		    !janet_equals(audio_before, audio_fn))
-			has_audio = 1;
+		    !janet_equals(audio_before, *audio_fn))
+			*has_audio = 1;
 	}
+	if (!*has_shell)
+		*shell_fn = janet_wrap_nil();
+	if (!*has_audio)
+		*audio_fn = janet_wrap_nil();
+	return 0;
+}
+
+/*
+ * Pack image: the entry Functions of one pack, compiled and marshalled, so
+ * a fresh process skips the boot image and the Janet compiler. Layout:
+ * the magic line, the Janet version line, the 16-hex FNV-1a hash of the
+ * pack's source files and a newline, then janet_marshal of
+ * [shell-check audio-check] (nil when the file lacks one). The image sits
+ * beside the pack as <name>.jimage and is opened under the pack root like
+ * the sources. A missing image, a version or hash mismatch, or a failed
+ * unmarshal falls back to compiling the sources.
+ */
+#define PACK_IMAGE_MAGIC "phronesis-pack-image 1\n"
+
+static uint64_t fnv1a_feed(uint64_t h, const void *p, size_t n)
+{
+	const unsigned char *b = p;
+	size_t i;
+
+	for (i = 0; i < n; i++) {
+		h ^= b[i];
+		h *= 0x100000001b3ULL;
+	}
+	return h;
+}
+
+/** <pack>.jimage for <pack>.janet. Returns 0, or -1 when the name is not a pack. */
+static int pack_image_path(const char *path, char *out, size_t n)
+{
+	size_t len = strlen(path);
+
+	if (len < 7 || strcmp(path + len - 6, ".janet") != 0)
+		return -1;
+	if (len - 6 + sizeof(".jimage") > n)
+		return -1;
+	memcpy(out, path, len - 6);
+	memcpy(out + len - 6, ".jimage", sizeof(".jimage"));
+	return 0;
+}
+
+/**
+ * Hash every source the pack compiles from: each lib/ helper in load
+ * order, then the entry file, each as its name, a NUL and its bytes.
+ * Returns 0 on success, -1 when a source cannot be read.
+ */
+static int pack_source_hash(const char *path, uint64_t *out)
+{
+	char libdir[PACK_PATH_MAX];
+	char file[PACK_PATH_MAX];
+	char *names[PACK_LIB_MAX_FILES];
+	int nnames = 0;
+	uint64_t h = 0xcbf29ce484222325ULL;
+	int i, rc = 0;
+
+	if (pack_lib_names(path, libdir, sizeof(libdir), names, &nnames) != 0)
+		return -1;
+	for (i = 0; i <= nnames && rc == 0; i++) {
+		const char *name;
+		char *buf;
+		size_t len;
+
+		if (i < nnames) {
+			if (snprintf(file, sizeof(file), "%s/%s", libdir,
+				     names[i]) >= (int)sizeof(file)) {
+				rc = -1;
+				break;
+			}
+			name = names[i];
+		} else {
+			if (snprintf(file, sizeof(file), "%s", path) >=
+			    (int)sizeof(file)) {
+				rc = -1;
+				break;
+			}
+			name = strrchr(path, '/') ? strrchr(path, '/') + 1 : path;
+		}
+		if (read_pack_file(file, &buf, &len) != 0) {
+			rc = -1;
+			break;
+		}
+		h = fnv1a_feed(h, name, strlen(name) + 1);
+		h = fnv1a_feed(h, buf, len);
+		free(buf);
+	}
+	for (i = 0; i < nnames; i++)
+		free(names[i]);
+	if (rc == 0)
+		*out = h;
+	return rc;
+}
+
+/** The Cap'n (and TRACE) Cfuns a pack env carries, as an env of bindings. */
+static JanetTable *pack_cfun_env(void)
+{
+	JanetTable *t = janet_table(0);
+
+	capnp_janet_register(t);
+	PD_TRACE_REGISTER_JANET(t);
+	return t;
+}
+
+/** Symbol to value for every Cfun an image may name. */
+static JanetTable *pack_image_forward(void)
+{
+	JanetTable *fwd = janet_core_lookup_table(NULL);
+
+	janet_env_lookup_into(fwd, pack_cfun_env(), NULL, 0);
+	return fwd;
+}
+
+/** Value to symbol: the inverse of pack_image_forward. */
+static JanetTable *pack_image_reverse(void)
+{
+	JanetTable *fwd = pack_image_forward();
+	JanetTable *rev = janet_table(fwd->count);
+	int32_t i;
+
+	for (i = 0; i < fwd->capacity; i++) {
+		JanetKV kv = fwd->data[i];
+
+		if (!janet_checktype(kv.key, JANET_NIL))
+			janet_table_put(rev, kv.value, kv.key);
+	}
+	return rev;
+}
+
+/** janet_unmarshal that returns -1 instead of panicking on a bad image. */
+static int unmarshal_guarded(const uint8_t *bytes, size_t len, Janet *out)
+{
+	JanetTryState st;
+	volatile int rc = -1;
+
+	if (!janet_try(&st)) {
+		*out = janet_unmarshal(bytes, len, 0, pack_image_forward(), NULL);
+		rc = 0;
+	}
+	janet_restore(&st);
+	return rc;
+}
+
+/** janet_marshal that returns -1 instead of panicking on an unnamed Cfun. */
+static int marshal_guarded(JanetBuffer *b, Janet x)
+{
+	JanetTryState st;
+	volatile int rc = -1;
+
+	if (!janet_try(&st)) {
+		janet_marshal(b, x, pack_image_reverse(), 0);
+		rc = 0;
+	}
+	janet_restore(&st);
+	return rc;
+}
+
+/** The header an image of the pack at @a path must start with. */
+static int pack_image_header(const char *path, char *out, size_t n)
+{
+	uint64_t h;
+
+	if (pack_source_hash(path, &h) != 0)
+		return -1;
+	if (snprintf(out, n, "%s%s\n%016llx\n", PACK_IMAGE_MAGIC, JANET_VERSION,
+		     (unsigned long long)h) >= (int)n)
+		return -1;
+	return 0;
+}
+
+/**
+ * Load the entry Functions from the image beside @a path.
+ * Returns 0 on success, -1 when there is no usable image.
+ */
+static int load_pack_image(const char *path, Janet *shell_fn, int *has_shell,
+			   Janet *audio_fn, int *has_audio)
+{
+	char ipath[PACK_PATH_MAX];
+	char header[256];
+	char *buf;
+	size_t len, hl;
+	Janet v = janet_wrap_nil();
+	int ok;
+
+	if (pack_image_path(path, ipath, sizeof(ipath)) != 0)
+		return -1;
+	if (!pack_on_root(ipath))
+		return -1;
+	if (pack_image_header(path, header, sizeof(header)) != 0)
+		return -1;
+	if (read_pack_file(ipath, &buf, &len) != 0)
+		return -1;
+	hl = strlen(header);
+	if (len <= hl || memcmp(buf, header, hl) != 0) {
+		free(buf);
+		return -1;
+	}
+	ok = unmarshal_guarded((const uint8_t *)buf + hl, len - hl, &v) == 0;
+	free(buf);
+	if (!ok || !janet_checktype(v, JANET_TUPLE) ||
+	    janet_tuple_length(janet_unwrap_tuple(v)) != 2)
+		return -1;
+	*shell_fn = janet_unwrap_tuple(v)[0];
+	*audio_fn = janet_unwrap_tuple(v)[1];
+	*has_shell = janet_checktype(*shell_fn, JANET_FUNCTION);
+	*has_audio = janet_checktype(*audio_fn, JANET_FUNCTION);
+	if (!*has_shell && !janet_checktype(*shell_fn, JANET_NIL))
+		return -1;
+	if (!*has_audio && !janet_checktype(*audio_fn, JANET_NIL))
+		return -1;
+	return (*has_shell || *has_audio) ? 0 : -1;
+}
+
+int phronesis_pack_image_write(const char *path, const char *out_path)
+{
+	char header[256];
+	Janet shell_fn, audio_fn, pair[2];
+	int has_shell, has_audio;
+	JanetBuffer *b;
+	FILE *f;
+
+	if (!path || !out_path)
+		return -1;
+	if (!janet_inited) {
+		janet_init();
+		janet_inited = 1;
+	}
+	if (compile_pack(path, &shell_fn, &has_shell, &audio_fn, &has_audio) != 0)
+		return -1;
+	if (!has_shell && !has_audio)
+		return -1;
+	if (pack_image_header(path, header, sizeof(header)) != 0)
+		return -1;
+	pair[0] = shell_fn;
+	pair[1] = audio_fn;
+	b = janet_buffer(0);
+	janet_buffer_push_cstring(b, header);
+	if (marshal_guarded(b, janet_wrap_tuple(janet_tuple_n(pair, 2))) != 0)
+		return -1;
+	f = fopen(out_path, "wb");
+	if (!f)
+		return -1;
+	if (fwrite(b->data, 1, (size_t)b->count, f) != (size_t)b->count) {
+		fclose(f);
+		return -1;
+	}
+	return fclose(f) == 0 ? 0 : -1;
+}
+
+/**
+ * Load one .janet pack and register a slot: from its image when one
+ * matches the sources, else by compiling it into a new sealed env.
+ * Files without a new local shell-check/audio-check are skipped (0) so packs.d
+ * can hold non-entry helpers/docs. Entry Functions are GC-rooted at capture so
+ * a later pack that redefines the same name cannot change earlier slots.
+ * Does not set pack_loaded.
+ */
+static int load_one_pack(const char *path)
+{
+	Janet shell_fn = janet_wrap_nil();
+	Janet audio_fn = janet_wrap_nil();
+	int has_shell = 0;
+	int has_audio = 0;
+
+	if (!path || !path[0] || npacks >= PACK_MAX)
+		return -1;
+	if (!janet_inited) {
+		janet_init();
+		janet_inited = 1;
+	}
+	if (load_pack_image(path, &shell_fn, &has_shell, &audio_fn,
+			    &has_audio) != 0 &&
+	    compile_pack(path, &shell_fn, &has_shell, &audio_fn, &has_audio) != 0)
+		return -1;
 	/* Non-entry .janet (docs / layout tables) is not a pack. */
 	if (!has_shell && !has_audio)
 		return 0;
 
-	packs[npacks].env = env;
-	packs[npacks].shell_fn = has_shell ? shell_fn : janet_wrap_nil();
-	packs[npacks].audio_fn = has_audio ? audio_fn : janet_wrap_nil();
+	packs[npacks].env = NULL;
+	packs[npacks].shell_fn = shell_fn;
+	packs[npacks].audio_fn = audio_fn;
 	packs[npacks].has_shell = has_shell;
 	packs[npacks].has_audio = has_audio;
 	if (has_shell)
