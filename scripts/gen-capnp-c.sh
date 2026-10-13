@@ -24,6 +24,15 @@ test -x "$capnpc_c" || command -v "$capnpc_c" >/dev/null || {
 # util first (AgentId/TraceId), then policy (imports util).
 (cd "$outdir" && capnp compile -I. -o"$capnpc_c" util.capnp)
 (cd "$outdir" && capnp compile -I. -o"$capnpc_c" policy.capnp)
+# capnpc-c writes `capn_null = {CAPN_NULL}`, a positional initializer that
+# leaves every later capn_ptr field implicit. Newer Apple clang reports that
+# under -Wmissing-field-initializers, and -Werror stops the build. A
+# designated initializer zeroes the rest without the warning. The installed
+# C carries the fix, so embedders that compile it (ljos-policyd) get it too.
+for f in util.capnp.c policy.capnp.c; do
+	sed 's/= {CAPN_NULL};/= {.type = CAPN_NULL};/' "$outdir/$f" >"$outdir/$f.tmp"
+	mv -f -- "$outdir/$f.tmp" "$outdir/$f"
+done
 test -f "$outdir/util.capnp.c" && test -f "$outdir/util.capnp.h"
 test -f "$outdir/policy.capnp.c" && test -f "$outdir/policy.capnp.h"
 test -f "$outdir/util.capnp" && test -f "$outdir/policy.capnp"
