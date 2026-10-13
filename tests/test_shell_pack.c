@@ -995,6 +995,75 @@ static void test_janet_pack_colon_list_first_load(void **state)
 	assert_int_equal(code, 25);
 }
 
+/** The decision code the loaded pack gives `true`. */
+static enum PolicyReason pack_code_for_true(struct shell_fix *f)
+{
+	char *argv[] = { "true", NULL };
+	uint8_t *in = NULL, *out = NULL;
+	size_t in_len = 0, out_len = 0;
+	enum Decision dec;
+	enum PolicyReason code;
+
+	build_shell_check(f->ws, argv, 1, &in, &in_len);
+	phronesis_check_shell(f->sup, in, in_len, &out, &out_len);
+	free(in);
+	read_decision(out, out_len, &dec, &code, NULL, 0);
+	free(out);
+	assert_int_equal(dec, Decision_deny);
+	return code;
+}
+
+static void write_code_pack(const char *path, int code)
+{
+	char body[256];
+
+	snprintf(body, sizeof(body),
+		 "(defn shell-check [buf]\n"
+		 "  (capnp/build-message 1 2\n"
+		 "    @[[:u16 0 0] [:u16 2 %d] [:text 0 \"code pack\"]]))\n",
+		 code);
+	write_file(path, body);
+}
+
+/*
+ * An image beside the pack gives the pack's own verdict. One left behind
+ * by an edit is ignored, and one cut short still gives the sources' verdict.
+ */
+static void test_pack_image_matches_sources(void **state)
+{
+	struct shell_fix *f = *state;
+	char pack[PHRONESIS_PATH_MAX], image[PHRONESIS_PATH_MAX];
+	FILE *fp;
+	long len;
+
+	unsetenv("PHRONESIS_DEV_PACK");
+	setenv("PHRONESIS_PACK_ROOT", f->ws, 1);
+	snprintf(pack, sizeof(pack), "%s/img.janet", f->ws);
+	snprintf(image, sizeof(image), "%s/img.jimage", f->ws);
+	setenv("PHRONESIS_JANET_PACK", pack, 1);
+
+	write_code_pack(pack, 25);
+	assert_int_equal(phronesis_pack_image_write(pack, image), 0);
+	phronesis_policy_pack_reset();
+	assert_int_equal(pack_code_for_true(f), 25);
+
+	/* Stale: the source changed after the image was written. */
+	write_code_pack(pack, 26);
+	phronesis_policy_pack_reset();
+	assert_int_equal(pack_code_for_true(f), 26);
+
+	/* Cut short: the header matches but the closures are gone. */
+	assert_int_equal(phronesis_pack_image_write(pack, image), 0);
+	fp = fopen(image, "r+");
+	assert_non_null(fp);
+	assert_int_equal(fseek(fp, 0, SEEK_END), 0);
+	len = ftell(fp);
+	fclose(fp);
+	assert_int_equal(truncate(image, len - 8), 0);
+	phronesis_policy_pack_reset();
+	assert_int_equal(pack_code_for_true(f), 26);
+}
+
 /*
  * PACK_ROOT filesystem-root spellings (`/`, `//`, `/.`, `///`) are not a
  * trusted prefix. A workspace colon JANET_PACK must not load on first
@@ -1171,6 +1240,8 @@ int run_shell_pack_tests(void)
 		cmocka_unit_test_setup_teardown(test_reload_rejects_symlink,
 						shell_setup, shell_teardown),
 		cmocka_unit_test_setup_teardown(test_reload_rejects_pack_root_slash,
+						shell_setup, shell_teardown),
+		cmocka_unit_test_setup_teardown(test_pack_image_matches_sources,
 						shell_setup, shell_teardown),
 	};
 	return cmocka_run_group_tests_name("shell_pack", tests, NULL, NULL);

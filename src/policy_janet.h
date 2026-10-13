@@ -18,6 +18,14 @@ static inline capn_ptr *phronesis_argv_slot_list(capn_ptr_list *list)
 #define phronesis_argv_slot(field) phronesis_argv_slot_list(&(field))
 #else
 #define phronesis_argv_slot(field) (&(field))
+/**
+ * Compile the pack at @a path (opened under the pack root) and write its
+ * image to @a out_path, for load_one_pack to read in place of compiling.
+ * The build runs this once per installed entry pack.
+ * Returns 0 on success, -1 on failure.
+ */
+int phronesis_pack_image_write(const char *path, const char *out_path);
+
 #endif
 
 /**
@@ -47,5 +55,13 @@ void phronesis_audio_pack(const uint8_t *in, size_t in_len, uint8_t **out,
  * Returns 0 on success, -1 path invalid, -2 load failed.
  */
 int phronesis_shell_pack_reload_internal(const char *path);
+
+/**
+ * Compile the pack at @a path (opened under the pack root) and write its
+ * image to @a out_path, for load_one_pack to read in place of compiling.
+ * The build runs this once per installed entry pack.
+ * Returns 0 on success, -1 on failure.
+ */
+int phronesis_pack_image_write(const char *path, const char *out_path);
 
 #endif

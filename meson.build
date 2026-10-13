@@ -299,6 +299,34 @@ phronesis_lib = library(
   ],
 )
 
+# Each entry pack also ships compiled: the image holds its closures, so a
+# fresh process loads the law without the boot image or the compiler. The
+# library checks the image against the installed sources and compiles them
+# when it does not match.
+pack_image_tool = executable(
+  'phronesis-pack-image',
+  files('src/pack_image_main.c'),
+  include_directories: [inc, schema_inc, janet_inc],
+  link_with: [phronesis_lib.get_static_lib(), janet_amalg],
+  dependencies: [capn_c_dep, capnp_janet_dep, m_dep, dl_dep, thread_dep],
+  c_args: ['-DJANET_API='],
+  install: false,
+)
+pack_lib_sources = files(
+  run_command('sh', '-c', 'ls policy/lib/*.janet', check: true).stdout().strip().split('\n'),
+)
+foreach entry : ['shell', 'seat']
+  custom_target(
+    entry + '-jimage',
+    input: 'policy' / entry + '.janet',
+    output: entry + '.jimage',
+    command: [pack_image_tool, '@INPUT@', '@OUTPUT@'],
+    depend_files: pack_lib_sources,
+    install: true,
+    install_dir: policy_pack_install,
+  )
+endforeach
+
 install_headers(
   'include/phronesis/supervisor.h',
   subdir: 'phronesis',
