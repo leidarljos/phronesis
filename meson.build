@@ -292,6 +292,8 @@ phronesis_lib = library(
   version: ver,
   soversion: soversion,
   install: true,
+  # The Cap'n runtime libraries sit beside the installed library.
+  install_rpath: '$ORIGIN',
   gnu_symbol_visibility: 'hidden',
   c_args: mull_c_args + [
     '-DJANET_API=',
@@ -355,6 +357,8 @@ cli = executable(
   link_with: phronesis_lib,
   dependencies: [capn_c_dep],
   install: true,
+  # The installed binary finds libphronesis under the prefix, not the build tree.
+  install_rpath: '$ORIGIN/../' + get_option('libdir'),
 )
 
 example = executable(
