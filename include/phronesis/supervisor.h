@@ -48,13 +48,13 @@ extern "C" {
  */
 
 /** Semantic version string (major.minor.patch). */
-#define PHRONESIS_VERSION "0.2.2"
+#define PHRONESIS_VERSION "0.2.3"
 /** Major package version component. */
 #define PHRONESIS_VERSION_MAJOR 0
 /** Minor package version component. */
 #define PHRONESIS_VERSION_MINOR 2
 /** Patch package version component. */
-#define PHRONESIS_VERSION_PATCH 2
+#define PHRONESIS_VERSION_PATCH 3
 
 /**
  * Link-compatible API generation.
