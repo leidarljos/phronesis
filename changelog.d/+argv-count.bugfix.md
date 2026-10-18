@@ -1,0 +1,1 @@
+The shell argv count was capped at 256, so a command such as `git add` of a few hundred paths, or `rm` of a glob, was fieldTooLong before the policy read it. The cap is 32768 words. The copy is allocated for the actual count.

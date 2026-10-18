@@ -945,30 +945,87 @@ static void test_argv_word_past_limit_denies(void **state)
 	assert_string_equal(reason, expect);
 }
 
-static void test_overcount_argv_denies(void **state)
+static void check_n_words(struct shell_fix *f, const char **head, int nhead,
+			  const char *filler, int nwords, enum Decision *dec,
+			  enum PolicyReason *code, char *reason, size_t reason_n)
 {
-	struct shell_fix *f = *state;
-	char *argv[258];
-	char tok[] = "x";
+	char **argv;
 	int i;
 	uint8_t *in = NULL, *out = NULL;
 	size_t in_len = 0, out_len = 0;
+
+	assert_true(nwords >= nhead && nhead > 0);
+	argv = calloc((size_t)nwords + 1, sizeof(*argv));
+	assert_non_null(argv);
+	for (i = 0; i < nhead; i++)
+		argv[i] = (char *)head[i];
+	for (; i < nwords; i++)
+		argv[i] = (char *)filler;
+	build_shell_check(f->ws, argv, nwords, &in, &in_len);
+	free(argv);
+	assert_true(in_len > 0 && in_len <= PHRONESIS_CAPNP_MAX_BODY);
+	phronesis_check_shell(f->sup, in, in_len, &out, &out_len);
+	free(in);
+	assert_non_null(out);
+	read_decision(out, out_len, dec, code, reason, reason_n);
+	free(out);
+}
+
+/* git add of a few hundred paths, and rm of a glob, are ordinary commands. */
+static void test_many_argv_words_reach_policy(void **state)
+{
+	struct shell_fix *f = *state;
+	const char *git_add[] = { "git", "add" };
+	const char *rm_files[] = { "rm" };
+	const int counts[] = { 300, 5000 };
+	const char **heads[] = { git_add, rm_files };
+	const int nheads[] = { 2, 1 };
+	int i;
+
+	reload_seat_pack();
+	for (i = 0; i < 2; i++) {
+		enum Decision dec = Decision_deny;
+		enum PolicyReason code = PolicyReason_unspecified;
+		char reason[128];
+
+		reason[0] = '\0';
+		check_n_words(f, heads[i], nheads[i], "f", counts[i], &dec,
+			      &code, reason, sizeof(reason));
+		if (dec != Decision_allow ||
+		    code != PolicyReason_shellExecAllow)
+			fail_msg("%d words (%s): decision %d code %d (%s)",
+				 counts[i], heads[i][0], (int)dec, (int)code,
+				 reason);
+	}
+}
+
+static void test_argv_count_past_limit_denies(void **state)
+{
+	struct shell_fix *f = *state;
+	struct capn c;
+	capn_ptr list;
+	uint8_t *out = NULL;
+	size_t out_len = 0;
 	enum Decision dec;
 	enum PolicyReason code;
 	char reason[128];
+	char expect[96];
 
-	argv[0] = "true";
-	for (i = 1; i < 257; i++)
-		argv[i] = tok;
-	argv[257] = NULL;
-	build_shell_check(f->ws, argv, 257, &in, &in_len);
-	phronesis_check_shell(f->sup, in, in_len, &out, &out_len);
-	free(in);
+	reload_seat_pack();
+	memset(&c, 0, sizeof(c));
+	capn_init_malloc(&c);
+	list = capn_new_ptr_list(capn_root(&c).seg,
+				 PHRONESIS_SHELL_ARGV_MAX + 1);
+	phronesis_shell_pack(f->ws, f->ws, list, &out, &out_len);
+	capn_free(&c);
+	assert_non_null(out);
 	read_decision(out, out_len, &dec, &code, reason, sizeof(reason));
 	free(out);
+	snprintf(expect, sizeof(expect), "argv count exceeds %d",
+		 PHRONESIS_SHELL_ARGV_MAX);
 	assert_int_equal(dec, Decision_deny);
 	assert_int_equal(code, PolicyReason_fieldTooLong);
-	assert_string_equal(reason, "argv count exceeds 256");
+	assert_string_equal(reason, expect);
 }
 
 #define SHELL_VIEW_STACK (128 * 1024)
@@ -1302,7 +1359,9 @@ int run_shell_pack_tests(void)
 						shell_setup, shell_teardown),
 		cmocka_unit_test_setup_teardown(test_argv_word_past_limit_denies,
 						shell_setup, shell_teardown),
-		cmocka_unit_test_setup_teardown(test_overcount_argv_denies,
+		cmocka_unit_test_setup_teardown(test_many_argv_words_reach_policy,
+						shell_setup, shell_teardown),
+		cmocka_unit_test_setup_teardown(test_argv_count_past_limit_denies,
 						shell_setup, shell_teardown),
 		cmocka_unit_test_setup_teardown(
 			test_shell_view_256_args_fits_128k_stack, shell_setup,

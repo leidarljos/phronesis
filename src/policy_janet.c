@@ -35,7 +35,6 @@
 #include <unistd.h>
 
 #define SHELL_HEAD_MAX 8192
-#define SHELL_ARGV_MAX 256
 #define SHELL_PROBE_MAX 32
 #define PACK_PATH_MAX 4096
 #define PACK_FILE_MAX (512 * 1024)
@@ -1299,6 +1298,72 @@ struct shell_path_probe {
 	char head[SHELL_HEAD_MAX];
 };
 
+/* Text blob as the arena stores it: NUL plus 8-byte alignment. */
+static int add_text_bytes(size_t *acc, size_t len)
+{
+	size_t n;
+
+	if (len > SIZE_MAX - 8)
+		return -1;
+	n = (len + 1u + 7u) & ~(size_t)7u;
+	if (*acc > SIZE_MAX - n)
+		return -1;
+	*acc += n;
+	return 0;
+}
+
+static int add_bytes(size_t *acc, size_t n)
+{
+	if (*acc > SIZE_MAX - n)
+		return -1;
+	*acc += n;
+	return 0;
+}
+
+/* Payload of one segment that holds this ShellView.
+ * The pack reader accepts at most 16 segments. The malloc arena starts
+ * at 4 KiB and spills the rest into new 4 KiB segments, so a few thousand
+ * words become an unreadable frame. Size the first segment to the copy.
+ * Returns 0 and writes *out, or -1 on overflow. */
+static int shell_view_segment_bytes(const char *cwd, char **words, int nwords,
+				    const struct shell_path_probe *probes,
+				    int nprobes, size_t *out)
+{
+	size_t acc = 8u + 32u + 8u; /* root word, ShellView, probe-list tag */
+	int i;
+
+	if (add_text_bytes(&acc, cwd ? strlen(cwd) : 0) != 0)
+		return -1;
+	if (nwords > 0) {
+		if ((size_t)nwords > SIZE_MAX / 8u)
+			return -1;
+		if (add_bytes(&acc, (size_t)nwords * 8u) != 0)
+			return -1;
+		for (i = 0; i < nwords; i++) {
+			if (add_text_bytes(&acc, words[i] ? strlen(words[i]) : 0) !=
+			    0)
+				return -1;
+		}
+	}
+	if (nprobes > 0) {
+		if ((size_t)nprobes > SIZE_MAX / 32u)
+			return -1;
+		if (add_bytes(&acc, (size_t)nprobes * 32u) != 0)
+			return -1;
+		for (i = 0; i < nprobes; i++) {
+			if (add_text_bytes(&acc, strlen(probes[i].arg)) != 0 ||
+			    add_text_bytes(&acc, strlen(probes[i].resolved)) != 0 ||
+			    add_text_bytes(&acc, strlen(probes[i].head)) != 0)
+				return -1;
+		}
+	}
+	/* Slack so a missed word does not spill a new segment. */
+	if (add_bytes(&acc, 256u) != 0)
+		return -1;
+	*out = acc;
+	return 0;
+}
+
 int phronesis_build_shell_view(const char *workspace, const char *cwd,
 			       capn_ptr argv, uint8_t **flat_out,
 			       size_t *flat_len)
@@ -1337,7 +1402,7 @@ int phronesis_build_shell_view(const char *workspace, const char *cwd,
 		n = argv.len;
 		if (n < 0)
 			goto out;
-		if (n > SHELL_ARGV_MAX) {
+		if (n > PHRONESIS_SHELL_ARGV_MAX) {
 			rc = -3;
 			goto out;
 		}
@@ -1354,6 +1419,7 @@ int phronesis_build_shell_view(const char *workspace, const char *cwd,
 				goto out;
 			bytes += (size_t)t.len + 1;
 		}
+		/* Sized to this argv, not a fixed word array. */
 		argv_block = calloc(1, bytes);
 		argv_words = calloc((size_t)n, sizeof(*argv_words));
 		if (!argv_block || !argv_words)
@@ -1423,6 +1489,20 @@ int phronesis_build_shell_view(const char *workspace, const char *cwd,
 	memset(&c, 0, sizeof(c));
 	capn_init_malloc(&c);
 	capn_live = 1;
+	{
+		size_t need = 0;
+		struct capn_segment *seg;
+
+		/* create() adds sizeof(segment) to this int. */
+		if (shell_view_segment_bytes(cwd, argv_words, argv_n, probes,
+					     pcount, &need) != 0 ||
+		    need > (size_t)INT_MAX - 4096u)
+			goto out;
+		seg = c.create ? c.create(c.user, c.segnum, (int)need) : NULL;
+		if (!seg)
+			goto out;
+		capn_append_segment(&c, seg);
+	}
 	memset(&view, 0, sizeof(view));
 	view.underWorkspace = under ? 1 : 0;
 	view.cwd = ctext(cwd ? cwd : "");
@@ -1674,7 +1754,7 @@ void phronesis_shell_pack(const char *workspace, const char *cwd,
 			else
 				snprintf(why, sizeof(why),
 					 "argv count exceeds %d",
-					 SHELL_ARGV_MAX);
+					 PHRONESIS_SHELL_ARGV_MAX);
 			(void)build_policy_decision_reason(
 				0, PHRONESIS_REASON_FIELD_TOO_LONG, why, out,
 				out_len);

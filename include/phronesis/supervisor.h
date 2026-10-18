@@ -463,7 +463,7 @@ PHRONESIS_API void phronesis_check_path(phronesis_supervisor_t *sup,
  * checkShell → in ShellCheck, out PolicyDecision.
  *
  * Each argv word is passed to the shell policy at its real length, up to
- * 128 KiB (Linux MAX_ARG_STRLEN). A longer word, or more than 256 words,
+ * 128 KiB (Linux MAX_ARG_STRLEN). A longer word, or more than 32768 words,
  * is deny / fieldTooLong and the decision carries a reason. cwd is a path
  * and stays bounded by PHRONESIS_PATH_MAX.
  */

@@ -72,11 +72,17 @@ int phronesis_resolve_script(const char *cwd, const char *script, char *out,
  */
 #define PHRONESIS_SHELL_WORD_MAX (128 * 1024)
 
+/** Max shell argv words. ARG_MAX scale: a glob of thousands of paths fits.
+ * The copy is allocated for the actual count, not a fixed array.
+ */
+#define PHRONESIS_SHELL_ARGV_MAX 32768
+
 /**
  * Build Cap'n ShellView bytes (malloc *flat_out).
  * Returns 0 on success, -2 if an argv word is longer than
- * PHRONESIS_SHELL_WORD_MAX, -3 if argc > 256, -1 on other failure.
- * Callers free *flat_out. Words are stored at their real length.
+ * PHRONESIS_SHELL_WORD_MAX, -3 if argc > PHRONESIS_SHELL_ARGV_MAX,
+ * -1 on other failure. Callers free *flat_out. Words are stored at
+ * their real length.
  */
 int phronesis_build_shell_view(const char *workspace, const char *cwd,
 			       capn_ptr argv, uint8_t **flat_out,

@@ -219,7 +219,7 @@ struct ShellCheck {
   cwd @1 :Text;
   # spawn(2) argv. Empty = path-only (no content gate).
   # A word is delivered whole up to 128 KiB. A longer word, or more than
-  # 256 words, is fieldTooLong with a reason. cwd stays a path.
+  # 32768 words, is fieldTooLong with a reason. cwd stays a path.
   argv @2 :List(Text);
 }
 
