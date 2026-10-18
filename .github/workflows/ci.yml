@@ -67,9 +67,17 @@ jobs:
           set -euo pipefail
           notes="Snapshot from ${GITHUB_SHA} on main."
           if gh release view snapshot >/dev/null 2>&1; then
-            gh release edit snapshot --notes "${notes}" --prerelease
+            gh release edit snapshot \
+              --notes "${notes}" \
+              --prerelease \
+              --target "${GITHUB_SHA}"
+            gh api --method PATCH \
+              "repos/${GITHUB_REPOSITORY}/git/refs/tags/snapshot" \
+              -f sha="${GITHUB_SHA}" \
+              -F force=true
           else
             gh release create snapshot \
+              --target "${GITHUB_SHA}" \
               --prerelease \
               --title "phronesis snapshot" \
               --notes "${notes}"
