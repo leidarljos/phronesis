@@ -111,7 +111,7 @@ static const char *workspace_for(phronesis_supervisor_t *sup, struct AgentId id,
 }
 
 static void emit_decision(const phronesis_policy_result_t *pr, struct AgentId agent,
-			  uint8_t **out, size_t *out_len)
+			  const char *reason, uint8_t **out, size_t *out_len)
 {
 	struct capn c;
 	struct PolicyDecision d;
@@ -125,8 +125,9 @@ static void emit_decision(const phronesis_policy_result_t *pr, struct AgentId ag
 	capn_init_malloc(&c);
 	memset(&d, 0, sizeof(d));
 	d.decision = (enum Decision)pr->decision;
-	/* TCB leaves reason empty; product packs set reason on Cap'n passthrough. */
-	d.reason = ctext("");
+	/* Empty unless the caller passes one (shell fieldTooLong). Packs set
+	 * their own reason on Cap'n passthrough. */
+	d.reason = ctext(reason ? reason : "");
 	d.agentId = put_agent(capn_root(&c).seg, agent.hi, agent.lo);
 	d.code = (enum PolicyReason)pr->code;
 	dp = new_PolicyDecision(capn_root(&c).seg);
@@ -145,13 +146,22 @@ static void emit_code(phronesis_decision_t decision, phronesis_policy_reason_t c
 	phronesis_policy_result_t pr;
 
 	phronesis_policy_result_set(&pr, decision, code);
-	emit_decision(&pr, agent, out, out_len);
+	emit_decision(&pr, agent, NULL, out, out_len);
 }
 
 static void deny_msg(struct AgentId agent, phronesis_policy_reason_t code,
 		     uint8_t **out, size_t *out_len)
 {
 	emit_code(PHRONESIS_DECISION_DENY, code, agent, out, out_len);
+}
+
+static void deny_reason(struct AgentId agent, phronesis_policy_reason_t code,
+			const char *reason, uint8_t **out, size_t *out_len)
+{
+	phronesis_policy_result_t pr;
+
+	phronesis_policy_result_set(&pr, PHRONESIS_DECISION_DENY, code);
+	emit_decision(&pr, agent, reason, out, out_len);
 }
 
 /** @return 1 if DENY_ALL fired (decision already written). */
@@ -183,10 +193,16 @@ static int admit_running_agent(phronesis_supervisor_t *sup,
 	return phronesis_policy_require_running_agent(sup, hex, code);
 }
 
+/* 0 when @a in is a Cap'n message of at most PHRONESIS_CAPNP_MAX_BODY bytes.
+ * -2 when the body is longer than that limit. -1 when it is missing or not
+ * a Cap'n message. Callers that only test != 0 still fail closed.
+ */
 static int open_in(const uint8_t *in, size_t in_len, struct capn *c)
 {
-	if (!in || in_len == 0 || in_len > PHRONESIS_CAPNP_MAX_BODY)
+	if (!in || in_len == 0)
 		return -1;
+	if (in_len > PHRONESIS_CAPNP_MAX_BODY)
+		return -2;
 	memset(c, 0, sizeof(*c));
 	return capn_init_mem(c, in, in_len, 0);
 }
@@ -268,7 +284,7 @@ void phronesis_check_seat(phronesis_supervisor_t *sup, const uint8_t *in,
 		break;
 	}
 	capn_free(&c);
-	emit_decision(&pr, agent, out, out_len);
+	emit_decision(&pr, agent, NULL, out, out_len);
 }
 
 void phronesis_check_model(phronesis_supervisor_t *sup, const uint8_t *in,
@@ -304,7 +320,7 @@ void phronesis_check_model(phronesis_supervisor_t *sup, const uint8_t *in,
 	phronesis_policy_result_set(&pr, PHRONESIS_DECISION_ALLOW,
 			       PHRONESIS_REASON_MODEL_START_ALLOW);
 	capn_free(&c);
-	emit_decision(&pr, agent, out, out_len);
+	emit_decision(&pr, agent, NULL, out, out_len);
 }
 
 void phronesis_check_path(phronesis_supervisor_t *sup, const uint8_t *in,
@@ -354,7 +370,7 @@ void phronesis_check_path(phronesis_supervisor_t *sup, const uint8_t *in,
 				       &pr);
 	}
 	capn_free(&c);
-	emit_decision(&pr, agent, out, out_len);
+	emit_decision(&pr, agent, NULL, out, out_len);
 }
 
 #ifdef PHRONESIS_TRACE
@@ -386,9 +402,24 @@ void phronesis_check_shell(phronesis_supervisor_t *sup, const uint8_t *in,
 	size_t cl;
 
 	memset(&agent, 0, sizeof(agent));
-	if (open_in(in, in_len, &c) != 0) {
-		deny_msg(agent, PHRONESIS_REASON_INVALID_MESSAGE, out, out_len);
-		return;
+	{
+		int in_rc = open_in(in, in_len, &c);
+
+		if (in_rc != 0) {
+			if (in_rc == -2) {
+				char why[80];
+
+				snprintf(why, sizeof(why),
+					 "command body exceeds %d bytes",
+					 PHRONESIS_CAPNP_MAX_BODY);
+				deny_reason(agent, PHRONESIS_REASON_FIELD_TOO_LONG,
+					    why, out, out_len);
+			} else {
+				deny_msg(agent, PHRONESIS_REASON_INVALID_MESSAGE,
+					 out, out_len);
+			}
+			return;
+		}
 	}
 	root.p = capn_getp(capn_root(&c), 0, 1);
 	read_ShellCheck(&sc, root);
@@ -419,7 +450,7 @@ void phronesis_check_shell(phronesis_supervisor_t *sup, const uint8_t *in,
 			       "checkShell/path-plane", "path plane short-circuit",
 			       (int)pr.code, decision_str(pr.decision), 1);
 #endif
-		emit_decision(&pr, agent, out, out_len);
+		emit_decision(&pr, agent, NULL, out, out_len);
 		return;
 	}
 	/*
@@ -453,7 +484,7 @@ void phronesis_check_shell(phronesis_supervisor_t *sup, const uint8_t *in,
 		}
 	}
 	capn_free(&c);
-	emit_decision(&pr, agent, out, out_len);
+	emit_decision(&pr, agent, NULL, out, out_len);
 }
 
 void phronesis_check_risk(phronesis_supervisor_t *sup, const uint8_t *in,
@@ -489,7 +520,7 @@ void phronesis_check_risk(phronesis_supervisor_t *sup, const uint8_t *in,
 				       PHRONESIS_REASON_HIGH_RISK_PROMPT);
 	}
 	capn_free(&c);
-	emit_decision(&pr, agent, out, out_len);
+	emit_decision(&pr, agent, NULL, out, out_len);
 }
 
 /** Read Cap'n PolicyDecision decision+code into @a out (reason ignored). */
@@ -556,7 +587,7 @@ void phronesis_check_audio(phronesis_supervisor_t *sup, const uint8_t *in,
 		return;
 	}
 	free(pack_out);
-	emit_decision(&pr, agent, out, out_len);
+	emit_decision(&pr, agent, NULL, out, out_len);
 }
 
 void phronesis_admit_seat(phronesis_supervisor_t *sup, const uint8_t *in,
@@ -765,5 +796,5 @@ void phronesis_reload_shell_pack(phronesis_supervisor_t *sup, const uint8_t *in,
 		phronesis_policy_result_set(&pr, PHRONESIS_DECISION_DENY,
 				       PHRONESIS_REASON_PACK_LOAD_FAILED);
 	}
-	emit_decision(&pr, agent, out, out_len);
+	emit_decision(&pr, agent, NULL, out, out_len);
 }

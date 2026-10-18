@@ -43,7 +43,8 @@ static int write_msg(struct capn *c, uint8_t **out, size_t *out_len)
 			break;
 		free(buf);
 		cap *= 2U;
-		assert_true(cap < 1024U * 1024U);
+		/* A few tens of thousands of one-byte words pass 512 KiB. */
+		assert_true(cap <= 4U * 1024U * 1024U);
 	}
 	*out = buf;
 	*out_len = (size_t)n;
@@ -1028,6 +1029,66 @@ static void test_argv_count_past_limit_denies(void **state)
 	assert_string_equal(reason, expect);
 }
 
+static void expect_command_body_too_long(struct shell_fix *f, const uint8_t *in,
+					 size_t in_len)
+{
+	uint8_t *out = NULL;
+	size_t out_len = 0;
+	enum Decision dec;
+	enum PolicyReason code;
+	char reason[128];
+	char expect[96];
+
+	phronesis_check_shell(f->sup, in, in_len, &out, &out_len);
+	assert_non_null(out);
+	read_decision(out, out_len, &dec, &code, reason, sizeof(reason));
+	free(out);
+	snprintf(expect, sizeof(expect), "command body exceeds %d bytes",
+		 PHRONESIS_CAPNP_MAX_BODY);
+	assert_int_equal(dec, Decision_deny);
+	assert_int_equal(code, PolicyReason_fieldTooLong);
+	assert_string_equal(reason, expect);
+}
+
+/* 30000 one-byte words already exceed the 512 KiB body cap, so open_in
+ * refuses them before the 32768-word check. 40000 words and a raw 600 KiB
+ * body take the same path. All three go through phronesis_check_shell.
+ */
+static void test_command_body_past_limit_denies(void **state)
+{
+	struct shell_fix *f = *state;
+	const int counts[] = { 30000, 40000 };
+	static char word[] = "x";
+	size_t i;
+
+	for (i = 0; i < sizeof(counts) / sizeof(counts[0]); i++) {
+		char **argv;
+		uint8_t *in = NULL;
+		size_t in_len = 0;
+		int n = counts[i];
+		int j;
+
+		argv = calloc((size_t)n + 1, sizeof(*argv));
+		assert_non_null(argv);
+		for (j = 0; j < n; j++)
+			argv[j] = word;
+		build_shell_check(f->ws, argv, n, &in, &in_len);
+		free(argv);
+		assert_true(in_len > PHRONESIS_CAPNP_MAX_BODY);
+		expect_command_body_too_long(f, in, in_len);
+		free(in);
+	}
+
+	{
+		const size_t n = 600U * 1024U;
+		uint8_t *body = calloc(1, n);
+
+		assert_non_null(body);
+		expect_command_body_too_long(f, body, n);
+		free(body);
+	}
+}
+
 #define SHELL_VIEW_STACK (128 * 1024)
 
 struct view_stack_job {
@@ -1362,6 +1423,8 @@ int run_shell_pack_tests(void)
 		cmocka_unit_test_setup_teardown(test_many_argv_words_reach_policy,
 						shell_setup, shell_teardown),
 		cmocka_unit_test_setup_teardown(test_argv_count_past_limit_denies,
+						shell_setup, shell_teardown),
+		cmocka_unit_test_setup_teardown(test_command_body_past_limit_denies,
 						shell_setup, shell_teardown),
 		cmocka_unit_test_setup_teardown(
 			test_shell_view_256_args_fits_128k_stack, shell_setup,

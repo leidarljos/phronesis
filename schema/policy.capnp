@@ -158,9 +158,9 @@ struct PolicyDecision {
   decision @0 :Decision;
   reason @1 :Text;
   # Pack-authored human text (user Janet packs set this). TCB host-only
-  # failures leave this empty, except fieldTooLong when a shell argv word
-  # or the argv count is past the host limit: that deny carries a short
-  # reason. Viewers may map code for i18n of the empty codes.
+  # failures leave this empty, except fieldTooLong when a shell argv word,
+  # the argv count, or the command body is past the host limit: that deny
+  # carries a short reason. Viewers may map code for i18n of the empty codes.
   agentId @2 :Util.AgentId;
   # Echo of the checked agent (zero if unset / invalid).
   code @3 :PolicyReason;
@@ -219,7 +219,9 @@ struct ShellCheck {
   cwd @1 :Text;
   # spawn(2) argv. Empty = path-only (no content gate).
   # A word is delivered whole up to 128 KiB. A longer word, or more than
-  # 32768 words, is fieldTooLong with a reason. cwd stays a path.
+  # 32768 words, is fieldTooLong with a reason. A command body over 512 KiB
+  # is fieldTooLong with a reason before the word count is checked.
+  # cwd stays a path.
   argv @2 :List(Text);
 }
 

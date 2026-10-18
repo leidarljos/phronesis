@@ -1,0 +1,1 @@
+A shell command whose Cap'n body is larger than 512 KiB, such as about 30000 one-byte argv words, was refused as invalidMessage with an empty reason, before the argv count was checked. checkShell now denies that body as fieldTooLong, and the decision's reason says the body exceeds 524288 bytes.
