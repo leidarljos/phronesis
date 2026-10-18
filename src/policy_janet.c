@@ -1256,9 +1256,11 @@ static int write_flat(struct capn *c, uint8_t **out, size_t *out_len)
 	return 0;
 }
 
-/* Host-only Cap'n PolicyDecision (code set; reason empty — pack owns reasons). */
-static int build_policy_decision_code(uint16_t decision, uint16_t code,
-				      uint8_t **out, size_t *out_len)
+/* Host-only Cap'n PolicyDecision. Packs own product reasons. Host reasons
+ * stay empty except where the caller passes one (argv fieldTooLong). */
+static int build_policy_decision_reason(uint16_t decision, uint16_t code,
+					const char *reason, uint8_t **out,
+					size_t *out_len)
 {
 	struct capn c;
 	struct PolicyDecision d;
@@ -1268,7 +1270,7 @@ static int build_policy_decision_code(uint16_t decision, uint16_t code,
 	capn_init_malloc(&c);
 	memset(&d, 0, sizeof(d));
 	d.decision = (enum Decision)decision;
-	d.reason = ctext("");
+	d.reason = ctext(reason ? reason : "");
 	d.code = (enum PolicyReason)code;
 	dp = new_PolicyDecision(capn_root(&c).seg);
 	write_PolicyDecision(&d, dp);
@@ -1282,6 +1284,12 @@ static int build_policy_decision_code(uint16_t decision, uint16_t code,
 	}
 	capn_free(&c);
 	return 0;
+}
+
+static int build_policy_decision_code(uint16_t decision, uint16_t code,
+				      uint8_t **out, size_t *out_len)
+{
+	return build_policy_decision_reason(decision, code, "", out, out_len);
 }
 
 struct shell_path_probe {
@@ -1305,9 +1313,12 @@ int phronesis_build_shell_view(const char *workspace, const char *cwd,
 	int capn_live = 0;
 	capn_text empty = { 0, "", NULL };
 	char abs[PHRONESIS_PATH_MAX];
-	/* Heap: musl default thread stacks are 128 KB. */
+	/* Heap: musl default thread stacks are 128 KB, and a word is up to
+	 * PHRONESIS_SHELL_WORD_MAX, not a PATH_MAX slot.
+	 */
 	struct shell_path_probe *probes = NULL;
-	char (*argv_store)[PHRONESIS_PATH_MAX] = NULL;
+	char *argv_block = NULL;
+	char **argv_words = NULL;
 	int argv_n = 0;
 
 	if (!flat_out || !flat_len)
@@ -1320,27 +1331,48 @@ int phronesis_build_shell_view(const char *workspace, const char *cwd,
 	/* argv may arrive as an unresolved far pointer from generated readers. */
 	capn_resolve(&argv);
 	if (argv.type != CAPN_NULL && argv.len > 0) {
+		size_t bytes = 0;
+		size_t off = 0;
+
 		n = argv.len;
+		if (n < 0)
+			goto out;
 		if (n > SHELL_ARGV_MAX) {
-			rc = -2;
+			rc = -3;
 			goto out;
 		}
-		argv_store = calloc((size_t)n, sizeof(*argv_store));
-		if (!argv_store)
+		for (i = 0; i < n; i++) {
+			capn_text t = capn_get_text(argv, i, empty);
+
+			if (t.len < 0 || (t.len > 0 && !t.str))
+				goto out;
+			if ((size_t)t.len > PHRONESIS_SHELL_WORD_MAX) {
+				rc = -2;
+				goto out;
+			}
+			if (bytes > SIZE_MAX - ((size_t)t.len + 1))
+				goto out;
+			bytes += (size_t)t.len + 1;
+		}
+		argv_block = calloc(1, bytes);
+		argv_words = calloc((size_t)n, sizeof(*argv_words));
+		if (!argv_block || !argv_words)
 			goto out;
 		for (i = 0; i < n; i++) {
 			capn_text t = capn_get_text(argv, i, empty);
 
-			if ((size_t)t.len >= PHRONESIS_PATH_MAX) {
-				rc = -2;
+			if (t.len < 0 ||
+			    off + (size_t)t.len + 1 > bytes) {
+				rc = -1;
 				goto out;
 			}
-			if (t.len > 0 && t.str) {
-				memcpy(argv_store[i], t.str, (size_t)t.len);
-				argv_store[i][t.len] = '\0';
-			}
-			argv_n++;
+			argv_words[i] = argv_block + off;
+			if (t.len > 0)
+				memcpy(argv_words[i], t.str, (size_t)t.len);
+			argv_words[i][t.len] = '\0';
+			off += (size_t)t.len + 1;
 		}
+		argv_n = n;
 	}
 
 	if (argv_n > 0) {
@@ -1351,20 +1383,29 @@ int phronesis_build_shell_view(const char *workspace, const char *cwd,
 	}
 
 	for (i = 0; i < argv_n && pcount < probe_cap; i++) {
-		const char *tok = argv_store[i];
+		const char *tok = argv_words[i];
+		size_t tok_n;
+		size_t abs_n;
 		FILE *f;
 		size_t nr;
 
-		if (!tok[0] || tok[0] == '-')
+		if (!tok || !tok[0] || tok[0] == '-')
 			continue;
-		if (!strchr(tok, '/') && !strchr(tok, '.'))
+		tok_n = strlen(tok);
+		if (!memchr(tok, '/', tok_n) && !memchr(tok, '.', tok_n))
+			continue;
+		/* Probes are paths. A longer word is still given to the pack. */
+		if (tok_n >= PHRONESIS_PATH_MAX)
 			continue;
 		if (phronesis_resolve_script(cwd, tok, abs, sizeof(abs)) != 0)
 			continue;
 		if (!path_under_workspace(workspace, abs))
 			continue;
-		memcpy(probes[pcount].arg, tok, strlen(tok) + 1);
-		memcpy(probes[pcount].resolved, abs, strlen(abs) + 1);
+		abs_n = strlen(abs);
+		if (abs_n >= sizeof(probes[pcount].resolved))
+			continue;
+		memcpy(probes[pcount].arg, tok, tok_n + 1);
+		memcpy(probes[pcount].resolved, abs, abs_n + 1);
 		f = fopen(abs, "rb");
 		if (!f) {
 			probes[pcount].exists = 0;
@@ -1390,7 +1431,7 @@ int phronesis_build_shell_view(const char *workspace, const char *cwd,
 
 		*argv = capn_new_ptr_list(capn_root(&c).seg, argv_n);
 		for (i = 0; i < argv_n; i++)
-			capn_set_text(*argv, i, ctext(argv_store[i]));
+			capn_set_text(*argv, i, ctext(argv_words[i]));
 	}
 
 	view.pathProbes = new_PathProbe_list(capn_root(&c).seg, pcount);
@@ -1416,7 +1457,8 @@ out:
 	if (capn_live)
 		capn_free(&c);
 	free(probes);
-	free(argv_store);
+	free(argv_words);
+	free(argv_block);
 	return rc;
 }
 
@@ -1621,12 +1663,25 @@ void phronesis_shell_pack(const char *workspace, const char *cwd,
 		int view_rc = phronesis_build_shell_view(
 			workspace, cwd, argv, &view_flat, &view_len);
 
-		if (view_rc == -2) {
-			(void)build_policy_decision_code(
-				0, PHRONESIS_REASON_FIELD_TOO_LONG, out, out_len);
+		if (view_rc == -2 || view_rc == -3) {
+			char why[80];
+
+			free(view_flat);
+			if (view_rc == -2)
+				snprintf(why, sizeof(why),
+					 "argv word exceeds %d bytes",
+					 PHRONESIS_SHELL_WORD_MAX);
+			else
+				snprintf(why, sizeof(why),
+					 "argv count exceeds %d",
+					 SHELL_ARGV_MAX);
+			(void)build_policy_decision_reason(
+				0, PHRONESIS_REASON_FIELD_TOO_LONG, why, out,
+				out_len);
 			return;
 		}
 		if (view_rc != 0 || !view_flat) {
+			free(view_flat);
 			(void)build_policy_decision_code(
 				0, PHRONESIS_REASON_SHELL_VIEW_BUILD_FAILED, out,
 				out_len);

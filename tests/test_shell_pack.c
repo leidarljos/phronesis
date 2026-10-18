@@ -831,28 +831,118 @@ static void test_multi_pack_dir(void **state)
 	assert_int_equal(code, 25);
 }
 
-static void test_overlong_argv_denies(void **state)
+static char *make_word(size_t n, int fill)
 {
-	struct shell_fix *f = *state;
-	char longarg[601];
+	char *s = malloc(n + 1);
+
+	assert_non_null(s);
+	if (n)
+		memset(s, fill, n);
+	s[n] = '\0';
+	return s;
+}
+
+/* Seat law, independent of whichever pack an earlier test left loaded. */
+static void reload_seat_pack(void)
+{
+	char pack[PHRONESIS_PATH_MAX];
+
+	product_pack_path(pack, sizeof(pack));
+	setenv("PHRONESIS_DEV_PACK", "1", 1);
+	setenv("PHRONESIS_JANET_PACK", pack, 1);
+	assert_int_equal(phronesis_shell_pack_reload(pack), PHRONESIS_OK);
+}
+
+static void check_true_word(struct shell_fix *f, const char *word,
+			    enum Decision *dec, enum PolicyReason *code,
+			    char *reason, size_t reason_n)
+{
 	char *argv[3];
 	uint8_t *in = NULL, *out = NULL;
 	size_t in_len = 0, out_len = 0;
-	enum Decision dec;
-	enum PolicyReason code;
 
-	memset(longarg, 'A', 600);
-	longarg[600] = '\0';
 	argv[0] = "true";
-	argv[1] = longarg;
+	argv[1] = (char *)word;
 	argv[2] = NULL;
 	build_shell_check(f->ws, argv, 2, &in, &in_len);
+	assert_true(in_len > 0 && in_len <= PHRONESIS_CAPNP_MAX_BODY);
 	phronesis_check_shell(f->sup, in, in_len, &out, &out_len);
 	free(in);
-	read_decision(out, out_len, &dec, &code, NULL, 0);
+	assert_non_null(out);
+	read_decision(out, out_len, dec, code, reason, reason_n);
 	free(out);
+}
+
+/* 511 fitted the old PATH_MAX slot; 512 and above used to be fieldTooLong. */
+static void test_long_argv_words_reach_policy(void **state)
+{
+	struct shell_fix *f = *state;
+	const size_t sizes[] = {
+		511,
+		512,
+		4 * 1024,
+		64 * 1024,
+		PHRONESIS_SHELL_WORD_MAX,
+	};
+	size_t i;
+
+	reload_seat_pack();
+	for (i = 0; i < sizeof(sizes) / sizeof(sizes[0]); i++) {
+		char *word = make_word(sizes[i], 'A');
+		enum Decision dec = Decision_deny;
+		enum PolicyReason code = PolicyReason_unspecified;
+		char reason[128];
+
+		reason[0] = '\0';
+		check_true_word(f, word, &dec, &code, reason, sizeof(reason));
+		free(word);
+		if (dec != Decision_allow ||
+		    code != PolicyReason_shellExecAllow)
+			fail_msg("word of %zu bytes: decision %d code %d (%s)",
+				 sizes[i], (int)dec, (int)code, reason);
+	}
+}
+
+/* Pattern sits past the old 512-byte slot, so a truncated copy would miss it. */
+static void test_long_argv_secret_denied(void **state)
+{
+	struct shell_fix *f = *state;
+	const size_t n = 8 * 1024;
+	char *word = make_word(n, 'B');
+	char mark[8];
+	enum Decision dec;
+	enum PolicyReason code;
+	char reason[160];
+	size_t mark_n;
+
+	reload_seat_pack();
+	snprintf(mark, sizeof(mark), "%s%s", "gl", "pat-");
+	mark_n = strlen(mark);
+	assert_true(600 + mark_n < n);
+	memcpy(word + 600, mark, mark_n);
+	check_true_word(f, word, &dec, &code, reason, sizeof(reason));
+	free(word);
+	assert_int_equal(dec, Decision_deny);
+	assert_int_equal(code, PolicyReason_shellSecretInArgv);
+	assert_non_null(strstr(reason, "secret"));
+}
+
+static void test_argv_word_past_limit_denies(void **state)
+{
+	struct shell_fix *f = *state;
+	char *word = make_word((size_t)PHRONESIS_SHELL_WORD_MAX + 1, 'C');
+	enum Decision dec;
+	enum PolicyReason code;
+	char reason[128];
+	char expect[96];
+
+	check_true_word(f, word, &dec, &code, reason, sizeof(reason));
+	free(word);
+	snprintf(expect, sizeof(expect), "argv word exceeds %d bytes",
+		 PHRONESIS_SHELL_WORD_MAX);
 	assert_int_equal(dec, Decision_deny);
 	assert_int_equal(code, PolicyReason_fieldTooLong);
+	assert_string_equal(reason, expect);
 }
 
 static void test_overcount_argv_denies(void **state)
@@ -865,6 +955,7 @@ static void test_overcount_argv_denies(void **state)
 	size_t in_len = 0, out_len = 0;
 	enum Decision dec;
 	enum PolicyReason code;
+	char reason[128];
 
 	argv[0] = "true";
 	for (i = 1; i < 257; i++)
@@ -873,10 +964,11 @@ static void test_overcount_argv_denies(void **state)
 	build_shell_check(f->ws, argv, 257, &in, &in_len);
 	phronesis_check_shell(f->sup, in, in_len, &out, &out_len);
 	free(in);
-	read_decision(out, out_len, &dec, &code, NULL, 0);
+	read_decision(out, out_len, &dec, &code, reason, sizeof(reason));
 	free(out);
 	assert_int_equal(dec, Decision_deny);
 	assert_int_equal(code, PolicyReason_fieldTooLong);
+	assert_string_equal(reason, "argv count exceeds 256");
 }
 
 #define SHELL_VIEW_STACK (128 * 1024)
@@ -1204,7 +1296,11 @@ int run_shell_pack_tests(void)
 						shell_teardown),
 		cmocka_unit_test_setup_teardown(test_cwd_pack_not_loaded,
 						shell_setup, shell_teardown),
-		cmocka_unit_test_setup_teardown(test_overlong_argv_denies,
+		cmocka_unit_test_setup_teardown(test_long_argv_words_reach_policy,
+						shell_setup, shell_teardown),
+		cmocka_unit_test_setup_teardown(test_long_argv_secret_denied,
+						shell_setup, shell_teardown),
+		cmocka_unit_test_setup_teardown(test_argv_word_past_limit_denies,
 						shell_setup, shell_teardown),
 		cmocka_unit_test_setup_teardown(test_overcount_argv_denies,
 						shell_setup, shell_teardown),

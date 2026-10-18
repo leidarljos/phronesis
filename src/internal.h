@@ -67,10 +67,16 @@ int phronesis_policy_require_running_agent(phronesis_supervisor_t *sup,
 int phronesis_resolve_script(const char *cwd, const char *script, char *out,
 			       size_t out_n);
 
+/** Max bytes in one shell argv word, not counting the NUL stored with it.
+ * Linux MAX_ARG_STRLEN is PAGE_SIZE * 32. Paths stay at PHRONESIS_PATH_MAX.
+ */
+#define PHRONESIS_SHELL_WORD_MAX (128 * 1024)
+
 /**
  * Build Cap'n ShellView bytes (malloc *flat_out).
- * Returns 0 on success, -2 if argc > 256 or an arg is >= PHRONESIS_PATH_MAX,
- * -1 on other failure. Callers free *flat_out.
+ * Returns 0 on success, -2 if an argv word is longer than
+ * PHRONESIS_SHELL_WORD_MAX, -3 if argc > 256, -1 on other failure.
+ * Callers free *flat_out. Words are stored at their real length.
  */
 int phronesis_build_shell_view(const char *workspace, const char *cwd,
 			       capn_ptr argv, uint8_t **flat_out,

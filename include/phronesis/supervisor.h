@@ -417,8 +417,11 @@ PHRONESIS_API int phronesis_policy_check(phronesis_supervisor_t *s,
  * @{
  */
 
-/** Max accepted Cap'n params / results body (bytes). */
-#define PHRONESIS_CAPNP_MAX_BODY (64 * 1024)
+/** Max accepted Cap'n params / results body (bytes).
+ * Large enough for one shell argv word of 128 KiB (Linux MAX_ARG_STRLEN)
+ * plus Cap'n framing. A body past this limit is invalidMessage.
+ */
+#define PHRONESIS_CAPNP_MAX_BODY (512 * 1024)
 
 /** status() → out root PolicydStatus. */
 PHRONESIS_API void phronesis_status(phronesis_supervisor_t *sup,
@@ -456,7 +459,14 @@ PHRONESIS_API void phronesis_check_path(phronesis_supervisor_t *sup,
 					      uint8_t **out,
 					      size_t *out_len);
 
-/** checkShell → in ShellCheck, out PolicyDecision. */
+/**
+ * checkShell → in ShellCheck, out PolicyDecision.
+ *
+ * Each argv word is passed to the shell policy at its real length, up to
+ * 128 KiB (Linux MAX_ARG_STRLEN). A longer word, or more than 256 words,
+ * is deny / fieldTooLong and the decision carries a reason. cwd is a path
+ * and stays bounded by PHRONESIS_PATH_MAX.
+ */
 PHRONESIS_API void phronesis_check_shell(phronesis_supervisor_t *sup,
 					       const uint8_t *in,
 					       size_t in_len,
