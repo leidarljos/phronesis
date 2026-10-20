@@ -2,6 +2,14 @@
 
 <!-- towncrier release notes start -->
 
+## 0.2.5 (2026-10-20)
+
+### Fixes
+
+- The shell check distinguishes short credential prefixes from suffixes inside ordinary words and paths. Credential values in headers, quoted strings and path components remain refused, while a prefix with no payload is not a credential.
+- Vendor prefixes and assignment keys use the same token boundary as the short credential prefix. A prefix inside a word passes, including flexapp-x, aKIAsomething and mypassword= in a path. A token at a boundary with a payload is still refused: glpat-, ghp_, gho_, ghu_, ghs_, ghr_, github_pat_, sk-proj-, sk-ant-, Slack xoxb-, xoxa-, xoxp-, xoxr-, xoxs- and xapp- tokens, an AKIA key of 16 uppercase characters, and password=, passwd=, api_key=, apikey=, access_token=, secret_key= and client_secret= in any letter case, including a --password= flag and a PASSWORD= environment assignment. PEM armor must start a token. Redaction of glpat- and ghp_ uses that boundary too.
+
+
 ## 0.2.4 (2026-10-20)
 
 ### Fixes
