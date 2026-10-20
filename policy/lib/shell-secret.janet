@@ -4,6 +4,25 @@
 (defn- has-sub [s needle]
   (not (nil? (string/find needle s))))
 
+(defn- credential-byte? [c]
+  (or (and (>= c 48) (<= c 57))
+      (and (>= c 65) (<= c 90))
+      (and (>= c 97) (<= c 122))
+      (= c 95) (= c 45)))
+
+# Short credential prefixes start a token and have a payload. A suffix
+# inside a word, such as a task directory name, is not a credential.
+(defn- has-credential-prefix? [s prefix]
+  (var found false)
+  (each i (string/find-all prefix s)
+    (def end (+ i (length prefix)))
+    (when (and (or (= i 0)
+                   (not (credential-byte? (in s (- i 1)))))
+               (< end (length s))
+               (credential-byte? (in s end)))
+      (set found true)))
+  found)
+
 (defn- has-vendor-secret? [s]
   (or (has-sub s "glpat-")
       (has-sub s "ghp_")
@@ -12,7 +31,7 @@
       (has-sub s "ghs_")
       (has-sub s "ghr_")
       (has-sub s "github_pat_")
-      (has-sub s "sk-")
+      (has-credential-prefix? s "sk-")
       (has-sub s "xoxb-")
       (has-sub s "xoxa-")
       (has-sub s "xoxp-")

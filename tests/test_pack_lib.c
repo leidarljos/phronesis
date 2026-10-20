@@ -596,6 +596,40 @@ static void test_shell_secret_laws(void **state)
 	assert_true(janet_checktype(v, JANET_NIL));
 }
 
+static void test_shell_secret_word_boundaries(void **state)
+{
+	static const char *ordinary[] = {
+		"problems/Ta" "sk-" "lclv/problem.txt",
+		"Software/xAI/scicode/ta" "sk-" "creation",
+		"ri" "sk-" "report.txt",
+		"ma" "sk-" "layer.txt",
+		"s" "k-",
+		"quoted prefix: 's" "k-'",
+	};
+	static const char *credentials[] = {
+		"s" "k-" "CredentialValue123456789",
+		"Authorization: Bearer s" "k-" "CredentialValue123456789",
+		"value='s" "k-" "CredentialValue123456789'",
+		"ma" "sk-" "report s" "k-" "CredentialValue123456789",
+		"problems/s" "k-" "CredentialValue123456789/config",
+		"s" "k-proj-" "CredentialValue123456789",
+		"s" "k-svcacct-" "CredentialValue123456789",
+	};
+	size_t i;
+	(void)state;
+
+	for (i = 0; i < sizeof ordinary / sizeof ordinary[0]; i++) {
+		const char *argv[] = { "cat", ordinary[i] };
+		Janet v = call1("shell-secret-deny", make_string_array(argv, 2));
+		assert_true(janet_checktype(v, JANET_NIL));
+	}
+	for (i = 0; i < sizeof credentials / sizeof credentials[0]; i++) {
+		const char *argv[] = { "echo", credentials[i] };
+		Janet v = call1("shell-secret-deny", make_string_array(argv, 2));
+		assert_false(janet_checktype(v, JANET_NIL));
+	}
+}
+
 static void expect_audio_pair(Janet v, int want_dec, int want_code)
 {
 	const Janet *xs;
@@ -654,6 +688,9 @@ int run_pack_lib_tests(void)
 						pack_lib_setup,
 						pack_lib_teardown),
 		cmocka_unit_test_setup_teardown(test_shell_secret_laws,
+						pack_lib_setup,
+						pack_lib_teardown),
+		cmocka_unit_test_setup_teardown(test_shell_secret_word_boundaries,
 						pack_lib_setup,
 						pack_lib_teardown),
 		cmocka_unit_test_setup_teardown(test_audio_decide_defaults,
