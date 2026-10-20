@@ -458,8 +458,9 @@ static enum Decision check_line(struct shell_fix *f, char **argv, int argc,
 
 /*
  * The default pack (policy/shell.janet) passes ordinary build and package
- * work, lease pushes, build-output deletes and image-file mkfs, and its
- * refusals carry the rule's own reason text.
+ * work, plain and -u pushes, a lease push onto a feature branch,
+ * build-output deletes and image-file mkfs, and its refusals carry the rule's
+ * own reason text. A lease push onto main is refused, as a force push is.
  */
 static void test_default_pack_law(void **state)
 {
@@ -471,6 +472,8 @@ static void test_default_pack_law(void **state)
 	char *pyc[] = { "python3", "-c", "print(1)", NULL };
 	char *poetry[] = { "poetry", "build", NULL };
 	char *lease[] = { "git", "push", "--force-with-lease", "origin", "x", NULL };
+	char *leasem[] = { "git", "push", "--force-with-lease", "origin", "main", NULL };
+	char *plain[] = { "git", "push", "-u", "origin", "x", NULL };
 	char *rmt[] = { "rm", "-rf", "target/", NULL };
 	char *mkfs[] = { "mkfs.ext4", "-F", "disk.img", NULL };
 	char *force[] = { "git", "push", "--force", "origin", "main", NULL };
@@ -488,10 +491,14 @@ static void test_default_pack_law(void **state)
 	assert_int_equal(check_line(f, pyc, 3, NULL, 0), Decision_allow);
 	assert_int_equal(check_line(f, poetry, 2, NULL, 0), Decision_allow);
 	assert_int_equal(check_line(f, lease, 5, NULL, 0), Decision_allow);
+	assert_int_equal(check_line(f, plain, 5, NULL, 0), Decision_allow);
 	assert_int_equal(check_line(f, rmt, 3, NULL, 0), Decision_allow);
 	assert_int_equal(check_line(f, mkfs, 3, NULL, 0), Decision_allow);
 
 	assert_int_equal(check_line(f, force, 5, reason, sizeof(reason)),
+			 Decision_deny);
+	assert_non_null(strstr(reason, "git-force-push"));
+	assert_int_equal(check_line(f, leasem, 5, reason, sizeof(reason)),
 			 Decision_deny);
 	assert_non_null(strstr(reason, "git-force-push"));
 	assert_int_equal(check_line(f, rmh, 3, reason, sizeof(reason)),
@@ -508,7 +515,9 @@ static void test_default_pack_law(void **state)
 	assert_int_equal(check_line(f, npm, 2, reason, sizeof(reason)),
 			 Decision_deny);
 	assert_int_equal(check_line(f, pyc, 3, NULL, 0), Decision_deny);
+	assert_int_equal(check_line(f, plain, 5, NULL, 0), Decision_allow);
 	assert_int_equal(check_line(f, lease, 5, NULL, 0), Decision_allow);
+	assert_int_equal(check_line(f, leasem, 5, NULL, 0), Decision_deny);
 }
 
 static void test_cwd_pack_not_loaded(void **state)

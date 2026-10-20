@@ -15,10 +15,24 @@
                 "zcat" "gzip" "bzcat" "bunzip2" "xzcat" "unxz" "zstdcat" "zstd"
                 "rev"])
 (def- substitution-opens ["$(" "<(" "`"])
+# Words that run a script in the shell that reads them: source FILE, . FILE
+# and eval TEXT.
+(def- sourcers ["source" "." "eval"])
+# Interpreters that run the program they read on stdin when the call names
+# none, by base name with any version taken off (python3.12), each with the
+# short flags that hand it a program inline or a module.
+(def- stdin-interpreters
+  {"python" "cm" "pypy" "cm" "perl" "eE" "ruby" "e" "node" "ep" "nodejs" "ep"
+   "php" "rBRE" "lua" "e"})
+# Short curl and wget options that take a value, so the rest of a cluster
+# after one is that value: `-fsSLo` FILE writes FILE.
+(def- curl-valued "AbcCdDeEFHKmoPQrTtuUwxXyYz")
+(def- wget-valued "aABeDiIlOoPQRtTUwX")
 
 (defn- member? [xs x] (truthy? (find (fn [y] (= y x)) xs)))
 (defn- pre? [p s] (string/has-prefix? p s))
 (defn- has-sub? [needle s] (truthy? (string/find needle s)))
+(defn- has-char? [chars c] (truthy? (string/find (string/from-bytes c) chars)))
 
 # A cluster of short flags such as -fu or -rf: one dash, then letters.
 (defn- short-flags? [a]
@@ -30,18 +44,26 @@
 (defn privilege-runner? [b]
   (member? ["sudo" "su" "doas" "pkexec" "run0" "machinectl"] b))
 
+# Where a pipeline stage's command word sits: its first word past
+# wrappers, assignments and flags.
+(defn- command-at [stage]
+  (find-index (fn [t]
+                (def b (argv-base t))
+                (not (or (member? wrappers b)
+                         (pre? "-" t)
+                         (and (string/find "=" t) (not (pre? "=" t))))))
+              stage))
+
 # The command a pipeline stage runs: its first word past wrappers,
 # assignments and flags, by base name.
 (defn- command-word [stage]
-  (var word nil)
-  (each t stage
-    (def b (argv-base t))
-    (when (and (nil? word)
-               (not (member? wrappers b))
-               (not (pre? "-" t))
-               (not (and (string/find "=" t) (not (pre? "=" t)))))
-      (set word b)))
-  word)
+  (def at (command-at stage))
+  (when at (argv-base (in stage at))))
+
+# The inline-program flags of the interpreter a command word names, version
+# taken off (python3.12 is python), or nil when it names none.
+(defn- stdin-interpreter [b]
+  (get stdin-interpreters (string/trimr b "0123456789.")))
 
 # The stages of a pipeline: a token `|` separates them, and so does a `|`
 # inside a token with no space (`url|sh`). `||` is not a pipe.
@@ -57,32 +79,6 @@
           (when (< k (- (length parts) 1)) (array/push out @[]))))
       (array/push (last out) t)))
   (filter (fn [s] (> (length s) 0)) out))
-
-(defn- runs-download? [t]
-  (truthy?
-    (find (fn [open] (find (fn [f] (string/find (string open f) t)) fetchers))
-          substitution-opens)))
-
-# A download handed to a shell: a fetching stage piped into a shell stage,
-# or a shell that runs a download through $( ), <( ), backticks, or -c with
-# a script that does either. Naming a download tool and a shell on one
-# line is not that: `git fetch`, then `bash build.sh`, runs nothing fetched.
-(defn remote-exec? [argv]
-  (def st (stages argv))
-  (var hit false)
-  (for k 0 (- (length st) 1)
-    (when (and (member? fetchers (command-word (in st k)))
-               (member? shells (command-word (in st (+ k 1)))))
-      (set hit true)))
-  (each s st
-    (when (member? shells (command-word s))
-      (when (find runs-download? s) (set hit true))
-      (for k 0 (- (length s) 1)
-        (when (and (= (in s k) "-c")
-                   (remote-exec? (filter (fn [w] (> (length w) 0))
-                                         (string/split " " (in s (+ k 1))))))
-          (set hit true)))))
-  hit)
 
 (defn- runs-decoder? [t]
   (truthy?
@@ -122,6 +118,213 @@
 (defn- redirection? [t]
   (def rest (string/triml t "0123456789&"))
   (or (pre? ">" rest) (pre? "<" rest)))
+
+# A redirection word, but not a process substitution: <(curl ...) is an
+# operand the command reads as a file.
+(defn- plain-redirection? [a]
+  (and (redirection? a) (not (pre? "<(" a)) (not (pre? ">(" a))))
+
+# The word an interpreter or shell call runs as its program: [word true]
+# for the value of an inline flag (`-c` CODE, `-e` CODE, `--eval` CODE), [word
+# false] for the first operand (a script path or <(...)), and nil when the
+# call names no program and so reads it from stdin.
+(defn- program-word [args inline]
+  (var out nil)
+  (var done false)
+  (var k 0)
+  (def n (length args))
+  (while (and (not done) (< k n))
+    (def a (in args k))
+    (++ k)
+    (cond
+      (or (= a "--") (plain-redirection? a)) nil
+      (= a "-") (set done true)
+      (pre? "--" a)
+      (when (member? ["--eval" "--print" "--command"] a)
+        (set out (when (< k n) [(in args k) true]))
+        (set done true))
+      (pre? "-" a)
+      (when (find (fn [c] (has-char? inline c)) (string/bytes (string/slice a 1)))
+        (set out (when (< k n) [(in args k) true]))
+        (set done true))
+      (do (set out [a false]) (set done true))))
+  out)
+
+# A pipeline stage that runs what it reads on stdin as a program: a shell,
+# or an interpreter called with no program of its own (python3, perl -,
+# node). python3 `-m` json.tool, python3 `-c` CODE, perl `-ne` CODE and python3
+# parse.py read stdin as data.
+(defn- runs-stdin? [stage]
+  (def at (command-at stage))
+  (when at
+    (def b (argv-base (in stage at)))
+    (def inline (stdin-interpreter b))
+    (or (member? shells b)
+        (and inline (nil? (program-word (slice stage (+ at 1)) inline))))))
+
+# The pipelines of a line: its words split at ; && || & and after a word
+# that ends in ;. The | words stay, so each piece is one pipeline.
+(defn- pipelines [argv]
+  (def out @[@[]])
+  (each t argv
+    (if (member? [";" "&&" "||" "&"] t)
+      (array/push out @[])
+      (let [closes (string/has-suffix? ";" t)
+            tok (if closes (string/trimr t ";") t)]
+        (when (> (length tok) 0) (array/push (last out) tok))
+        (when closes (array/push out @[])))))
+  (filter (fn [p] (> (length p) 0)) out))
+
+# A word that runs a download through $( ), <( ) or backticks: <(curl,
+# $( wget, $(/usr/bin/curl.
+(defn- runs-download? [t]
+  (var hit false)
+  (each open substitution-opens
+    (each i (string/find-all open t)
+      (def rest (string/triml (string/slice t (+ i (length open)))))
+      (def word (first (peg/match ~(<- (any (if-not (set " \t\n)`|;") 1))) rest)))
+      (when (and word (member? fetchers (argv-base word)))
+        (set hit true))))
+  hit)
+
+# A stage that runs a download it reads through a substitution: a shell or
+# source, . or eval with one on the line (bash <(curl ...), source <(curl
+# ...), eval "$(curl ...)"), or an interpreter whose program is one
+# (python3 <(curl ...), python3 `-c` "$(curl ...)").
+(defn- runs-substituted-download? [s]
+  (def at (command-at s))
+  (if (nil? at)
+    false
+    (let [b (argv-base (in s at))
+          inline (stdin-interpreter b)]
+      (cond
+        (or (member? shells b) (member? sourcers b)) (truthy? (find runs-download? s))
+        (nil? inline) false
+        (let [pw (program-word (slice s (+ at 1)) inline)]
+          (truthy? (and pw (runs-download? (in pw 0)))))))))
+
+# The last path part of a URL, the name curl `-O` and wget save it as.
+(defn- url-file-name [url]
+  (def path (first (string/split "#" (first (string/split "?" url)))))
+  (def at (string/find "://" path))
+  (def tail (if at (string/slice path (+ at 3)) path))
+  (def parts (string/split "/" (string/trimr tail "/")))
+  (def f (last parts))
+  (when (and (> (length parts) 1) (> (length f) 0)) f))
+
+# The files a curl or wget call writes, by last path part: the value of `-o`,
+# `--output`, `-O` (wget) or `--output-document`, or the URL's own name for curl
+# `-O` and for wget with no `-O`. Standard output (-) and /dev/null are no file.
+(defn- fetched-files [cmd]
+  (def at (command-at cmd))
+  (def tool (when at (argv-base (in cmd at))))
+  (if (not (member? ["curl" "wget"] tool))
+    @[]
+    (do
+      (def args (slice cmd (+ at 1)))
+      (def curl? (= tool "curl"))
+      (def valued (if curl? curl-valued wget-valued))
+      (def out-flag (if curl? (chr "o") (chr "O")))
+      (def long-out (if curl? "--output" "--output-document"))
+      (def named @[])
+      (var remote (not curl?))
+      (var i 0)
+      (def n (length args))
+      (while (< i n)
+        (def a (in args i))
+        (def nxt (get args (+ i 1)))
+        (++ i)
+        (cond
+          (= a long-out) (when nxt (array/push named nxt) (++ i))
+          (pre? (string long-out "=") a)
+          (array/push named (string/slice a (+ 1 (length long-out))))
+          (and curl? (member? ["--remote-name" "--remote-name-all"] a)) (set remote true)
+          (and (pre? "-" a) (not (pre? "--" a)) (> (length a) 1))
+          (do
+            (def flags (string/slice a 1))
+            (var k 0)
+            (var stop false)
+            (while (and (not stop) (< k (length flags)))
+              (def c (in flags k))
+              (cond
+                (and curl? (= c (chr "O"))) (set remote true)
+                (and (not curl?) (= c (chr "n"))) (set stop true)
+                (has-char? valued c)
+                (do
+                  (def rest (string/slice flags (+ k 1)))
+                  (def value (if (= rest "") (do (++ i) nxt) rest))
+                  (when (and value (= c out-flag)) (array/push named value))
+                  (set stop true)))
+              (++ k)))))
+      # wget `-O` FILE (or `-O` -) saves nothing under the URL's own name.
+      (def wget-named (and (not curl?) (> (length named) 0)))
+      (when (and remote (not wget-named))
+        (each u args
+          (when (string/find "://" u)
+            (def f (url-file-name u))
+            (when f (array/push named f)))))
+      (filter (fn [f] (> (length f) 0))
+              (map argv-base
+                   (filter (fn [f] (not (member? ["" "-" "/dev/null" "/dev/stdout"] f)))
+                           named))))))
+
+# A command that runs one of saved (files by last path part): a path with
+# a / as its command word (./i.sh, /tmp/i.sh), or a shell, source, . or
+# interpreter whose script operand is one (sh i.sh, python3 /tmp/get.py).
+(defn- runs-saved-file? [cmd saved]
+  (def at (command-at cmd))
+  (if (nil? at)
+    false
+    (do
+      (def word (in cmd at))
+      (def b (argv-base word))
+      (defn named? [p] (member? saved (argv-base p)))
+      (def inline (cond (member? shells b) "c"
+                        (member? ["source" "."] b) ""
+                        (stdin-interpreter b)))
+      (cond
+        (and (string/find "/" word) (named? word)) true
+        (nil? inline) false
+        (let [pw (program-word (slice cmd (+ at 1)) inline)]
+          (truthy? (and pw (not (in pw 1)) (named? (in pw 0)))))))))
+
+# A file a fetch on the line writes, then a later command on the line runs:
+# curl `-o` i.sh URL && sh i.sh, curl `-fsSLO` URL/x.sh && ./x.sh, wget
+# URL/get.py; python3 get.py. curl `-o` data.json URL && jq . data.json runs
+# nothing it fetched.
+(defn fetched-then-run? [argv]
+  (def saved @[])
+  (var hit false)
+  (each cmd (commands argv)
+    (when (and (> (length saved) 0) (runs-saved-file? cmd saved))
+      (set hit true))
+    (array/concat saved (fetched-files cmd)))
+  hit)
+
+# A download handed to a program runner: a fetching stage with a later
+# stage of its pipeline that runs stdin (curl URL | sh, curl URL | python3,
+# curl URL | tee f | sh), a shell, source, ., eval or an interpreter that
+# runs a download through a substitution, a shell whose `-c` script is any of
+# these, or a file a fetch on the line writes and a later command runs.
+# Naming a download tool and a shell on one line is not that: git fetch,
+# then bash build.sh, runs nothing fetched, and curl URL | python3 `-m`
+# json.tool reads the download as data.
+(defn remote-exec? [argv]
+  (var hit false)
+  (each line (pipelines argv)
+    (def st (stages line))
+    (eachp [k s] st
+      (when (and (member? fetchers (command-word s))
+                 (find runs-stdin? (slice st (+ k 1))))
+        (set hit true))
+      (when (runs-substituted-download? s) (set hit true))
+      (when (member? shells (command-word s))
+        (for j 0 (- (length s) 1)
+          (when (and (= (in s j) "-c")
+                     (remote-exec? (filter (fn [w] (> (length w) 0))
+                                           (string/split " " (in s (+ j 1))))))
+            (set hit true))))))
+  (or hit (fetched-then-run? argv)))
 
 (defn- climbs? [p]
   (truthy? (find (fn [part] (= part "..")) (string/split "/" p))))
@@ -277,16 +480,75 @@
   (def moved (leaves-tree? argv))
   (truthy? (find (fn [cmd] (find-delete? cmd moved)) (commands argv))))
 
-# chmod setting the setuid bit: +s, or a mode of three or more digits
-# starting with 4.
-(defn setuid-chmod? [argv]
+# A mode that sets the setuid or setgid bit: an octal mode of four or more
+# digits whose leading digit holds 4 or 2 (4755, 04755, 2775), or a symbolic
+# clause that adds s (u+s, g+s, +s, u=rwxs). 0755, 755, +x and g-s set
+# neither.
+(defn- sets-id-bit? [mode]
+  (def n (length mode))
+  (if (and (>= n 4) (all (fn [c] (and (>= c 48) (<= c 55))) (string/bytes mode)))
+    (not= 0 (band (- (in mode (- n 4)) 48) 6))
+    (truthy?
+      (find
+        (fn [clause]
+          (def ops (string/triml clause "ugoa"))
+          (and (> (length ops) 0)
+               (member? [43 45 61] (in ops 0))
+               (all (fn [c] (has-char? "+-=rwxXstugo" c)) (string/bytes ops))
+               (do
+                 (var adds false)
+                 (var hit false)
+                 (each c (string/bytes ops)
+                   (cond
+                     (or (= c 43) (= c 61)) (set adds true)
+                     (= c 45) (set adds false)
+                     (and (= c 115) adds) (set hit true)))
+                 hit)))
+        (string/split "," mode)))))
+
+# The mode a chmod or install call sets: chmod's first word that is not a
+# flag, or the value of install's `-m`, `-mMODE`, `--mode=MODE` or `--mode` MODE.
+(defn- mode-operand [argv]
+  (def b (argv-base (in argv 0)))
+  (def args (slice argv 1))
+  (cond
+    (= b "chmod") (find (fn [a] (not (pre? "-" a))) args)
+    (= b "install")
+    (do
+      (var out nil)
+      (var done false)
+      (var k 0)
+      (def n (length args))
+      (while (and (not done) (< k n))
+        (def a (in args k))
+        (++ k)
+        (cond
+          (= a "--mode") (do (set out (get args k)) (set done true))
+          (pre? "--mode=" a) (do (set out (string/slice a 7)) (set done true))
+          (and (pre? "-" a) (not (pre? "--" a)) (> (length a) 1))
+          (do
+            (def flags (string/slice a 1))
+            (var j 0)
+            (var stop false)
+            (while (and (not stop) (< j (length flags)))
+              (def c (in flags j))
+              (cond
+                (= c (chr "m"))
+                (do
+                  (def rest (string/slice flags (+ j 1)))
+                  (set out (if (= rest "") (get args k) rest))
+                  (set done true)
+                  (set stop true))
+                (has-char? "gotS" c) (set stop true))
+              (++ j)))))
+      out)
+    nil))
+
+# A chmod or install that sets the setuid or setgid bit.
+(defn setuid-mode? [argv]
   (and (> (length argv) 0)
-       (= (argv-base (in argv 0)) "chmod")
-       (truthy?
-         (find (fn [a] (or (string/find "+s" a)
-                           (and (pre? "4" a) (>= (length a) 3)
-                                (peg/match ~(* (some (range "09")) -1) a))))
-               argv))))
+       (let [m (mode-operand argv)]
+         (truthy? (and m (sets-id-bit? m))))))
 
 # A block device: a whole disk, a partition, or a mapped or RAID volume.
 # /dev/null, /dev/zero and the other character devices are not one.
@@ -440,10 +702,10 @@
 (defn recursive-mode-change? [argv]
   (truthy? (find recursive-mode-command? (commands argv))))
 
-# A git push that can overwrite or drop history on the remote: --force, a
-# short cluster holding f (-fu), --mirror, or a refspec starting with +.
-# --force-with-lease (any form) and --force-if-includes are not that: the
-# remote refuses them when it holds commits the pusher has not seen.
+# A git push that can overwrite or drop history on the remote with no
+# check: `--force`, a short cluster holding f (`-fu`), `--mirror`, or a refspec
+# starting with +. A `--force-with-lease` push is judged by
+# lease-push-guarded? below.
 (defn- force-push? [cmd]
   (def at (find-index (fn [a] (= a "push")) cmd))
   (and at
@@ -451,6 +713,71 @@
                                   (short-has? a "f")
                                   (and (pre? "+" a) (> (length a) 1))))
                       (slice cmd (+ at 1))))))
+
+# The branches a lease push may not replace on its own. ljos turns this
+# refusal into a question for the person, and adds the protected branches
+# a checkout names in its own config. Mirrors ljos-policyd's LEASE_GUARDED.
+(def- lease-guarded ["main" "master" "develop"])
+
+# git push options that take the next word as their value.
+(def- push-valued ["-o" "--push-option" "--receive-pack" "--exec" "--repo"])
+
+(defn- lease-flag? [a]
+  (or (= a "--force-with-lease") (pre? "--force-with-lease=" a)))
+
+# The branch a name means on the remote, refs/heads/ taken off. nil when
+# the words do not say: empty, HEAD, or a word the shell still expands or
+# globs ($b, *).
+(defn- lease-branch [name]
+  (def n (if (pre? "refs/heads/" name) (string/slice name 11) name))
+  (unless (or (= n "") (= n "HEAD")
+              (truthy? (find (fn [c] (has-sub? c n)) ["$" "`" "*" "?" "["])))
+    n))
+
+# The branch a refspec writes on the remote: the dst of src:dst, else the
+# refspec itself, a leading + taken off.
+(defn- refspec-branch [spec]
+  (def s (if (pre? "+" spec) (string/slice spec 1) spec))
+  (def colon (string/find ":" s))
+  (lease-branch (if colon (string/slice s (+ colon 1)) s)))
+
+# A `--force-with-lease` push (any form, with `--force-if-includes` or not)
+# whose destination is main, master or develop, or that its words do not
+# name: no refspec, HEAD, a wildcard, `--all` or `--branches`. The destination
+# is each refspec's branch on the remote, and a ref the lease names
+# (`--force-with-lease=main:abc123`) counts too. The first word past the
+# options is the remote. A lease push to any other branch passes: the
+# remote refuses it when it holds commits the pusher has not seen. Mirrors
+# ljos-policyd's lease_push_guarded.
+(defn- lease-push-guarded? [cmd]
+  (def at (find-index (fn [a] (= a "push")) cmd))
+  (def rest (if at (slice cmd (+ at 1)) []))
+  (when (find lease-flag? rest)
+    (def words @[])
+    (def named @[])
+    (var every false)
+    (var skip false)
+    (var tail false)
+    (each a rest
+      (cond
+        tail (array/push words a)
+        skip (set skip false)
+        (= a "--") (set tail true)
+        (member? push-valued a) (set skip true)
+        (member? ["--all" "--branches"] a) (set every true)
+        (pre? "--force-with-lease=" a)
+        (let [v (string/slice a 19)
+              colon (string/find ":" v)
+              name (if colon (string/slice v 0 colon) v)]
+          (unless (= name "") (array/push named [(lease-branch name)])))
+        (pre? "-" a) nil
+        (array/push words a)))
+    (def specs (if (> (length words) 1) (slice words 1) []))
+    (or every
+        (empty? specs)
+        (not (nil? (find-index (fn [b] (or (nil? b) (member? lease-guarded b)))
+                               (array/concat (map refspec-branch specs)
+                                             (map first named))))))))
 
 # Git's subcommand index past global options (-C DIR, -c KEY=VALUE, ...).
 (defn- git-subcommand-at [cmd]
@@ -480,7 +807,9 @@
   (defn short [c] (truthy? (find (fn [a] (short-has? a c)) rest)))
   (defn has [f] (member? rest f))
   (cond
-    (force-push? cmd) "git-force-push: force push denied (--force-with-lease is allowed)"
+    (force-push? cmd) "git-force-push: force push denied"
+    (lease-push-guarded? cmd)
+    "git-force-push: lease push onto main, master, develop or an unnamed branch denied"
     (nil? sub) nil
     (and (= sub "push")
          (find (fn [a] (or (= a "--delete") (short-has? a "d")
@@ -541,12 +870,13 @@
             "sudo: privilege runner denied (sudo/su/doas/pkexec)"]))
   (when (remote-exec? argv)
     (break [PolicyReason-shellRemoteExec
-            "curl-pipe-shell: a download handed to a shell denied"]))
+            "curl-pipe-shell: a download run by a shell or an interpreter denied"]))
   (when (decoded-exec? argv)
     (break [PolicyReason-shellRemoteExec
             "decoded-pipe-shell: a decoded script handed to a shell denied"]))
-  (when (find setuid-chmod? (commands argv))
-    (break [PolicyReason-shellDangerousRunner "chmod-setuid: chmod setuid denied"]))
+  (when (find setuid-mode? (commands argv))
+    (break [PolicyReason-shellDangerousRunner
+            "chmod-setuid: a setuid or setgid mode denied"]))
   (when (raw-disk? argv)
     (break [PolicyReason-shellDangerousRunner
             "raw-disk: writing a block device denied (mkfs, dd, wipefs, a redirect)"]))

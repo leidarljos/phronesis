@@ -42,7 +42,8 @@ shared libraries, so an embedder can link with no runtime path.
 script handed to a shell, raw disks, setuid and sweeping recursive modes,
 recursive deletes and `find -delete` outside `/tmp`, git calls that drop
 work, and secrets in argv. It matches ljos-policyd's built-in table, the
-allowances included: a lease push, a recursive delete of a build output
+allowances included: a lease push onto a branch other than `main`,
+`master` or `develop`, a recursive delete of a build output
 directory in the tree (`target`, `node_modules`, `build`, ...) or of a
 top-level scratch directory (`tmp`, `.tmp`, `temp`), a `find -delete` of
 files a tool writes again (`*.pyc`, `.DS_Store`, `*.o`, ...) inside the
