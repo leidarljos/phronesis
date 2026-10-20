@@ -913,7 +913,9 @@ static void test_long_argv_words_reach_policy(void **state)
 	}
 }
 
-/* Pattern sits past the old 512-byte slot, so a truncated copy would miss it. */
+/* Pattern sits past the old 512-byte slot, so a truncated copy would miss it.
+ * The slash is the token boundary: a prefix buried in a word is not a credential.
+ */
 static void test_long_argv_secret_denied(void **state)
 {
 	struct shell_fix *f = *state;
@@ -929,6 +931,7 @@ static void test_long_argv_secret_denied(void **state)
 	snprintf(mark, sizeof(mark), "%s%s", "gl", "pat-");
 	mark_n = strlen(mark);
 	assert_true(600 + mark_n < n);
+	word[599] = '/';
 	memcpy(word + 600, mark, mark_n);
 	check_true_word(f, word, &dec, &code, reason, sizeof(reason));
 	free(word);

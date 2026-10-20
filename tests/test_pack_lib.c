@@ -598,6 +598,7 @@ static void test_shell_secret_laws(void **state)
 
 static void test_shell_secret_word_boundaries(void **state)
 {
+	/* Pieces stay split so the source has no contiguous credential shape. */
 	static const char *ordinary[] = {
 		"problems/Ta" "sk-" "lclv/problem.txt",
 		"Software/xAI/scicode/ta" "sk-" "creation",
@@ -605,6 +606,33 @@ static void test_shell_secret_word_boundaries(void **state)
 		"ma" "sk-" "layer.txt",
 		"s" "k-",
 		"quoted prefix: 's" "k-'",
+		"fle" "xapp-" "x",
+		"aK" "IAsomething",
+		"word" "aK" "IAsomething",
+		"backup" "AK" "IA" "0123456789ABCDEF",
+		"docs/my" "pass" "word=" "notes.txt",
+		"prose/my" "pass" "word=",
+		"my" "pass" "word=" "hunter2",
+		"PASS" "WORD=",
+		"lo" "gh" "p_" "abcdefghijklmnopqrstuvwxyz0123456789",
+		"lo" "gh" "o_" "abcdefghijklmnopqrstuvwxyz0123456789",
+		"lo" "gh" "u_" "notes",
+		"lo" "gh" "s_" "notes",
+		"lo" "gh" "r_" "notes",
+		"my" "github_" "pat_" "notes",
+		"my" "gl" "pat-" "notes",
+		"bo" "xo" "xb-" "draft",
+		"bo" "xo" "xa-" "draft",
+		"bo" "xo" "xp-" "draft",
+		"bo" "xo" "xr-" "draft",
+		"bo" "xo" "xs-" "draft",
+		"my" "api_" "key=" "foo",
+		"my" "api" "key=" "foo",
+		"my" "pass" "wd=" "foo",
+		"my" "access_" "token=" "foo",
+		"my" "secret_" "key=" "foo",
+		"my" "client_" "secret=" "foo",
+		"my" "PRIVATE KEY-----",
 	};
 	static const char *credentials[] = {
 		"s" "k-" "CredentialValue123456789",
@@ -615,6 +643,34 @@ static void test_shell_secret_word_boundaries(void **state)
 		"backup-s" "k-" "CredentialValue123456789",
 		"s" "k-proj-" "CredentialValue123456789",
 		"s" "k-svcacct-" "CredentialValue123456789",
+		"s" "k-ant-" "api03CredentialValue123456789",
+		"gh" "p_" "abcdefghijklmnopqrstuvwxyz0123456789",
+		"Authorization: Bearer " "gh" "p_"
+			"abcdefghijklmnopqrstuvwxyz0123456789",
+		"gh" "o_" "abcdefghijklmnopqrstuvwxyz0123456789",
+		"gh" "u_" "abcdefghijklmnopqrstuvwxyz0123456789",
+		"gh" "s_" "abcdefghijklmnopqrstuvwxyz0123456789",
+		"gh" "r_" "abcdefghijklmnopqrstuvwxyz0123456789",
+		"github_" "pat_" "abcdefghijklmnopqrstuvwxyz0123456789",
+		"gl" "pat-" "abc123XYZ",
+		"xo" "xb-" "1234567890-abcdefghijklmnop",
+		"xo" "xa-" "1234567890-abcdefghijklmnop",
+		"xo" "xp-" "1234567890-abcdefghijklmnop",
+		"xo" "xr-" "1234567890-abcdefghijklmnop",
+		"xo" "xs-" "1234567890-abcdefghijklmnop",
+		"xa" "pp-" "1-A0B1C2D3E4F5",
+		"AK" "IA" "0123456789ABCDEF",
+		"token=" "AK" "IA" "0123456789ABCDEF",
+		"--" "pass" "word=" "hunter2",
+		"PASS" "WORD=" "hunter2",
+		"pass" "word=" "hunter2",
+		"Pass" "word=" "Hunter2",
+		"pass" "wd=" "hunter2",
+		"API_" "KEY=" "supersecretvalue",
+		"api" "key=" "supersecretvalue",
+		"access_" "token=" "supersecretvalue",
+		"secret_" "key=" "supersecretvalue",
+		"client_" "secret=" "supersecretvalue",
 	};
 	size_t i;
 	(void)state;
@@ -622,13 +678,54 @@ static void test_shell_secret_word_boundaries(void **state)
 	for (i = 0; i < sizeof ordinary / sizeof ordinary[0]; i++) {
 		const char *argv[] = { "cat", ordinary[i] };
 		Janet v = call1("shell-secret-deny", make_string_array(argv, 2));
-		assert_true(janet_checktype(v, JANET_NIL));
+
+		if (!janet_checktype(v, JANET_NIL))
+			fail_msg("allowed word refused: %s", ordinary[i]);
 	}
 	for (i = 0; i < sizeof credentials / sizeof credentials[0]; i++) {
 		const char *argv[] = { "echo", credentials[i] };
 		Janet v = call1("shell-secret-deny", make_string_array(argv, 2));
-		assert_false(janet_checktype(v, JANET_NIL));
+
+		if (janet_checktype(v, JANET_NIL))
+			fail_msg("credential allowed: %s", credentials[i]);
 	}
+}
+
+static void test_shell_secret_redact_boundaries(void **state)
+{
+	char buried_ghp[64];
+	char live_ghp[64];
+	char buried_glpat[64];
+	char live_glpat[64];
+	const char *got;
+	Janet v;
+	(void)state;
+
+	snprintf(buried_ghp, sizeof buried_ghp, "lo%s%snotes", "ghp_", "abc");
+	v = call1("redact-secrets", janet_cstringv(buried_ghp));
+	assert_true(janet_checktype(v, JANET_STRING));
+	got = (const char *)janet_unwrap_string(v);
+	assert_string_equal(got, buried_ghp);
+
+	snprintf(live_ghp, sizeof live_ghp, "token %s%s", "ghp_", "abc");
+	v = call1("redact-secrets", janet_cstringv(live_ghp));
+	assert_true(janet_checktype(v, JANET_STRING));
+	got = (const char *)janet_unwrap_string(v);
+	assert_non_null(strstr(got, "REDACTED"));
+	assert_null(strstr(got, "abc"));
+
+	snprintf(buried_glpat, sizeof buried_glpat, "my%s%s", "glpat-", "notes");
+	v = call1("redact-secrets", janet_cstringv(buried_glpat));
+	assert_true(janet_checktype(v, JANET_STRING));
+	got = (const char *)janet_unwrap_string(v);
+	assert_string_equal(got, buried_glpat);
+
+	snprintf(live_glpat, sizeof live_glpat, "url %s%s", "glpat-", "abc");
+	v = call1("redact-secrets", janet_cstringv(live_glpat));
+	assert_true(janet_checktype(v, JANET_STRING));
+	got = (const char *)janet_unwrap_string(v);
+	assert_non_null(strstr(got, "REDACTED"));
+	assert_null(strstr(got, "abc"));
 }
 
 static void expect_audio_pair(Janet v, int want_dec, int want_code)
@@ -692,6 +789,9 @@ int run_pack_lib_tests(void)
 						pack_lib_setup,
 						pack_lib_teardown),
 		cmocka_unit_test_setup_teardown(test_shell_secret_word_boundaries,
+						pack_lib_setup,
+						pack_lib_teardown),
+		cmocka_unit_test_setup_teardown(test_shell_secret_redact_boundaries,
 						pack_lib_setup,
 						pack_lib_teardown),
 		cmocka_unit_test_setup_teardown(test_audio_decide_defaults,
