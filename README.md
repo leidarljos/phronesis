@@ -58,6 +58,10 @@ the default law: Python runs through `uv run` with PEP 723 metadata, no
 `pixi install --locked` still uses a private conda channel for
 `c-capnproto`. The Meson path above is the standalone door.
 
+Short credential prefixes must begin at a word boundary and have a payload.
+Ordinary paths containing the same letters inside a word pass the shell check.
+Credentials in headers, quoted values and path components remain refused.
+
 ## Cap'n product API (`interface Policyd`)
 
 Public interface: `schema/policy.capnp` + `schema/util.capnp`. Cap'n is **always**

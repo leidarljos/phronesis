@@ -1,0 +1,1 @@
+The shell check distinguishes short credential prefixes from suffixes inside ordinary words and paths. Credential values in headers, quoted strings and path components remain refused, while a prefix with no payload is not a credential.

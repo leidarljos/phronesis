@@ -8,7 +8,7 @@
   (or (and (>= c 48) (<= c 57))
       (and (>= c 65) (<= c 90))
       (and (>= c 97) (<= c 122))
-      (= c 95) (= c 45)))
+      (= c 95)))
 
 # Short credential prefixes start a token and have a payload. A suffix
 # inside a word, such as a task directory name, is not a credential.

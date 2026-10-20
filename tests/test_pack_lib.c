@@ -612,6 +612,7 @@ static void test_shell_secret_word_boundaries(void **state)
 		"value='s" "k-" "CredentialValue123456789'",
 		"ma" "sk-" "report s" "k-" "CredentialValue123456789",
 		"problems/s" "k-" "CredentialValue123456789/config",
+		"backup-s" "k-" "CredentialValue123456789",
 		"s" "k-proj-" "CredentialValue123456789",
 		"s" "k-svcacct-" "CredentialValue123456789",
 	};
