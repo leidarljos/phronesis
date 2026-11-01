@@ -69,7 +69,7 @@
           (and (rd-pre? "/proc/" low) (string/has-suffix? "/environ" low))))))
 
 (defn- rd-assignment? [w]
-  (def m (peg/match ~(* (some (+ :w "_")) (? (* "[" (to "]") "]")) (+ "=" "+=")) w))
+  (def m (peg/match ~(* (some (+ (range "az" "AZ" "09") "_")) (? (* "[" (to "]") "]")) (+ "=" "+=")) w))
   (and (truthy? m) (not (peg/match ~(range "09") w))))
 
 (defn- rd-redirection-body [a]
