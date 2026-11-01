@@ -11,7 +11,7 @@
 (def- fetchers ["curl" "wget" "fetch"])
 (def- shells ["sh" "bash" "zsh" "dash" "ksh" "fish"])
 (def- wrappers ["sudo" "doas" "env" "nohup" "time" "exec" "command" "nice" "timeout" "busybox"
-                "stdbuf" "ionice" "setsid" "chrt" "taskset"])
+                "stdbuf" "ionice" "setsid"])
 # Wrapper options whose value is the next word: nice -n 10, stdbuf -o L,
 # ionice -c 3, timeout -s KILL, env -u NAME, sudo -u USER.
 (def- wrapper-valued ["-n" "-o" "-e" "-i" "-c" "-p" "-s" "-k" "-u" "-g" "-C" "-a"
@@ -592,11 +592,24 @@
 # Whether words run a delete: rm, shred or unlink, behind wrappers, or as
 # the first command of a shell's -c script.
 (var- runs-a-delete-self nil)
+# Runners that take one positional word before the command: chrt PRIO,
+# taskset MASK, flock FILE.
+(def- positional-runners ["chrt" "taskset" "flock"])
+
 (defn- runs-a-delete? [words]
   (when-let [at (command-at words)]
     (def b (argv-base (in words at)))
     (cond
       (member? ["rm" "shred" "unlink" "rmdir" "srm"] b) true
+      (member? ["toybox" "busybox"] b) (runs-a-delete-self (slice words (+ at 1)))
+      (member? positional-runners b)
+      (let [rest (slice words (+ at 1))
+            k (find-index (fn [a] (not (pre? "-" a))) rest)]
+        (and k (runs-a-delete-self (slice rest (+ k 1)))))
+      (= b "eval")
+      (runs-a-delete-self
+        (filter (fn [w] (> (length w) 0))
+                (string/split " " (string/trim (string/join (slice words (+ at 1)) " ") "\"'"))))
       (member? shells b)
       (let [c (find-index (fn [a] (and (pre? "-" a) (not (pre? "--" a)) (has-sub? "c" a)))
                           (slice words (+ at 1)))]
