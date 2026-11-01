@@ -1,0 +1,1 @@
+`git restore` reads its flags as git does: short clusters with `-s` taking the rest, `--no-` forms, `=` on a flag that takes none (git rejects the line), and `--` ending options. `curl -O` of a URL with no file name, then `sh FILE`, is `curl-pipe-shell`.

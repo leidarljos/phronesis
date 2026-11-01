@@ -259,6 +259,9 @@
   (def f (last parts))
   (when (and (> (length parts) 1) (> (length f) 0)) f))
 
+# A saved download whose name the line does not show.
+(def- unnamed-save ":unnamed:")
+
 # The files a curl or wget call writes, by last path part: the value of `-o`,
 # `--output`, `-O` (wget) or `--output-document`, or the URL's own name for curl
 # `-O` and for wget with no `-O`. Standard output (-) and /dev/null are no file.
@@ -306,10 +309,13 @@
       # wget `-O` FILE (or `-O` -) saves nothing under the URL's own name.
       (def wget-named (and (not curl?) (> (length named) 0)))
       (when (and remote (not wget-named))
+        (var named-one false)
         (each u args
           (when (string/find "://" u)
             (def f (url-file-name u))
-            (when f (array/push named f)))))
+            (when f (array/push named f) (set named-one true))))
+        # curl -O of a URL with no file name saves a name not on the line.
+        (unless named-one (array/push named unnamed-save)))
       (filter (fn [f] (> (length f) 0))
               (map argv-base
                    (filter (fn [f] (not (member? ["" "-" "/dev/null" "/dev/stdout"] f)))
@@ -333,8 +339,14 @@
       (def inline (cond (member? shells b) "c"
                         (member? ["source" "."] b) ""
                         (stdin-interpreter b)))
+      (def unnamed (member? saved unnamed-save))
       (cond
         (and (string/find "/" word) (named? word)) true
+        # sh F or . F after a download saved under a name not on the line.
+        (and unnamed (or (member? shells b) (member? ["source" "."] b))
+             (let [pw (program-word (slice cmd (+ at 1)) (if (member? shells b) "c" ""))]
+               (and pw (not (in pw 1)))))
+        true
         # busybox sh i.sh runs the applet it names.
         (= b "busybox") (runs-saved-self (slice cmd (+ at 1)) saved)
         # eval 'sh i.sh' runs its words as a line.
@@ -959,6 +971,57 @@
 
 (defn- whole-tree? [p] (member? ["." "./" ":/" ":" "*" "-A"] p))
 
+(def- restore-no-value
+  ["staged" "worktree" "quiet" "patch" "merge" "ours" "theirs" "overlay"
+   "ignore-unmerged" "ignore-skip-worktree-bits" "progress" "pathspec-file-nul"])
+(def- restore-valued ["source" "conflict" "pathspec-from-file"])
+
+# Whether `git restore` writes the work tree over a whole-tree path. -S and
+# --staged touch the index; -W, --worktree, or neither write the tree.
+# Letters after -s in a cluster are its tree; `--` ends options; -p, -b,
+# and a no-value flag given `=` (git rejects the line) write nothing.
+(defn- restore-drops-worktree? [rest]
+  (var staged nil)
+  (var worktree nil)
+  (var stops false)
+  (def paths @[])
+  (var opts true)
+  (var i 0)
+  (while (< i (length rest))
+    (def a (in rest i))
+    (++ i)
+    (cond
+      (not opts) (array/push paths a)
+      (= a "--") (set opts false)
+      (member? ["-b" "-B"] a) (set stops true)
+      (and (pre? "-" a) (not (pre? "--" a)) (> (length a) 1))
+      (do
+        (var k 1)
+        (var done false)
+        (while (and (not done) (< k (length a)))
+          (case (string/slice a k (+ k 1))
+            "s" (do (when (and (= (+ k 1) (length a)) (< i (length rest))) (++ i))
+                    (set done true))
+            "S" (set staged true)
+            "W" (set worktree true)
+            "p" (set stops true)
+            nil)
+          (++ k)))
+      (pre? "--" a)
+      (let [eq (string/find "=" a)
+            name (if eq (string/slice a 0 eq) a)
+            negated (pre? "--no-" name)
+            body (string/slice name (if negated 5 2))]
+        (cond
+          (and (member? restore-no-value body) eq) (set stops true)
+          (and (member? restore-valued body) (not negated) (not eq)) (++ i)
+          (= body "staged") (set staged (not negated))
+          (= body "worktree") (set worktree (not negated))
+          (= body "patch") (unless negated (set stops true))))
+      (array/push paths a)))
+  (def worktree-on (if (nil? worktree) (nil? staged) worktree))
+  (and (not stops) worktree-on (truthy? (find whole-tree? paths))))
+
 # A git call that throws away work no commit holds. Returns its reason, or
 # nil. Mirrors ljos-policyd's table: force push, remote ref delete, reset
 # --hard, clean -f, stash clear, branch -D, reflog expire to now or delete,
@@ -1019,25 +1082,7 @@
           after (if dd (slice rest (+ dd 1)) rest)]
       (when (and (find whole-tree? after) (or dd (= (length rest) 1)))
         "git-discard-worktree"))
-    (= sub "restore")
-    (do
-      (def paths @[])
-      (var skip false)
-      (each a rest
-        (cond
-          skip (set skip false)
-          (member? ["-s" "--source"] a) (set skip true)
-          (not (pre? "-" a)) (array/push paths a)))
-      # `--staged` alone resets the index and leaves the files in the
-      # tree as they are. With `--worktree` it writes them too.
-      (def unstage-only
-        (and (or (has "--staged") (short "S"))
-             (not (or (has "--worktree") (short "W")))
-             (not (empty? paths))))
-      (when (and (not (find (fn [a] (member? ["-p" "--patch"] a)) rest))
-                 (not unstage-only)
-                 (or (empty? paths) (find whole-tree? paths)))
-        "git-discard-worktree"))
+    (and (= sub "restore") (restore-drops-worktree? rest)) "git-discard-worktree"
     nil))
 
 # Each git command on the line, or one whose command word is still a
