@@ -77,6 +77,7 @@ static int pack_lib_setup(void **state)
 	assert_int_equal(load_lib_file("seat-law.janet"), 0);
 	assert_int_equal(load_lib_file("shell-danger.janet"), 0);
 	assert_int_equal(load_lib_file("shell-read.janet"), 0);
+	assert_int_equal(load_lib_file("shell-seat.janet"), 0);
 	assert_int_equal(load_lib_file("shell-secret.janet"), 0);
 	assert_int_equal(load_lib_file("shell-tree.janet"), 0);
 
@@ -789,6 +790,60 @@ static void test_shell_read_asks(void **state)
 	}
 }
 
+static void test_shell_seat_warns(void **state)
+{
+	/* A write onto a file the seat keeps for itself warns with
+	 * seat-guard-path; a read, a relative path or a path with no home in
+	 * front does not. */
+	static const struct {
+		const char *argv[8];
+		int warns;
+	} cases[] = {
+		{ { "echo", "x", ">", "/home/u/.cursor/hooks.json" }, 1 },
+		{ { "echo", "x", ">/home/u/.cursor/hooks.json" }, 1 },
+		{ { "printf", "x", "|", "tee", "\"$HOME\"/.cursor/hooks.json" }, 1 },
+		{ { "cp", "/tmp/x", "/home/u/.config/ljos-policyd/policy.toml" }, 1 },
+		{ { "dd", "if=/dev/null", "of=/home/u/.gitconfig" }, 1 },
+		{ { "mkdir", "-p", "/home/u/.config/ljos/seats" }, 1 },
+		{ { "tar", "-xf", "/tmp/a.tar", "-C", "/home/u/.cursor", "hooks.json" }, 1 },
+		{ { "unzip", "/tmp/a.zip", "hooks.json", "-d", "/home/u/.cursor" }, 1 },
+		{ { "git", "config", "--glob", "core.hooksPath", "/tmp/h" }, 1 },
+		{ { "git", "-c", "core.hooksPath=/tmp/h", "status" }, 1 },
+		{ { "python", "-c", "open('/home/u/.cursor/hooks.json','w').write('[]')" }, 1 },
+		{ { "ln", "-s", "~/.cursor", "/tmp/b/new;", "echo", "x", ">", "/tmp/b/new/hooks.json" }, 1 },
+		{ { "cat", "/home/u/.cursor/hooks.json" }, 0 },
+		{ { "cp", "README.md", "docs/hooks.json" }, 0 },
+		{ { "echo", "x", ">", "/tmp/out" }, 0 },
+		{ { "git", "config", "--global", "user.name", "x" }, 0 },
+		{ { "node", "-e", "require('fs').writeFileSync(process.env.HOME + '/.cursor/hooks.json','[]')" }, 0 },
+		{ { "python", "-c", "print('hooks.json')" }, 0 },
+	};
+	size_t i;
+	(void)state;
+
+	for (i = 0; i < sizeof(cases) / sizeof(cases[0]); i++) {
+		JanetArray *a = janet_array(8);
+		Janet v;
+		const char *why;
+		size_t k;
+
+		for (k = 0; k < 8 && cases[i].argv[k]; k++)
+			janet_array_push(a, janet_cstringv(cases[i].argv[k]));
+		v = call1("shell-seat-warn", janet_wrap_array(a));
+		why = deny_reason(v);
+		if (!cases[i].warns) {
+			if (why)
+				fail_msg("case %zu: want no opinion, got %s", i, why);
+			continue;
+		}
+		if (!why || strncmp(why, "seat-guard-path: ", 17) != 0)
+			fail_msg("case %zu: want seat-guard-path, got %s", i,
+				 why ? why : "nothing");
+		if (!warn_tagged(v))
+			fail_msg("case %zu: want a warning", i);
+	}
+}
+
 static void test_shell_secret_laws(void **state)
 {
 	/* Build fixtures without contiguous secret shapes in source (CI secrets:scan). */
@@ -1014,6 +1069,8 @@ int run_pack_lib_tests(void)
 		cmocka_unit_test_setup_teardown(test_shell_read_asks, pack_lib_setup,
 						pack_lib_teardown),
 		cmocka_unit_test_setup_teardown(test_shell_danger_warns, pack_lib_setup,
+						pack_lib_teardown),
+		cmocka_unit_test_setup_teardown(test_shell_seat_warns, pack_lib_setup,
 						pack_lib_teardown),
 		cmocka_unit_test_setup_teardown(test_shell_secret_laws,
 						pack_lib_setup,

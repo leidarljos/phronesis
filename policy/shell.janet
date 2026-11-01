@@ -58,8 +58,11 @@
   (def ask (shell-read-ask argv))
   (unless (nil? ask)
     (break (decide Decision-prompt (in ask 0) (in ask 1))))
-  (when warned
-    (break (decide Decision-allow (in warned 0) (string "warn: " (in warned 1)))))
+  # A write onto a file the seat keeps for itself warns
+  # (policy/lib/shell-seat).
+  (def warning (or warned (shell-seat-warn argv)))
+  (when warning
+    (break (decide Decision-allow (in warning 0) (string "warn: " (in warning 1)))))
   (decide Decision-allow PolicyReason-shellExecAllow
           "shell exec under workspace"))
 
