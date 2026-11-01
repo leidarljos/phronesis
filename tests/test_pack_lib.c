@@ -692,6 +692,48 @@ static void test_shell_tree_laws(void **state)
 	}
 }
 
+static void test_shell_read_asks(void **state)
+{
+	/* An inline program that names a credential store asks; one word per
+	 * argv entry, the program text as one entry. */
+	static const struct {
+		const char *argv[6];
+		int asks;
+	} cases[] = {
+		{ { "python3", "-c", "open('/home/u/.ssh/id_rsa')" }, 1 },
+		{ { "python3.12", "-c", "print(open('/home/u/.secrets/x').read())" }, 1 },
+		{ { "perl", "-e", "open(F, q{/home/u/.secrets/x}); print <F>" }, 1 },
+		{ { "ruby", "-e", "puts File.read(Dir.home + '/.secrets/x')" }, 1 },
+		{ { "node", "-e", "require('fs').readFileSync('/home/u/.aws/credentials')" }, 1 },
+		{ { "env", "A=1", "python3", "-Bc", "load_dotenv('.env')" }, 1 },
+		{ { "python3", "-c", "print(open('.secrets.example').read())" }, 0 },
+		{ { "python3", "-c", "import os; print(os.environ)" }, 0 },
+		{ { "python3", "-c", "open('/home/u/.config/ljos/seats.toml')" }, 0 },
+		{ { "python3", "-c", "print(1)" }, 0 },
+		{ { "cat", ".ssh/id_rsa" }, 0 },
+	};
+	size_t i;
+	(void)state;
+
+	for (i = 0; i < sizeof(cases) / sizeof(cases[0]); i++) {
+		JanetArray *a = janet_array(6);
+		const char *why;
+		size_t k;
+
+		for (k = 0; k < 6 && cases[i].argv[k]; k++)
+			janet_array_push(a, janet_cstringv(cases[i].argv[k]));
+		why = deny_reason(call1("shell-read-ask", janet_wrap_array(a)));
+		if (!cases[i].asks) {
+			if (why)
+				fail_msg("%s: want no opinion, got %s", cases[i].argv[2], why);
+			continue;
+		}
+		if (!why || strcmp(why, "credential-mention") != 0)
+			fail_msg("%s: want credential-mention, got %s", cases[i].argv[2],
+				 why ? why : "nothing");
+	}
+}
+
 static void test_shell_secret_laws(void **state)
 {
 	/* Build fixtures without contiguous secret shapes in source (CI secrets:scan). */
@@ -913,6 +955,8 @@ int run_pack_lib_tests(void)
 		cmocka_unit_test_setup_teardown(test_shell_read_laws, pack_lib_setup,
 						pack_lib_teardown),
 		cmocka_unit_test_setup_teardown(test_shell_tree_laws, pack_lib_setup,
+						pack_lib_teardown),
+		cmocka_unit_test_setup_teardown(test_shell_read_asks, pack_lib_setup,
 						pack_lib_teardown),
 		cmocka_unit_test_setup_teardown(test_shell_secret_laws,
 						pack_lib_setup,

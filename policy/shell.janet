@@ -50,6 +50,11 @@
   (def secret (shell-secret-deny argv))
   (unless (nil? secret)
     (break (decide Decision-deny (in secret 0) (in secret 1))))
+  # An inline program that names a credential store asks
+  # (policy/lib/shell-read).
+  (def ask (shell-read-ask argv))
+  (unless (nil? ask)
+    (break (decide Decision-prompt (in ask 0) (in ask 1))))
   (decide Decision-allow PolicyReason-shellExecAllow
           "shell exec under workspace"))
 
