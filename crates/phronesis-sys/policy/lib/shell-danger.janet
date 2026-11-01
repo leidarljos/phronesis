@@ -10,7 +10,13 @@
 
 (def- fetchers ["curl" "wget" "fetch"])
 (def- shells ["sh" "bash" "zsh" "dash" "ksh" "fish"])
-(def- wrappers ["sudo" "doas" "env" "nohup" "time" "exec" "command" "nice" "timeout" "busybox"])
+(def- wrappers ["sudo" "doas" "env" "nohup" "time" "exec" "command" "nice" "timeout" "busybox"
+                "stdbuf" "ionice" "setsid" "chrt" "taskset"])
+# Wrapper options whose value is the next word: nice -n 10, stdbuf -o L,
+# ionice -c 3, timeout -s KILL, env -u NAME, sudo -u USER.
+(def- wrapper-valued ["-n" "-o" "-e" "-i" "-c" "-p" "-s" "-k" "-u" "-g" "-C" "-a"
+                      "--adjustment" "--output" "--error" "--input" "--class"
+                      "--signal" "--kill-after" "--unset" "--user" "--group"])
 (def- decoders ["base64" "base32" "basenc" "xxd" "openssl" "uudecode" "gunzip"
                 "zcat" "gzip" "bzcat" "bunzip2" "xzcat" "unxz" "zstdcat" "zstd"
                 "rev"])
@@ -60,6 +66,7 @@
     (def b (argv-base t))
     (cond
       (and after-timeout (duration? t)) (set after-timeout false)
+      (and (> k 0) (member? wrapper-valued t)) (++ k)
       (or (member? wrappers b)
           (pre? "-" t)
           (and (string/find "=" t) (not (pre? "=" t))))
