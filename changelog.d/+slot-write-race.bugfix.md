@@ -1,0 +1,1 @@
+Binding a seat writes its slot through a temporary file named for the writing process, so processes that bind the same slot at once no longer tear each other's write or rename it away; a concurrent bind could fail with an IO error.

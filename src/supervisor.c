@@ -78,9 +78,17 @@ static int write_slot(const phronesis_supervisor_t *s, const agent_slot_t *a)
 
 	if (slot_path(s, a->id, path, sizeof(path)) != PHRONESIS_OK)
 		return PHRONESIS_ERR_INVAL;
-	if (snprintf(tmp, sizeof(tmp), "%s.tmp", path) >= (int)sizeof(tmp))
+	/* One temporary name per writer: processes that bind the same slot at
+	 * once each rename a whole file into place, and none truncates or
+	 * renames away the file another is writing. */
+	if (snprintf(tmp, sizeof(tmp), "%s.tmp.%ld", path, (long)getpid()) >=
+	    (int)sizeof(tmp))
 		return PHRONESIS_ERR_INVAL;
-	f = fopen(tmp, "w");
+	f = fopen(tmp, "wx");
+	if (!f && errno == EEXIST) {
+		unlink(tmp);
+		f = fopen(tmp, "wx");
+	}
 	if (!f)
 		return PHRONESIS_ERR_IO;
 	if (fprintf(f, "%s %d %d %d %d %s %s\n",
