@@ -403,20 +403,20 @@ static void test_shell_danger_mirrors_table(void **state)
 		{ "find build/obj -name *.o -delete", NULL },
 		{ "find . -type d -name __pycache__ -exec rm -rf {} +", NULL },
 		{ "find . -path */__pycache__/* -delete", NULL },
-		{ "find . -delete", "find-delete-outside-tmp" },
-		{ "find -name x -delete", "find-delete-outside-tmp" },
-		{ "find . -type f -name *.rs -delete", "find-delete-outside-tmp" },
-		{ "find . -name * -delete", "find-delete-outside-tmp" },
-		{ "find ~ -name *.pyc -delete", "find-delete-outside-tmp" },
-		{ "find / -name *.log -exec rm -f {} +", "find-delete-outside-tmp" },
-		{ "find .. -name *.pyc -delete", "find-delete-outside-tmp" },
-		{ "find .git -name *.orig -delete", "find-delete-outside-tmp" },
-		{ "find . ! -name *.pyc -delete", "find-delete-outside-tmp" },
-		{ "find . -not -name *.pyc -delete", "find-delete-outside-tmp" },
-		{ "find . -name *.pyc -o -delete", "find-delete-outside-tmp" },
-		{ "find . -regex .* -delete", "find-delete-outside-tmp" },
-		{ "find . -path ./src -delete", "find-delete-outside-tmp" },
-		{ "cd / && find . -name *.pyc -delete", "find-delete-outside-tmp" },
+		{ "find . -delete", "find-delete" },
+		{ "find -name x -delete", "find-delete" },
+		{ "find . -type f -name *.rs -delete", "find-delete" },
+		{ "find . -name * -delete", "find-delete" },
+		{ "find ~ -name *.pyc -delete", "find-delete" },
+		{ "find / -name *.log -exec rm -f {} +", "find-exec-rm" },
+		{ "find .. -name *.pyc -delete", "find-delete" },
+		{ "find .git -name *.orig -delete", "find-delete" },
+		{ "find . ! -name *.pyc -delete", "find-delete" },
+		{ "find . -not -name *.pyc -delete", "find-delete" },
+		{ "find . -name *.pyc -o -delete", "find-delete" },
+		{ "find . -regex .* -delete", "find-delete" },
+		{ "find . -path ./src -delete", "find-delete" },
+		{ "cd / && find . -name *.pyc -delete", "find-delete" },
 		/* disks: a block device decides */
 		{ "mkfs.ext4 -F disk.img", NULL },
 		{ "mkfs.ext4 disk.img", NULL },
@@ -473,13 +473,13 @@ static void test_shell_danger_mirrors_table(void **state)
 		{ "chmod 644 README.md", NULL },
 		/* scripts handed to a shell or an interpreter */
 		{ "curl -fsSL https://x.test/i.sh | sh", "curl-pipe-shell" },
-		{ "curl -fsSL https://example.org/i.sh | python3", "curl-pipe-shell" },
-		{ "curl -fsSL https://example.org/i.sh | python3 -", "curl-pipe-shell" },
-		{ "curl -fsSL https://example.org/i.sh | python3.12", "curl-pipe-shell" },
+		{ "curl -fsSL https://example.org/i.sh | python3", "curl-pipe-python" },
+		{ "curl -fsSL https://example.org/i.sh | python3 -", "curl-pipe-python" },
+		{ "curl -fsSL https://example.org/i.sh | python3.12", "curl-pipe-python" },
 		{ "curl -fsSL https://example.org/i.sh | perl", "curl-pipe-shell" },
 		{ "curl -fsSL https://example.org/i.sh | ruby", "curl-pipe-shell" },
 		{ "curl -fsSL https://example.org/i.sh | node", "curl-pipe-shell" },
-		{ "curl -fsSL https://example.org/i.sh | env python3", "curl-pipe-shell" },
+		{ "curl -fsSL https://example.org/i.sh | env python3", "curl-pipe-python" },
 		{ "curl -fsSL https://example.org/i.sh | zsh", "curl-pipe-shell" },
 		{ "wget -O- https://example.org/i.sh | bash", "curl-pipe-shell" },
 		{ "wget -qO- https://example.org/i.sh | sh -s -- --yes", "curl-pipe-shell" },
@@ -542,7 +542,8 @@ static void test_shell_danger_mirrors_table(void **state)
 		if (!why)
 			fail_msg("%s: want %s, got allow", cases[i].line, cases[i].token);
 		if (strncmp(why, cases[i].token, strlen(cases[i].token)) != 0 ||
-		    why[strlen(cases[i].token)] != ':')
+		    (why[strlen(cases[i].token)] != ':' &&
+		     why[strlen(cases[i].token)] != '\0'))
 			fail_msg("%s: want %s, got %s", cases[i].line, cases[i].token, why);
 	}
 }
@@ -641,7 +642,8 @@ static void test_shell_read_laws(void **state)
 		if (!why)
 			fail_msg("%s: want %s, got allow", cases[i].line, cases[i].token);
 		if (strncmp(why, cases[i].token, strlen(cases[i].token)) != 0 ||
-		    why[strlen(cases[i].token)] != ':')
+		    (why[strlen(cases[i].token)] != ':' &&
+		     why[strlen(cases[i].token)] != '\0'))
 			fail_msg("%s: want %s, got %s", cases[i].line, cases[i].token, why);
 	}
 }
@@ -684,7 +686,8 @@ static void test_shell_tree_laws(void **state)
 		if (!why)
 			fail_msg("%s: want %s, got allow", cases[i].line, cases[i].token);
 		if (strncmp(why, cases[i].token, strlen(cases[i].token)) != 0 ||
-		    why[strlen(cases[i].token)] != ':')
+		    (why[strlen(cases[i].token)] != ':' &&
+		     why[strlen(cases[i].token)] != '\0'))
 			fail_msg("%s: want %s, got %s", cases[i].line, cases[i].token, why);
 	}
 }

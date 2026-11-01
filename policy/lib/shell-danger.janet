@@ -460,13 +460,16 @@
 # starting points are not all under /tmp. No starting point is `.`. A
 # cleanup of files a tool writes again inside the working tree is allowed,
 # unless the line can cd out of the tree first.
-(defn- find-delete? [cmd moved]
-  (def n (length cmd))
+(defn- find-exec-delete? [cmd]
   (var exec-delete false)
-  (for k 0 (- n 1)
+  (for k 0 (- (length cmd) 1)
     (when (and (member? ["-exec" "-execdir" "-ok" "-okdir"] (in cmd k))
                (member? ["rm" "shred" "unlink"] (argv-base (in cmd (+ k 1)))))
       (set exec-delete true)))
+  exec-delete)
+
+(defn- find-delete? [cmd moved]
+  (def exec-delete (find-exec-delete? cmd))
   (and (= (argv-base (in cmd 0)) "find")
        (or (member? cmd "-delete") exec-delete)
        (let [starts (take-while (fn [a] (and (not (pre? "-" a))
@@ -479,6 +482,13 @@
 (defn find-delete-off-tmp? [argv]
   (def moved (leaves-tree? argv))
   (truthy? (find (fn [cmd] (find-delete? cmd moved)) (commands argv))))
+
+# `find-exec-rm` when the find that deletes off /tmp runs rm, shred or
+# unlink through -exec, else `find-delete`.
+(defn- find-delete-id [argv]
+  (def moved (leaves-tree? argv))
+  (def hit (find (fn [cmd] (find-delete? cmd moved)) (commands argv)))
+  (when hit (if (find-exec-delete? hit) "find-exec-rm" "find-delete")))
 
 # A mode that sets the setuid or setgid bit: an octal mode of four or more
 # digits whose leading digit holds 4 or 2 (4755, 04755, 2775), or a symbolic
@@ -807,20 +817,20 @@
   (defn short [c] (truthy? (find (fn [a] (short-has? a c)) rest)))
   (defn has [f] (member? rest f))
   (cond
-    (force-push? cmd) "git-force-push: force push denied"
+    (force-push? cmd) "git-force-push"
     (lease-push-guarded? cmd)
-    "git-force-push: lease push onto main, master, develop or an unnamed branch denied"
+    "git-force-push"
     (nil? sub) nil
     (and (= sub "push")
          (find (fn [a] (or (= a "--delete") (short-has? a "d")
                            (and (pre? ":" a) (> (length a) 1))))
                rest))
-    "git-push-delete: deleting a remote ref denied"
-    (and (= sub "reset") (has "--hard")) "git-reset-hard: reset --hard denied"
-    (and (= sub "clean") (or (short "f") (has "--force"))) "git-clean-force: clean -f denied"
-    (and (= sub "stash") (= first-word "clear")) "git-stash-clear: stash clear denied"
+    "git-push-delete"
+    (and (= sub "reset") (has "--hard")) "git-reset-hard"
+    (and (= sub "clean") (or (short "f") (has "--force"))) "git-clean-force"
+    (and (= sub "stash") (= first-word "clear")) "git-stash-clear"
     (and (= sub "branch") (or (short "D") (and (has "--delete") (or (has "--force") (short "f")))))
-    "git-branch-force-delete: branch -D denied"
+    "git-branch-force-delete"
     (and (= sub "reflog")
          (or (= first-word "delete")
              (and (= first-word "expire")
@@ -828,16 +838,16 @@
                                      (or (string/has-suffix? "=now" a)
                                          (string/has-suffix? "=all" a))))
                         rest))))
-    "git-reflog-expire: dropping reflog entries denied"
-    (member? ["filter-branch" "filter-repo"] sub) "git-history-rewrite: history rewrite denied"
-    (and (= sub "update-ref") (short "d")) "git-update-ref-delete: update-ref -d denied"
+    "git-reflog-expire"
+    (member? ["filter-branch" "filter-repo"] sub) "git-history-rewrite"
+    (and (= sub "update-ref") (short "d")) "git-update-ref-delete"
     (and (= sub "worktree") (= first-word "remove") (or (short "f") (has "--force")))
-    "git-worktree-force-remove: worktree remove --force denied"
+    "git-worktree-force-remove"
     (= sub "checkout")
     (let [dd (find-index (fn [a] (= a "--")) rest)
           after (if dd (slice rest (+ dd 1)) rest)]
       (when (and (find whole-tree? after) (or dd (= (length rest) 1)))
-        "git-discard-worktree: discarding the whole tree denied"))
+        "git-discard-worktree"))
     (= sub "restore")
     (do
       (def paths @[])
@@ -856,7 +866,7 @@
       (when (and (not (find (fn [a] (member? ["-p" "--patch"] a)) rest))
                  (not unstage-only)
                  (or (empty? paths) (find whole-tree? paths)))
-        "git-discard-worktree: discarding the whole tree denied"))
+        "git-discard-worktree"))
     nil))
 
 # Each git command on the line, or one whose command word is still a
@@ -871,32 +881,141 @@
 
 # Returns a deny pair [code reason] or nil if this module has no opinion.
 # Each reason starts with the token ljos-policyd's table uses.
-(defn shell-danger-deny [argv]
-  (when (find (fn [t] (privilege-runner? (argv-base t))) argv)
-    (break [PolicyReason-shellPrivilegeDenied
-            "sudo: privilege runner denied (sudo/su/doas/pkexec)"]))
-  (when (remote-exec? argv)
-    (break [PolicyReason-shellRemoteExec
-            "curl-pipe-shell: a download run by a shell or an interpreter denied"]))
-  (when (decoded-exec? argv)
-    (break [PolicyReason-shellRemoteExec
-            "decoded-pipe-shell: a decoded script handed to a shell denied"]))
-  (when (find setuid-mode? (commands argv))
-    (break [PolicyReason-shellDangerousRunner
-            "chmod-setuid: a setuid or setgid mode denied"]))
-  (when (raw-disk? argv)
-    (break [PolicyReason-shellDangerousRunner
-            "raw-disk: writing a block device denied (mkfs, dd, wipefs, a redirect)"]))
-  (when (recursive-mode-change? argv)
-    (break [PolicyReason-shellDangerousRunner
-            "recursive-chmod-chown: a recursive mode or owner change of a system or home tree denied"]))
-  (when (recursive-delete-off-tmp? argv)
-    (break [PolicyReason-shellDangerousRunner
-            "rm-rf-outside-tmp: recursive delete outside /tmp and the build output directories denied"]))
-  (when (find-delete-off-tmp? argv)
-    (break [PolicyReason-shellDangerousRunner
-            "find-delete-outside-tmp: find -delete outside /tmp denied"]))
-  (def g (git-dangerous? argv))
-  (when g
-    (break [PolicyReason-shellGitDangerous g]))
-  nil)
+# Wrappers a delete may run behind: a tracer or a scheduler runs the
+# command after it.
+(def- delete-wrappers
+  ["strace" "ltrace" "valgrind" "time" "nice" "ionice" "nohup" "chrt"
+   "taskset" "stdbuf" "unbuffer" "env" "command" "exec"])
+
+# The command with the wrappers in front of it, and their flags, taken off.
+(defn- peel-delete-wrappers [cmd]
+  (var k 0)
+  (while (and (< k (length cmd)) (member? delete-wrappers (argv-base (in cmd k))))
+    (++ k)
+    (while (and (< k (length cmd)) (pre? "-" (in cmd k))) (++ k)))
+  (slice cmd k))
+
+(def- trashers ["rtrash" "trash" "trash-put" "gtrash" "rmtrash"])
+
+# `/`, a home directory or a top system home: what no delete outside /tmp
+# may take whole.
+(defn- home-or-root? [p]
+  (def q (string/trimr (string/trim p "\"'") "/"))
+  (or (= q "") (= q "/*") (= q "/.")
+      (member? ["~" "$HOME" "${HOME}" "/home" "/root" "/Users"] q)
+      (let [rest (cond (pre? "/home/" q) (string/slice q 6)
+                       (pre? "/Users/" q) (string/slice q 7)
+                       nil)]
+        (and rest (> (length rest) 0) (not (string/find "/" rest))))))
+
+# A recursive rm, srm or wipe, or any trash command, given the root, a home
+# directory or a top system home; or a recursive rm behind a tracer.
+(defn- deletes-a-root-tree? [argv]
+  (truthy?
+    (find
+      (fn [raw]
+        (def cmd (peel-delete-wrappers raw))
+        (when (> (length cmd) 0)
+          (def b (argv-base (in cmd 0)))
+          (def gio (and (= b "gio") (= (get cmd 1) "trash")))
+          (def recursive (find (fn [a] (or (= a "--recursive")
+                                           (and (pre? "-" a) (not (pre? "--" a))
+                                                (or (string/find "r" a) (string/find "R" a)))))
+                               (slice cmd 1)))
+          (when (or gio (member? trashers b)
+                    (and (member? ["rm" "srm" "wipe"] b) recursive))
+            (find (fn [a] (and (not (pre? "-" a)) (home-or-root? a)))
+                  (slice cmd (if gio 2 1))))))
+      (commands argv))))
+
+(defn- python-runner? [w]
+  (truthy? (peg/match ~(* (+ "python" "pypy") (any (+ (range "09") ".")) -1) (argv-base w))))
+
+# A download whose only runner on the line is Python: a warning, where a
+# shell or another interpreter running it is a refusal.
+(defn- python-only-remote? [argv]
+  (and (remote-exec? argv)
+       (not (fetched-then-run? argv))
+       (not (find (fn [w] (or (pre? "<(" w) (pre? "$(" w) (string/find "`" w))) argv))
+       (not (remote-exec? (map (fn [w] (if (python-runner? w) "cat" w)) argv)))))
+
+# The `-c KEY=VALUE` pairs given before git's subcommand, key lowercased.
+(defn- git-configs [cmd]
+  (def out @[])
+  (var i 1)
+  (var done false)
+  (while (and (not done) (< i (length cmd)))
+    (def a (in cmd i))
+    (cond
+      (= a "-c")
+      (do
+        (when-let [kv (get cmd (+ i 1))
+                   at (string/find "=" kv)]
+          (array/push out [(string/ascii-lower (string/slice kv 0 at))
+                           (string/trim (string/slice kv (+ at 1)) "\"'")]))
+        (+= i 2))
+      (member? ["-C" "--git-dir" "--work-tree" "--namespace"] a) (+= i 2)
+      (pre? "-" a) (++ i)
+      (set done true)))
+  out)
+
+(def- git-command-keys
+  ["core.sshcommand" "core.pager" "core.editor" "core.fsmonitor" "core.askpass"
+   "sequence.editor" "diff.external" "gpg.program" "credential.helper"])
+
+(defn- split-words [s] (filter (fn [w] (> (length w) 0)) (string/split " " s)))
+
+(var shell-danger-deny nil)
+
+# What git runs from a config on its own line: a value git hands to a shell
+# (core.sshCommand and the like, or an alias that starts with !), or an alias
+# that names the subcommand, judged as what it expands to.
+(defn- git-config-hit [argv]
+  (var hit nil)
+  (each cmd (commands argv)
+    (when (and (nil? hit) (= (argv-base (in cmd 0)) "git"))
+      (def configs (git-configs cmd))
+      (each [k v] configs
+        (when (and (nil? hit) (member? git-command-keys k) (> (length v) 0))
+          (set hit (shell-danger-deny (split-words (string/triml v "!"))))))
+      (def at (git-subcommand-at cmd))
+      (when (and (nil? hit) at)
+        (def sub (string/ascii-lower (in cmd at)))
+        (when-let [pair (find (fn [[k _]] (= k (string "alias." sub))) configs)]
+          (def v (in pair 1))
+          (if (pre? "!" v)
+            (set hit (shell-danger-deny (split-words (string/slice v 1))))
+            (let [expanded (array/concat @["git"] (split-words v) (slice cmd (+ at 1)))]
+              (when (not= (get expanded 1) (in cmd at))
+                (set hit (shell-danger-deny expanded)))))))))
+  hit)
+
+# Returns a deny pair [code rule-id] or nil if this module has no opinion.
+# Each rule id is the token ljos-policyd uses. A privilege runner is judged
+# by the command it runs first, so `sudo rm -rf /srv` is the delete.
+(set shell-danger-deny
+  (fn shell-danger-deny [argv]
+    (def privileged (find (fn [t] (privilege-runner? (argv-base t))) argv))
+    (def body (if privileged
+                (filter (fn [t] (not (privilege-runner? (argv-base t)))) argv)
+                argv))
+    (def hit
+      (cond
+        (python-only-remote? body) [PolicyReason-shellRemoteExec "curl-pipe-python"]
+        (remote-exec? body) [PolicyReason-shellRemoteExec "curl-pipe-shell"]
+        (decoded-exec? body) [PolicyReason-shellRemoteExec "decoded-pipe-shell"]
+        (find setuid-mode? (commands body)) [PolicyReason-shellDangerousRunner "chmod-setuid"]
+        (raw-disk? body) [PolicyReason-shellDangerousRunner "raw-disk"]
+        (recursive-mode-change? body) [PolicyReason-shellDangerousRunner "recursive-chmod-chown"]
+        (recursive-delete-off-tmp? body) [PolicyReason-shellDangerousRunner "rm-rf-outside-tmp"]
+        (recursive-delete-off-tmp? (mapcat (fn [c] [;(peel-delete-wrappers c) ";"]) (commands body)))
+        [PolicyReason-shellDangerousRunner "rm-rf-outside-tmp"]
+        (deletes-a-root-tree? body) [PolicyReason-shellDangerousRunner "rm-rf-outside-tmp"]
+        (find-delete-id body) [PolicyReason-shellDangerousRunner (find-delete-id body)]
+        (git-config-hit body) (git-config-hit body)
+        (git-dangerous? body) [PolicyReason-shellGitDangerous (git-dangerous? body)]
+        nil))
+    (cond
+      hit hit
+      privileged [PolicyReason-shellPrivilegeDenied "sudo"]
+      nil)))
