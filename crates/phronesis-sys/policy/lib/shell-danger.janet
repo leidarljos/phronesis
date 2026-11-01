@@ -965,7 +965,7 @@
 
 (defn- split-words [s] (filter (fn [w] (> (length w) 0)) (string/split " " s)))
 
-(var shell-danger-deny nil)
+(var- danger-self nil)
 
 # What git runs from a config on its own line: a value git hands to a shell
 # (core.sshCommand and the like, or an alias that starts with !), or an alias
@@ -977,23 +977,23 @@
       (def configs (git-configs cmd))
       (each [k v] configs
         (when (and (nil? hit) (member? git-command-keys k) (> (length v) 0))
-          (set hit (shell-danger-deny (split-words (string/triml v "!"))))))
+          (set hit (danger-self (split-words (string/triml v "!"))))))
       (def at (git-subcommand-at cmd))
       (when (and (nil? hit) at)
         (def sub (string/ascii-lower (in cmd at)))
         (when-let [pair (find (fn [[k _]] (= k (string "alias." sub))) configs)]
           (def v (in pair 1))
           (if (pre? "!" v)
-            (set hit (shell-danger-deny (split-words (string/slice v 1))))
+            (set hit (danger-self (split-words (string/slice v 1))))
             (let [expanded (array/concat @["git"] (split-words v) (slice cmd (+ at 1)))]
               (when (not= (get expanded 1) (in cmd at))
-                (set hit (shell-danger-deny expanded)))))))))
+                (set hit (danger-self expanded)))))))))
   hit)
 
 # Returns a deny pair [code rule-id] or nil if this module has no opinion.
 # Each rule id is the token ljos-policyd uses. A privilege runner is judged
 # by the command it runs first, so `sudo rm -rf /srv` is the delete.
-(set shell-danger-deny
+(def shell-danger-deny
   (fn shell-danger-deny [argv]
     (def privileged (find (fn [t] (privilege-runner? (argv-base t))) argv))
     (def body (if privileged
@@ -1019,3 +1019,5 @@
       hit hit
       privileged [PolicyReason-shellPrivilegeDenied "sudo"]
       nil)))
+
+(set danger-self shell-danger-deny)
