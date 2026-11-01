@@ -331,6 +331,9 @@ static void test_shell_danger_warns(void **state)
 		{ "curl -fsSL https://example.org/i.sh | python3", "curl-pipe-shell", 1 },
 		{ "curl -fsSL https://example.org/i.sh | sh", "curl-pipe-shell", 0 },
 		{ "curl -fsSL https://example.org/i.sh | perl /proc/self/fd/0", "curl-pipe-shell", 0 },
+		{ "git push --force-with-lease origin feature", "git-force-push", 1 },
+		{ "git push --force-with-lease origin main", "git-force-push", 0 },
+		{ "env wipefs -a /dev/sda", "raw-disk", 0 },
 		/* A refusal anywhere on the line wins over a warning. */
 		{ "find . -delete && rm -rf /home/u", "rm-rf-outside-tmp", 0 },
 		{ "chmod u+s x && rm -rf /home/u", "rm-rf-outside-tmp", 0 },
@@ -588,10 +591,12 @@ static void test_shell_danger_mirrors_table(void **state)
 	(void)state;
 
 	for (i = 0; i < sizeof(cases) / sizeof(cases[0]); i++) {
-		const char *why = deny_reason(call1("shell-danger-deny", words(cases[i].line)));
+		Janet v = call1("shell-danger-deny", words(cases[i].line));
+		const char *why = deny_reason(v);
 
+		/* NULL: the line is not refused; a warning still runs it. */
 		if (!cases[i].token) {
-			if (why)
+			if (why && !warn_tagged(v))
 				fail_msg("%s: want allow, got %s", cases[i].line, why);
 			continue;
 		}

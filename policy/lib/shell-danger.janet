@@ -682,7 +682,8 @@
 
 (defn raw-disk? [argv]
   (or (writes-block-device? argv)
-      (truthy? (find raw-disk-command? (commands argv)))))
+      (truthy? (find (fn [c] (when-let [at (command-at c)] (raw-disk-command? (slice c at))))
+                     (commands argv)))))
 
 # Paths a recursive mode or owner change must not start from: the root, a
 # home directory, the system trees.
@@ -848,6 +849,16 @@
 # --hard, clean -f, stash clear, branch -D, reflog expire to now or delete,
 # filter-branch, update-ref -d, worktree remove --force, and checkout or
 # restore of the whole tree.
+# A `--force-with-lease` push of any kind on the line. One onto a branch
+# lease-push-guarded? names refuses; any other warns.
+(defn- lease-push-any? [argv]
+  (truthy? (find (fn [cmd]
+                   (and (= (argv-base (in cmd 0)) "git")
+                        (let [at (git-subcommand-at cmd)]
+                          (and at (= (in cmd at) "push")
+                               (find lease-flag? (slice cmd (+ at 1)))))))
+                 (commands argv))))
+
 (defn git-dangerous [cmd]
   (def at (git-subcommand-at cmd))
   (def sub (when at (in cmd at)))
@@ -1054,6 +1065,7 @@
        (fn [] (find-delete-id body))
        (fn [] (git-config-hit body))
        (fn [] (when-let [id (git-dangerous? body)] [PolicyReason-shellGitDangerous id]))
+       (fn [] (when (lease-push-any? body) [PolicyReason-shellGitDangerous "git-force-push" :warn]))
        (fn [] (when (decoded-exec? body) [PolicyReason-shellRemoteExec "decoded-pipe-shell"]))
        (fn [] (when (find setuid-mode? (commands body))
                 [PolicyReason-shellDangerousRunner "chmod-setuid"]))
