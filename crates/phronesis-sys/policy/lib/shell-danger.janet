@@ -151,7 +151,11 @@
   out)
 
 # Script paths that name the stage's own stdin.
-(def- stdin-paths ["/dev/stdin" "/dev/fd/0" "/proc/self/fd/0"])
+(def- stdin-paths ["/dev/stdin" "/dev/fd/0" "/proc/self/fd/0" "php://stdin"])
+
+# Python options that take the next word as their value, so it is not the
+# program: -W ignore, -X utf8.
+(def- python-valued ["-W" "-X"])
 
 # A pipeline stage that runs what it reads on stdin as a program: a shell,
 # or an interpreter called with no program of its own (python3, perl -,
@@ -164,7 +168,19 @@
     (def inline (stdin-interpreter b))
     (or (member? shells b)
         (and inline
-             (let [pw (program-word (slice stage (+ at 1)) inline)]
+             (let [args (slice stage (+ at 1))
+                   args (if (pre? "python" b)
+                          (do
+                            (def kept @[])
+                            (var skip false)
+                            (each a args
+                              (cond
+                                skip (set skip false)
+                                (member? python-valued a) (set skip true)
+                                (array/push kept a)))
+                            kept)
+                          args)
+                   pw (program-word args inline)]
                (or (nil? pw)
                    (and (not (in pw 1)) (member? stdin-paths (in pw 0)))))))))
 
@@ -879,6 +895,7 @@
     (and (= sub "reset") (has "--hard")) "git-reset-hard"
     (and (= sub "clean") (or (short "f") (has "--force"))) "git-clean-force"
     (and (= sub "stash") (= first-word "clear")) "git-stash-clear"
+    (and (= sub "stash") (= first-word "drop")) "git-stash-drop"
     (and (= sub "branch") (or (short "D") (and (has "--delete") (or (has "--force") (short "f")))))
     "git-branch-force-delete"
     (and (= sub "reflog")
@@ -1064,7 +1081,11 @@
                 [PolicyReason-shellDangerousRunner "rm-rf-outside-tmp"]))
        (fn [] (find-delete-id body))
        (fn [] (git-config-hit body))
-       (fn [] (when-let [id (git-dangerous? body)] [PolicyReason-shellGitDangerous id]))
+       # A dropped stash entry is still in the reflog: it warns.
+       (fn [] (when-let [id (git-dangerous? body)]
+                (if (= id "git-stash-drop")
+                  [PolicyReason-shellGitDangerous id :warn]
+                  [PolicyReason-shellGitDangerous id])))
        (fn [] (when (lease-push-any? body) [PolicyReason-shellGitDangerous "git-force-push" :warn]))
        (fn [] (when (decoded-exec? body) [PolicyReason-shellRemoteExec "decoded-pipe-shell"]))
        (fn [] (when (find setuid-mode? (commands body))
