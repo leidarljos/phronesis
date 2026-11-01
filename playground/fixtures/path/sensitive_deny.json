@@ -1,0 +1,9 @@
+{
+  "id": "sensitive_deny",
+  "description": "Read of credential path under workspace → pathSensitiveDeny (28).",
+  "method": "checkPath",
+  "agentId": { "hi": 1, "lo": 2 },
+  "action": "read",
+  "path": "/ws/.env",
+  "expect": { "decision": 0, "code": 28 }
+}

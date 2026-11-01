@@ -1,0 +1,67 @@
+/* SPDX-License-Identifier: MIT */
+#ifndef PHRONESIS_POLICY_JANET_H
+#define PHRONESIS_POLICY_JANET_H
+
+#include <capnp_c.h>
+#include <stddef.h>
+#include <stdint.h>
+
+/* List(Text) is a capn_ptr under c-capnproto 0.1. The pinned wrap's
+ * capnpc-c emits a capn_ptr_list and keeps that pointer in .p. Meson
+ * defines PHRONESIS_ARGV_LIST when capnpc-c comes from that wrap, and
+ * when an external header's compile probe sees capn_ptr_list. */
+#ifdef PHRONESIS_ARGV_LIST
+static inline capn_ptr *phronesis_argv_slot_list(capn_ptr_list *list)
+{
+	return &list->p;
+}
+#define phronesis_argv_slot(field) phronesis_argv_slot_list(&(field))
+#else
+#define phronesis_argv_slot(field) (&(field))
+/**
+ * Compile the pack at @a path (opened under the pack root) and write its
+ * image to @a out_path, for load_one_pack to read in place of compiling.
+ * The build runs this once per installed entry pack.
+ * Returns 0 on success, -1 on failure.
+ */
+int phronesis_pack_image_write(const char *path, const char *out_path);
+
+#endif
+
+/**
+ * Shell content pack path.
+ * Seals Cap'n ShellView, runs Janet pack, returns Cap'n PolicyDecision bytes
+ * (malloc). Failures are still Cap'n PolicyDecision deny + PolicyReason code.
+ * Callers free *out. Prefer passthrough of pack output as method result.
+ */
+void phronesis_shell_pack(const char *workspace, const char *cwd,
+			    capn_ptr argv, uint8_t **out, size_t *out_len);
+
+/**
+ * Audio / voice gate pack path (meta #97 Track E).
+ * Passes Cap'n AudioCheck message bytes to Janet @c audio-check; returns
+ * Cap'n PolicyDecision bytes (malloc). Failures are deny + pack PolicyReason.
+ * Callers free *out. Product table lives in the pack (voice-law); host may
+ * re-stamp agentId and apply DENY_ALL / AUDIO_ALLOW before calling.
+ */
+void phronesis_audio_pack(const uint8_t *in, size_t in_len, uint8_t **out,
+			    size_t *out_len);
+
+/**
+ * Unload any loaded packs and load @a path (colon-separated absolute
+ * .janet files and/or directories of top-level *.janet packs). Each
+ * file is opened under the pack root (install policy directory or
+ * PHRONESIS_PACK_ROOT; not the filesystem root "/", "//", "/.", "///").
+ * Returns 0 on success, -1 path invalid, -2 load failed.
+ */
+int phronesis_shell_pack_reload_internal(const char *path);
+
+/**
+ * Compile the pack at @a path (opened under the pack root) and write its
+ * image to @a out_path, for load_one_pack to read in place of compiling.
+ * The build runs this once per installed entry pack.
+ * Returns 0 on success, -1 on failure.
+ */
+int phronesis_pack_image_write(const char *path, const char *out_path);
+
+#endif

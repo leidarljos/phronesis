@@ -1,0 +1,12 @@
+{
+  "id": "missing_pep723_deny",
+  "description": "uv run of .py without PEP 723 block → pythonMissingPep723 (19).",
+  "method": "checkShell",
+  "agentId": { "hi": 1, "lo": 2 },
+  "cwd": "/ws",
+  "argv": ["uv", "run", "bare.py"],
+  "memfs": {
+    "/ws/bare.py": "print(1)\n"
+  },
+  "expect": { "decision": 0, "code": 19 }
+}

@@ -1,0 +1,9 @@
+{
+  "id": "under_workspace_allow",
+  "description": "fs read under agent workspace → pathUnderWorkspaceAllow (3).",
+  "method": "checkPath",
+  "agentId": { "hi": 1, "lo": 2 },
+  "action": "read",
+  "path": "/ws/ok.py",
+  "expect": { "decision": 1, "code": 3 }
+}

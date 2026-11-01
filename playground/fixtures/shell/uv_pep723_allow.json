@@ -1,0 +1,13 @@
+{
+  "id": "uv_pep723_allow",
+  "description": "uv run of PEP 723 script under workspace → shellExecAllow (20).",
+  "method": "checkShell",
+  "agentId": { "hi": 1, "lo": 2 },
+  "cwd": "/ws",
+  "argv": ["uv", "run", "--script", "ok.py"],
+  "memfs": {
+    "/ws/ok.py": "# /// script\n# requires-python = \">=3.11\"\n# ///\nprint(1)\n"
+  },
+  "expect": { "decision": 1, "code": 20 },
+  "bin": "shell_check_uv_run.bin"
+}

@@ -1,0 +1,29 @@
+[package]
+name = "phronesis-sys"
+version = "0.2.9"
+edition = "2021"
+rust-version = "1.85"
+license = "MIT"
+description = "phronesis, the in-process shell policy library, compiled from vendored C with its Janet pack embedded"
+repository = "https://github.com/leidarljos/phronesis"
+readme = "README.md"
+links = "phronesis"
+build = "build.rs"
+include = [
+    "Cargo.toml",
+    "README.md",
+    "build.rs",
+    "src/**",
+    "csrc/**",
+    "policy/**",
+    "vendor/**",
+]
+
+[dependencies]
+libc = "0.2"
+
+[build-dependencies]
+cc = "1"
+
+[dev-dependencies]
+tempfile = "3"

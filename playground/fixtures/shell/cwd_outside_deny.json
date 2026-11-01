@@ -1,0 +1,9 @@
+{
+  "id": "cwd_outside_deny",
+  "description": "Shell path-plane: cwd outside agent workspace → pathOutsideWorkspace (2).",
+  "method": "checkShell",
+  "agentId": { "hi": 1, "lo": 2 },
+  "cwd": "/etc",
+  "argv": ["true"],
+  "expect": { "decision": 0, "code": 2 }
+}

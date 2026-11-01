@@ -1,0 +1,9 @@
+[wrap-git]
+directory = c-capnproto
+url = https://github.com/HaoZeke/c-capnproto.git
+revision = f69e6e4bf5201054b110bff249c263edb55e368b
+depth = 1
+
+[provide]
+c-capnproto = libcapnp_dep
+dependency_names = c-capnproto

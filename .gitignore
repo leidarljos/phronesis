@@ -1,0 +1,49 @@
+/build/
+/build-cov/
+/build-mull/
+/coverage-out/
+/docs/build/
+*.o
+*.gcov
+*.gcda
+*.gcno
+.DS_Store
+__pycache__/
+*.pyc
+.venv/
+.pixi/
+.cache/
+
+# Secrets / credentials (basename-deny classes — match host-tools ci-kit/secrets)
+.env
+.env.*
+*.pem
+id_rsa
+id_ecdsa
+id_ed25519
+credentials.json
+*serviceaccount*.json
+*service-account*.json
+*service_account*.json
+
+
+# meson wrap checkout / local symlink (not vendored sources)
+/subprojects/capnp-janet/
+/subprojects/c-capnproto/
+/subprojects/host-schema/
+/subprojects/packagecache/
+/subprojects/.wraplock
+
+# Playground build trees (dist-wasm tracked for Pages; do not list it here)
+/playground/wasm/memfs/
+/playground/wasm/deps/
+/playground/wasm/gen/
+/build-playground/
+/playground/astro/node_modules/
+/playground/astro/dist/
+# Copied by predev/prebuild (source of truth: dist-wasm + fixtures/)
+/playground/astro/public/wasm/
+/playground/astro/public/fixtures/
+/playground/astro/.astro/
+/playground/astro/mr-shots/
+/crates/phronesis-sys/target/

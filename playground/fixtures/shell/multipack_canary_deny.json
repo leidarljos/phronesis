@@ -1,0 +1,18 @@
+{
+  "id": "multipack_canary_deny",
+  "description": "Second pack in packs.d denies argv containing multipack-demo (compose deny over product allow path). Requires multi-pack default spec.",
+  "method": "checkShell",
+  "agentId": {
+    "hi": 1,
+    "lo": 2
+  },
+  "cwd": "/ws",
+  "argv": [
+    "echo",
+    "multipack-demo"
+  ],
+  "expect": {
+    "decision": 0,
+    "code": 23
+  }
+}

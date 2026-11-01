@@ -1,0 +1,241 @@
+# phronesis
+
+In-process policy library for a multi-agent seat. Callers link `libphronesis`
+and send Cap'n messages into the typed C entry points (`phronesis_check_shell`,
+`phronesis_check_path`, `phronesis_check_seat`, …). Every check returns
+a Cap'n `PolicyDecision` (`deny` / `allow` / `prompt`) plus a `PolicyReason`
+code. Protocol failures deny.
+
+| | |
+|--|--|
+| **Language** | Cap'n interface: `schema/policy.capnp` + `schema/util.capnp` in this tree |
+| **Product API** | typed C entry points in `include/phronesis/supervisor.h` |
+| **C helpers** | `include/phronesis/supervisor.h` |
+| **License** | MIT (`LICENSE`); third-party notes in `NOTICE` |
+| **Migration** | [`MIGRATION.md`](MIGRATION.md) |
+
+## Build (no private remotes)
+
+Needs: `meson` ≥ 1.3, `ninja`, `pkg-config`, `capnp` (compiler). The unit
+tests also need `cmocka`; without it they are skipped (`-Dtests=disabled`
+skips them on purpose). Libraries install to `$prefix/lib` unless you pass
+`--libdir`.
+If `c-capnproto` / `capnpc-c` are not installed, Meson fetches
+https://github.com/HaoZeke/c-capnproto. `capnp-janet` is the same via wrap.
+
+```bash
+meson setup build
+meson compile -C build
+meson test -C build --print-errorlogs
+```
+
+Or `just meson-test`. Embedders find the interface at
+`pkg-config --variable=schemadir phronesis` after install, the schema C the
+library was built with (`policy.capnp.c`, `util.capnp.c` and their headers)
+at `--variable=cdir`, and the packs at `--variable=packdir`. Static archives
+(`libphronesis.a`, `libcapnp_janet.a`, `libcapnp_c.a`) install beside the
+shared libraries, so an embedder can link with no runtime path.
+
+### Packs
+
+`policy/shell.janet` is the default law: privilege, a download or decoded
+script handed to a shell, raw disks, setuid and sweeping recursive modes,
+recursive deletes and `find -delete` outside `/tmp`, git calls that drop
+work, and secrets in argv. It matches ljos-policyd's built-in table, the
+allowances included: a lease push onto a branch other than `main`,
+`master` or `develop`, a recursive delete of a build output
+directory in the tree (`target`, `node_modules`, `build`, ...) or of a
+top-level scratch directory (`tmp`, `.tmp`, `temp`), a `find -delete` of
+files a tool writes again (`*.pyc`, `.DS_Store`, `*.o`, ...) inside the
+tree, and `mkfs` or `dd` on an image file.
+
+`policy/seat.janet` is opt-in. It adds a seat's package and Python rules to
+the default law: Python runs through `uv run` with PEP 723 metadata, no
+`python -c`, and pixi in place of `pip`, `npm`, `yarn`, `pnpm`, `bun` and
+`poetry`. Load it in place of `shell.janet`, or beside it:
+`PHRONESIS_JANET_PACK=$prefix/share/phronesis/policy/seat.janet`.
+
+`pixi install --locked` still uses a private conda channel for
+`c-capnproto`. The Meson path above is the standalone door.
+
+Short credential prefixes must begin at a word boundary and have a payload.
+Ordinary paths containing the same letters inside a word pass the shell check.
+Credentials in headers, quoted values and path components remain refused.
+
+## Cap'n product API (`interface Policyd`)
+
+Public interface: `schema/policy.capnp` + `schema/util.capnp`. Cap'n is **always**
+linked. One method per domain (no ok|err unions, no CheckBody union). Params
+message in / result message out — zero-copy mappable segments across agent,
+sessiond, shell.
+
+| Method | Params root | Result root |
+|--------|-------------|-------------|
+| `status` | — | `PolicydStatus` |
+| `checkSeat` | `SeatCheck` | `PolicyDecision` |
+| `checkModel` | `ModelCheck` | `PolicyDecision` |
+| `checkPath` | `PathCheck` | `PolicyDecision` |
+| `checkShell` | `ShellCheck` | `PolicyDecision` |
+| `checkRisk` | `RiskCheck` | `PolicyDecision` |
+| `checkAudio` | `AudioCheck` | `PolicyDecision` |
+| `admitSeat` / `admitModel` | `AdmitSeat` / `AdmitModel` | `PolicyDecision` |
+| `agentStatus` | `AgentQuery` | `AgentStatus` |
+| `reloadShellPack` | `ReloadShellPack` | `PolicyDecision` |
+
+- **Identity**: `Util.AgentId` bits only.
+- **Shell**: `ShellCheck.argv : List(Text)` (spawn argv).
+- **Protocol failure**: `PolicyDecision.decision = deny` (fail closed).
+- C entry points are `void` and always write a Cap'n result message (or NULL on OOM).
+
+```c
+#include <phronesis/supervisor.h>
+
+/* in: Cap'n ShellCheck root; out: Cap'n PolicyDecision root */
+uint8_t *out = NULL;
+size_t out_len = 0;
+phronesis_check_shell(sup, shell_msg, shell_len, &out, &out_len);
+/* decode PolicyDecision from out; free(out) */
+```
+
+`phronesis_policy_check` is CLI string bridge only.
+
+### Decision table (by method)
+
+| Method | allow when | deny / prompt |
+|--------|------------|---------------|
+| checkSeat | publishRun / readRun / listRuns / listEvents **and** agent slot is running | null AgentId → deny (`invalidMessage`); unknown / non-running slot → deny (`toolsDefaultDeny`); unknown action → deny |
+| checkModel | agent slot is running | null AgentId → deny (`invalidMessage`); unknown / non-running slot → deny (`toolsDefaultDeny`) |
+| checkPath | read/write under workspace | outside → deny; sensitive path (including delete/exec) → deny; other delete → prompt |
+| checkShell | cwd under workspace; content pack: python via uv+PEP723; deny sudo/curl\|sh/banned PMs/dangerous git | bare python / missing PEP 723 / danger runners → deny |
+| checkRisk | — | secretExport → deny; other risk → prompt |
+| checkAudio | `PHRONESIS_AUDIO_ALLOW` fixture (all `AudioAction`; CI/dogfood only — leave unset in production) | product pack (`audio-check`): micOpen/alwaysListen/networkStt/inject **deny**; listenArm **prompt**; unknown **deny**. Host: `DENY_ALL` wins over fixture. No PCM. meta #97 |
+
+Lexical paths: absolute only; reject `//`, `.`, `..`. No `realpath`.
+
+`PHRONESIS_DENY_ALL` forces deny on the CLI/string eval path and on every Cap'n `PolicyDecision` entry (`checkSeat` / `checkModel` / `checkPath` / `checkShell` / `checkRisk` / `checkAudio` / `reloadShellPack`). It wins over `PHRONESIS_AUDIO_ALLOW`.
+
+## Where this sits
+
+Policy engines divide by where they run. The Open Policy Agent
+([openpolicyagent.org](https://www.openpolicyagent.org)) is a sidecar
+or a server. It evaluates Rego over JSON. This library is in-process
+C. Cap'n Proto carries the input and the output. It runs no server and
+reads no JSON document. A protocol failure denies. Cedar
+([cedarpolicy.com](https://www.cedarpolicy.com)) is a typed
+authorization language with a verified core. The packs in this tree
+are Janet, over argv and paths. Across packs, a deny outranks a
+prompt, and a prompt outranks an allow. `pledge` and `unveil`
+([pledge(2)](https://man.openbsd.org/pledge)), and seccomp-bpf,
+restrict the calls a process may make. This library judges the words
+before a process exists. The kernel restriction follows that
+judgement.
+
+## Build / test / coverage (pixi only)
+
+```bash
+# once: https://pixi.sh
+pixi install --locked
+pixi run env-info
+pixi run test                 # meson compile + cmocka (incl. Cap'n FFI)
+pixi run coverage             # Meson -Db_coverage + gcovr → coverage-out/
+# CI: coverage:pixi job runs the same `pixi run coverage` and requires
+# coverage-out/coverage.xml + coverage.txt (no optional path).
+```
+
+Do **not** hand-edit `pixi.lock`. Refresh with `pixi lock` on a builder that has network.
+
+### Mutation testing (Mull)
+
+Optional. Needs **Clang** and a matching **Mull** install (`mull-runner-N` +
+`mull-ir-frontend-N` from [Mull packages](https://mull.readthedocs.io/en/latest/Installation.html)).
+Config: [`mull.yml`](mull.yml) (scopes mutants to `src/policy.c` and
+`src/capnp_api.c`).
+
+```bash
+pixi install --locked
+export PATH="$PWD/.pixi/envs/ci/bin:$PATH"
+export PKG_CONFIG_PATH="$PWD/.pixi/envs/ci/lib/pkgconfig"
+export LD_LIBRARY_PATH="$PWD/.pixi/envs/ci/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+export CC=clang-19   # must be real Clang; not conda gcc from `pixi run`
+meson setup build-mull -Dmutation=true -Dbuildtype=debug
+meson compile -C build-mull mutation
+# report: build-mull/mull-report/
+```
+
+Optional: `-Dmull_pass_plugin=/path/to/mull-ir-frontend-19`.
+
+The Meson `mutation` target passes `--allow-surviving` so the report is always
+produced without failing the build on known survivors. To gate later: drop that
+flag or set Mull’s `--mutation-score-threshold`.
+
+### Continuous integration
+
+GitHub job **`meson-test`** builds, runs `meson test`, and uploads `libphronesis.a`
+plus `schema/SCHEMA_PIN`, `policy.capnp`, and `util.capnp` on every run. Pushes
+to `main` refresh the `snapshot` pre-release. A tag `vX.Y.Z` that matches
+`VERSION` publishes a versioned GitHub release.
+
+Job **`mutation:mull`**: Ubuntu 24.04, system Clang + Mull, pixi for deps only
+(`CC=/usr/bin/clang-19`). Path-triggered on policy/Cap'n changes and on
+schedules. Prints the IDE survivor list at the end of the job log; full report
+under artifact `build-mull/mull-report/`.
+
+
+## Layout law
+
+Root **README.md only**. No `docs/`, no satellite handbooks, no Makefile. meson→just→pixi.
+
+## License
+
+MIT for first-party code. See `LICENSE` and `NOTICE`.
+
+## Deny-all and audio fixture (tests / lockdown)
+
+Set `PHRONESIS_DENY_ALL=1` (or `true`/`yes`) to force deny on the CLI/string `policy_check` path and on every Cap'n `PolicyDecision` entry. Used to prove agent/sessiond fail closed under a hard seat. Unset for normal allowlists.
+
+Pack reload opens files under one pack root (the install policy directory, or `PHRONESIS_PACK_ROOT`). That root cannot be the filesystem root (`/`, `//`, `/.`, `///`). Each file is opened beneath that directory (`openat2` `RESOLVE_BENEATH` on Linux, `openat` + `O_NOFOLLOW` walk elsewhere). Reload and `PHRONESIS_JANET_PACK` accept a colon list of files and directories. Each segment must sit under a trusted prefix (`/usr/local/share/phronesis`, `/usr/share/phronesis`, `$PHRONESIS_PREFIX/share/phronesis`, the compile-time default pack directory, or `PHRONESIS_PACK_ROOT`) unless `PHRONESIS_DEV_PACK=1`. A rejected reload leaves the already-loaded pack in place. Directory children are opened beneath that root before teardown, so a symlink in the directory cannot drop law.
+
+Set `PHRONESIS_AUDIO_ALLOW=1` only in CI/dogfood to allow all `AudioAction` on `checkAudio`. Leave unset in production images. `DENY_ALL` still wins when both are set.
+
+### Cap'n interface (Meson)
+
+This library compiles `schema/policy.capnp` and `schema/util.capnp`. Those
+files are the public interface. Seat `session.capnp` is not part of this
+package.
+
+```bash
+meson setup build
+meson compile -C build
+meson test -C build
+```
+
+Optional: copy newer files from a sibling schema tree with `just sync-schema`.
+Optional: `-Dschema_dir=/path` to point codegen at another directory that
+contains both files.
+
+`scripts/gen-capnp-c.sh` reads both files from one directory (no mixed
+sources). Staged IDL installs under `$prefix/share/phronesis/`.
+
+A stranger with `meson`, `ninja`, `capnp`, `capnpc-c`, `c-capnproto`, and
+`cmocka` can build from this tree without private remotes. `pixi install
+--locked` still needs the current channel list (private `c-capnproto`
+package) until that lock is rebuilt on conda-forge.
+
+## Playground (WASM, multi-pack; not product)
+
+Interactive probe for Cap'n `checkShell` / path / seat / risk with bit-identical
+WASM TCB, optional TRACE, and the **same multi-pack load path as product**:
+
+- Default `PHRONESIS_JANET_PACK=/policy/shell.janet:/policy/packs.d`
+- Composition deny > prompt > allow across packs that define the entry
+- Author mode reloads a colon list (not a single file only)
+
+```bash
+# Prebuilt: playground/dist-wasm/ (parity/site need no emsdk)
+pixi run playground-parity
+pixi run playground-build
+# Full WASM rebuild: emcc on rg.terra only
+pixi run playground-wasm
+```
+
+Details: [`playground/README.md`](playground/README.md).

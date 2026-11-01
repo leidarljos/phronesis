@@ -1,0 +1,34 @@
+name: publish
+
+# Publishes crates/phronesis-sys to crates.io on a version tag, through
+# crates.io trusted publishing. The first version of a crate cannot go up
+# this way: crates.io needs one release published with a person's token
+# before a trusted publisher can be set for it, so the first publish is
+# `cargo publish --no-verify` run from the crate directory by the person,
+# and this workflow carries every tag after that.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    defaults:
+      run:
+        working-directory: crates/phronesis-sys
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: rust-lang/crates-io-auth-action@v1.0.5
+        id: auth
+      - name: Publish phronesis-sys
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
+        run: cargo publish --locked --no-verify

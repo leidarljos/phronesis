@@ -1,0 +1,60 @@
+# Library + Cap'n FFI only (no optional nng serve host features).
+
+# Instrument with Mull (Clang pass plugin) and expose `meson compile mutation`.
+# Requires Clang as CC and a matching mull-runner / mull-ir-frontend install.
+option(
+  'mutation',
+  type: 'boolean',
+  value: false,
+  description: 'Build with Mull IR frontend; enable mutation run target',
+)
+
+# Path to mull-ir-frontend-N shared object. Empty → search common install paths
+# from the discovered mull-runner version suffix.
+option(
+  'mull_pass_plugin',
+  type: 'string',
+  value: '',
+  description: 'Path to mull-ir-frontend pass plugin (.so)',
+)
+
+option(
+  'schema_dir',
+  type: 'string',
+  value: '',
+  description: 'Override path to policy.capnp + util.capnp (empty = schema/)',
+)
+
+# Playground WASM is built by playground/wasm/build.sh (direct emcc), not the
+# product default meson path. Options reserved/documented only.
+option(
+  'playground',
+  type: 'boolean',
+  value: false,
+  description: 'Reserved: enable playground WASM targets (use build.sh for v1)',
+)
+
+option(
+  'playground_trace',
+  type: 'boolean',
+  value: false,
+  description: 'Reserved: extra playground tracing (no product effect when false)',
+)
+
+# Absolute path to capnp-janet's janet_mod.c when using a system package.
+# Empty: use subprojects/capnp-janet when present, else pkg-config variable
+# "janet_mod" from capnp-janet.pc (distros that ship the module source).
+option(
+  'capnp_janet_mod',
+  type: 'string',
+  value: '',
+  description: 'Path to capnp-janet janet_mod.c (system package; optional if pkg-config janet_mod is set)',
+)
+
+# Unit tests need cmocka. auto: build them when cmocka is found.
+option(
+  'tests',
+  type: 'feature',
+  value: 'auto',
+  description: 'Build and register the cmocka unit tests',
+)
