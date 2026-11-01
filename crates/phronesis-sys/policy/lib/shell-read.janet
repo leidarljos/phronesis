@@ -320,7 +320,7 @@
   (def stem (or (get (peg/match ~(<- (any (if-not (range "09") 1))) b) 0) b))
   (get inline-flags stem))
 
-(defn- inline-program [run]
+(defn inline-program [run]
   (when-let [flag (inline-flag (in run 0))]
     (def at (find-index
               (fn [a]
