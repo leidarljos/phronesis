@@ -30,6 +30,8 @@
 
 (defn- rd-pre? [p s] (string/has-prefix? p s))
 
+(defn- rd-member? [xs x] (truthy? (find (fn [y] (= y x)) xs)))
+
 (defn- rd-base [tok]
   (def parts (string/split "/" tok))
   (if (empty? parts) tok (last parts)))
@@ -61,7 +63,7 @@
   (if (ljos-config-file? low)
     false
     (let [parts (string/split "/" low)]
-      (or (truthy? (find |(member? read-credential-parts $) parts))
+      (or (truthy? (find |(rd-member? read-credential-parts $) parts))
           (truthy? (find |(rd-contains? low $) read-credential-paths))
           (string/has-suffix? ".config/ljos" low)
           (and (rd-pre? "/proc/" low) (string/has-suffix? "/environ" low))))))
@@ -80,7 +82,7 @@
 (defn- rd-commands [argv]
   (def out @[@[]])
   (each t argv
-    (if (member? [";" "&&" "||" "|" "&"] t)
+    (if (rd-member? [";" "&&" "||" "|" "&"] t)
       (array/push out @[])
       (let [closes (string/has-suffix? ";" t)
             tok (if closes (string/slice t 0 -2) t)]
@@ -94,7 +96,7 @@
 # wrappers that run the rest of the line, with their flags.
 (defn- rd-head-at [cmd]
   (var at (find-index |(and (not (rd-assignment? $)) (not (rd-redirection? $))) cmd))
-  (while (and at (member? rd-wrappers (rd-base (in cmd at))))
+  (while (and at (rd-member? rd-wrappers (rd-base (in cmd at))))
     (def wrapper (rd-base (in cmd at)))
     (++ at)
     (while (and (< at (length cmd))
@@ -107,10 +109,10 @@
 
 (defn- wc-count-flag? [w]
   (cond
-    (member? ["--bytes" "--lines" "--chars" "--words"] w) true
+    (rd-member? ["--bytes" "--lines" "--chars" "--words"] w) true
     (rd-pre? "--" w) false
     (and (rd-pre? "-" w) (> (length w) 1))
-    (all |(member? [(chr "c") (chr "l") (chr "m") (chr "w")] $) (string/slice w 1))
+    (all |(rd-member? [(chr "c") (chr "l") (chr "m") (chr "w")] $) (string/slice w 1))
     false))
 
 (defn- wc-count-command? [cmd]
@@ -174,12 +176,12 @@
       skip (set skip false)
       (rd-redirection? w) nil
       (let [takes (case head
-                    "cp" (member? ["-t" "--target-directory"] w)
-                    "install" (member? ["-t" "--target-directory"] w)
-                    "rsync" (member? ["-t" "--target-directory"] w)
-                    "scp" (member? ["-t" "--target-directory"] w)
-                    "tar" (member? ["-C" "--directory"] w)
-                    "sort" (member? ["-o" "--output"] w)
+                    "cp" (rd-member? ["-t" "--target-directory"] w)
+                    "install" (rd-member? ["-t" "--target-directory"] w)
+                    "rsync" (rd-member? ["-t" "--target-directory"] w)
+                    "scp" (rd-member? ["-t" "--target-directory"] w)
+                    "tar" (rd-member? ["-C" "--directory"] w)
+                    "sort" (rd-member? ["-o" "--output"] w)
                     false)]
         takes) (set skip true)
       (let [write-opt (or (rd-pre? "--target-directory=" w)
@@ -188,7 +190,7 @@
                           (and (= head "dd") (not (rd-pre? "if=" w))))
             after-redir (and (> i 0) (rd-redirection? (in args (- i 1))))]
         (unless (or write-opt after-redir) (array/push out w)))))
-  (when (and (member? ["cp" "install" "rsync" "scp"] head)
+  (when (and (rd-member? ["cp" "install" "rsync" "scp"] head)
              (not (find |(or (= $ "-t") (rd-pre? "--target-directory" $)) args)))
     (var last-at nil)
     (eachp [j w] out (unless (rd-pre? "-" w) (set last-at j)))
@@ -217,11 +219,11 @@
   (var i 0)
   (while (< i (length args))
     (def a (in args i))
-    (if (member? flags a)
+    (if (rd-member? flags a)
       (do
         (when (< (+ i 1) (length args))
           (def v (in args (+ i 1)))
-          (if (or (= head "wget") (member? ["-T" "--upload-file"] a))
+          (if (or (= head "wget") (rd-member? ["-T" "--upload-file"] a))
             (array/push out (string/triml v "@"))
             (when-let [p (file-upload v)] (array/push out p))))
         (+= i 2))
@@ -271,7 +273,7 @@
     (when at
       (def head (rd-base (in cmd at)))
       (def args (slice cmd (+ at 1)))
-      (when (member? file-readers head)
+      (when (rd-member? file-readers head)
         (when-let [p (find credential-path? (read-sources head args))]
           (cond
             (and counting (= head "wc")) (array/push counts [head p])
@@ -280,7 +282,7 @@
               (array/push prefixes [head p (in prefix 1)])
               (note-deny head p))
             (note-deny head p))))
-      (when (member? ["curl" "wget"] head)
+      (when (rd-member? ["curl" "wget"] head)
         (when-let [p (find credential-path? (upload-files head args))]
           (note-deny head p)))))
   (def same (fn [a b] (= (rd-unquote a) (rd-unquote b))))

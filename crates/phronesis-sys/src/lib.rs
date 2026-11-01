@@ -432,14 +432,9 @@ mod tests {
             .check_shell(dir.path(), &words("git restore ."))
             .unwrap();
         assert_eq!(discard.decision, Decision::Deny, "{discard:?}");
-    }
-
-    /// A read of a credential store is refused with its rule id first, and
-    /// a count that prints no content is named apart from a read.
-    #[test]
-    fn the_embedded_pack_refuses_a_credential_read() {
-        let dir = tempfile::tempdir().unwrap();
-        let mut sup = seat(dir.path(), Entry::Shell);
+        // A read of a credential store is refused with its rule id first,
+        // and a count that prints no content is named apart from a read.
+        // Same test: the Janet runtime lives on the thread that loaded it.
         let read = sup
             .check_shell(dir.path(), &words("cat /home/u/.ssh/id_rsa"))
             .unwrap();
