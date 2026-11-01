@@ -10,7 +10,7 @@
 
 (def- fetchers ["curl" "wget" "fetch"])
 (def- shells ["sh" "bash" "zsh" "dash" "ksh" "fish"])
-(def- wrappers ["sudo" "doas" "env" "nohup" "time" "exec" "command" "nice"])
+(def- wrappers ["sudo" "doas" "env" "nohup" "time" "exec" "command" "nice" "timeout"])
 (def- decoders ["base64" "base32" "basenc" "xxd" "openssl" "uudecode" "gunzip"
                 "zcat" "gzip" "bzcat" "bunzip2" "xzcat" "unxz" "zstdcat" "zstd"
                 "rev"])
@@ -46,13 +46,27 @@
 
 # Where a pipeline stage's command word sits: its first word past
 # wrappers, assignments and flags.
+# `timeout 30` and `timeout 1.5m`: the duration is the wrapper's, not the
+# command.
+(defn- duration? [t]
+  (truthy? (peg/match ~(* (some (+ (range "09") ".")) (? (set "smhd")) -1) t)))
+
 (defn- command-at [stage]
-  (find-index (fn [t]
-                (def b (argv-base t))
-                (not (or (member? wrappers b)
-                         (pre? "-" t)
-                         (and (string/find "=" t) (not (pre? "=" t))))))
-              stage))
+  (var at nil)
+  (var k 0)
+  (var after-timeout false)
+  (while (and (nil? at) (< k (length stage)))
+    (def t (in stage k))
+    (def b (argv-base t))
+    (cond
+      (and after-timeout (duration? t)) (set after-timeout false)
+      (or (member? wrappers b)
+          (pre? "-" t)
+          (and (string/find "=" t) (not (pre? "=" t))))
+      (when (= b "timeout") (set after-timeout true))
+      (set at k))
+    (++ k))
+  at)
 
 # The command a pipeline stage runs: its first word past wrappers,
 # assignments and flags, by base name.
@@ -156,6 +170,8 @@
 # Python options that take the next word as their value, so it is not the
 # program: -W ignore, -X utf8.
 (def- python-valued ["-W" "-X"])
+# Node options that take the next word as their value: --require dotenv.
+(def- node-valued ["-r" "--require" "--import" "--loader" "--experimental-loader"])
 
 # A pipeline stage that runs what it reads on stdin as a program: a shell,
 # or an interpreter called with no program of its own (python3, perl -,
@@ -169,17 +185,18 @@
     (or (member? shells b)
         (and inline
              (let [args (slice stage (+ at 1))
-                   args (if (pre? "python" b)
-                          (do
-                            (def kept @[])
-                            (var skip false)
-                            (each a args
-                              (cond
-                                skip (set skip false)
-                                (member? python-valued a) (set skip true)
-                                (array/push kept a)))
-                            kept)
-                          args)
+                   valued (cond (pre? "python" b) python-valued
+                                (pre? "node" b) node-valued
+                                [])
+                   args (do
+                          (def kept @[])
+                          (var skip false)
+                          (each a args
+                            (cond
+                              skip (set skip false)
+                              (member? valued a) (set skip true)
+                              (array/push kept a)))
+                          kept)
                    pw (program-word args inline)]
                (or (nil? pw)
                    (and (not (in pw 1)) (member? stdin-paths (in pw 0)))))))))
@@ -521,6 +538,41 @@
 (defn- find-deletes? [cmd]
   (and (= (argv-base (in cmd 0)) "find")
        (or (member? cmd "-delete") (find-exec-delete? cmd))))
+
+# xargs or parallel running a delete on the names it reads: the names are
+# not on the line, so it warns.
+(def- feeders ["xargs" "parallel"])
+(def- feeder-valued ["-n" "-I" "-i" "-d" "-L" "-P" "-s" "-E" "-a" "-j" "--delimiter"
+                     "--max-args" "--max-procs" "--arg-file" "--replace"])
+(def- delete-commands ["rm" "rmdir" "unlink" "shred" "srm"])
+
+# `parallel rm -rf ::: a b`: the delete with the arguments after `:::`.
+(defn- parallel-deletes [argv]
+  (def out @[])
+  (each cmd (commands argv)
+    (when-let [at (command-at cmd)]
+      (when (= (argv-base (in cmd at)) "parallel")
+        (def sep (find-index (fn [a] (= a ":::")) cmd))
+        (def run-at (find-index (fn [a] (member? delete-commands (argv-base a))) (slice cmd (+ at 1))))
+        (when (and sep run-at (< (+ at 1 run-at) sep))
+          (array/push out [;(slice cmd (+ at 1 run-at) sep) ;(slice cmd (+ sep 1))])))))
+  out)
+
+(defn- feeds-a-delete? [argv]
+  (truthy?
+    (find (fn [cmd]
+            (when-let [at (command-at cmd)]
+              (when (member? feeders (argv-base (in cmd at)))
+                (var k (+ at 1))
+                (var run nil)
+                (while (and (nil? run) (< k (length cmd)))
+                  (def a (in cmd k))
+                  (cond
+                    (member? feeder-valued a) (+= k 2)
+                    (pre? "-" a) (++ k)
+                    (set run a)))
+                (and run (member? delete-commands (argv-base run))))))
+          (commands argv))))
 
 # `find-exec-rm` when the find runs rm, shred or unlink through -exec, else
 # `find-delete`. A start outside the work tree denies; a delete inside it
@@ -893,7 +945,12 @@
                rest))
     "git-push-delete"
     (and (= sub "reset") (has "--hard")) "git-reset-hard"
-    (and (= sub "clean") (or (short "f") (has "--force"))) "git-clean-force"
+    # Untracked files and directories both: -f with -d, and no dry run.
+    (and (= sub "clean")
+         (or (short "f") (has "--force"))
+         (or (short "d") (has "--directories"))
+         (not (or (short "n") (has "--dry-run"))))
+    "git-clean-force"
     (and (= sub "stash") (= first-word "clear")) "git-stash-clear"
     (and (= sub "stash") (= first-word "drop")) "git-stash-drop"
     (and (= sub "branch") (or (short "D") (and (has "--delete") (or (has "--force") (short "f")))))
@@ -1077,9 +1134,11 @@
        (fn [] (when (or (recursive-delete-off-tmp? body)
                         (recursive-delete-off-tmp?
                           (mapcat (fn [c] [;(peel-delete-wrappers c) ";"]) (commands body)))
-                        (deletes-a-root-tree? body))
+                        (deletes-a-root-tree? body)
+                        (find recursive-delete-off-tmp? (parallel-deletes body)))
                 [PolicyReason-shellDangerousRunner "rm-rf-outside-tmp"]))
        (fn [] (find-delete-id body))
+       (fn [] (when (feeds-a-delete? body) [PolicyReason-shellDangerousRunner "feeder-rm" :warn]))
        (fn [] (git-config-hit body))
        # A dropped stash entry is still in the reflog: it warns.
        (fn [] (when-let [id (git-dangerous? body)]

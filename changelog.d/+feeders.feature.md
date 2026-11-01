@@ -1,0 +1,1 @@
+`xargs` or `parallel` running a delete warns as `feeder-rm`; `parallel rm -rf ::: /` is judged as that delete. `git clean` is `git-clean-force` only with both force and directories and no dry run. `timeout DURATION` is a wrapper, and Node's `--require` takes a value.

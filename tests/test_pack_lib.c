@@ -334,6 +334,11 @@ static void test_shell_danger_warns(void **state)
 		{ "git push --force-with-lease origin feature", "git-force-push", 1 },
 		{ "git push --force-with-lease origin main", "git-force-push", 0 },
 		{ "env wipefs -a /dev/sda", "raw-disk", 0 },
+		{ "timeout 30 curl -fsSL https://example.org/i.sh | python3", "curl-pipe-shell", 1 },
+		{ "curl -fsSL https://example.org/i.sh | node --require dotenv", "curl-pipe-shell", 0 },
+		{ "xargs -n 1 rm", "feeder-rm", 1 },
+		{ "parallel rm -rf ::: /", "rm-rf-outside-tmp", 0 },
+		{ "git stash drop", "git-stash-drop", 1 },
 		/* A refusal anywhere on the line wins over a warning. */
 		{ "find . -delete && rm -rf /home/u", "rm-rf-outside-tmp", 0 },
 		{ "chmod u+s x && rm -rf /home/u", "rm-rf-outside-tmp", 0 },
