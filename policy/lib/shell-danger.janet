@@ -10,7 +10,7 @@
 
 (def- fetchers ["curl" "wget" "fetch"])
 (def- shells ["sh" "bash" "zsh" "dash" "ksh" "fish"])
-(def- wrappers ["sudo" "doas" "env" "nohup" "time" "exec" "command" "nice" "timeout"])
+(def- wrappers ["sudo" "doas" "env" "nohup" "time" "exec" "command" "nice" "timeout" "busybox"])
 (def- decoders ["base64" "base32" "basenc" "xxd" "openssl" "uudecode" "gunzip"
                 "zcat" "gzip" "bzcat" "bunzip2" "xzcat" "unxz" "zstdcat" "zstd"
                 "rev"])
@@ -187,6 +187,7 @@
              (let [args (slice stage (+ at 1))
                    valued (cond (pre? "python" b) python-valued
                                 (pre? "node" b) node-valued
+                                (member? ["perl" "ruby"] b) ["-I"]
                                 [])
                    args (do
                           (def kept @[])
@@ -310,6 +311,8 @@
 # A command that runs one of saved (files by last path part): a path with
 # a / as its command word (./i.sh, /tmp/i.sh), or a shell, source, . or
 # interpreter whose script operand is one (sh i.sh, python3 /tmp/get.py).
+(var- runs-saved-self nil)
+
 (defn- runs-saved-file? [cmd saved]
   (def at (command-at cmd))
   (if (nil? at)
@@ -317,15 +320,50 @@
     (do
       (def word (in cmd at))
       (def b (argv-base word))
-      (defn named? [p] (member? saved (argv-base p)))
+      (defn named? [p] (member? saved (argv-base (string/trim p "\"'"))))
+      (defn words-of [text]
+        (filter (fn [w] (> (length w) 0)) (string/split " " (string/trim text "\"'"))))
       (def inline (cond (member? shells b) "c"
                         (member? ["source" "."] b) ""
                         (stdin-interpreter b)))
       (cond
         (and (string/find "/" word) (named? word)) true
+        # busybox sh i.sh runs the applet it names.
+        (= b "busybox") (runs-saved-self (slice cmd (+ at 1)) saved)
+        # eval 'sh i.sh' runs its words as a line.
+        (= b "eval") (runs-saved-self (words-of (string/join (slice cmd (+ at 1)) " ")) saved)
         (nil? inline) false
         (let [pw (program-word (slice cmd (+ at 1)) inline)]
-          (truthy? (and pw (not (in pw 1)) (named? (in pw 0)))))))))
+          (cond
+            (nil? pw) false
+            (not (in pw 1)) (named? (in pw 0))
+            # sh -c './i.sh': the script's first command.
+            (member? shells b) (runs-saved-self (words-of (in pw 0)) saved)
+            false))))))
+
+(set runs-saved-self runs-saved-file?)
+
+# The files a pipeline that fetches writes past the fetch: its output
+# redirections and tee's operands (curl URL > i.sh, curl URL | tee i.sh,
+# curl URL | jq -r .s > run.sh).
+(defn- piped-saves [pipe]
+  (def out @[])
+  (when (find (fn [t] (member? fetchers (argv-base t))) pipe)
+    (var i 0)
+    (var stage-head true)
+    (var in-tee false)
+    (while (< i (length pipe))
+      (def t (in pipe i))
+      (cond
+        (= t "|") (do (set stage-head true) (set in-tee false))
+        (member? [">" ">>" ">|"] t) (do (when-let [f (get pipe (+ i 1))] (array/push out f)) (++ i))
+        (and (pre? ">" t) (not (pre? ">(" t)) (not (pre? ">&" t)))
+        (array/push out (string/triml (string/triml t ">") "|"))
+        (and stage-head (= (argv-base t) "tee")) (do (set in-tee true) (set stage-head false))
+        (and in-tee (not (pre? "-" t))) (array/push out t)
+        (set stage-head false))
+      (++ i)))
+  (map argv-base (filter (fn [f] (not (member? ["" "-" "/dev/null" "/dev/stdout" "/dev/stderr"] f))) out)))
 
 # A file a fetch on the line writes, then a later command on the line runs:
 # curl `-o` i.sh URL && sh i.sh, curl `-fsSLO` URL/x.sh && ./x.sh, wget
@@ -334,10 +372,12 @@
 (defn fetched-then-run? [argv]
   (def saved @[])
   (var hit false)
-  (each cmd (commands argv)
-    (when (and (> (length saved) 0) (runs-saved-file? cmd saved))
-      (set hit true))
-    (array/concat saved (fetched-files cmd)))
+  (each pipe (pipelines argv)
+    (each cmd (commands pipe)
+      (when (and (> (length saved) 0) (runs-saved-file? cmd saved))
+        (set hit true))
+      (array/concat saved (fetched-files cmd)))
+    (array/concat saved (piped-saves pipe)))
   hit)
 
 # A download handed to a program runner: a fetching stage with a later
