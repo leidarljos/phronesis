@@ -150,6 +150,9 @@
       (do (set out [a false]) (set done true))))
   out)
 
+# Script paths that name the stage's own stdin.
+(def- stdin-paths ["/dev/stdin" "/dev/fd/0" "/proc/self/fd/0"])
+
 # A pipeline stage that runs what it reads on stdin as a program: a shell,
 # or an interpreter called with no program of its own (python3, perl -,
 # node). python3 `-m` json.tool, python3 `-c` CODE, perl `-ne` CODE and python3
@@ -160,7 +163,10 @@
     (def b (argv-base (in stage at)))
     (def inline (stdin-interpreter b))
     (or (member? shells b)
-        (and inline (nil? (program-word (slice stage (+ at 1)) inline))))))
+        (and inline
+             (let [pw (program-word (slice stage (+ at 1)) inline)]
+               (or (nil? pw)
+                   (and (not (in pw 1)) (member? stdin-paths (in pw 0)))))))))
 
 # The pipelines of a line: its words split at ; && || & and after a word
 # that ends in ;. The | words stay, so each piece is one pipeline.
@@ -483,12 +489,45 @@
   (def moved (leaves-tree? argv))
   (truthy? (find (fn [cmd] (find-delete? cmd moved)) (commands argv))))
 
-# `find-exec-rm` when the find that deletes off /tmp runs rm, shred or
-# unlink through -exec, else `find-delete`.
+# Where a find that deletes starts: outside the work tree (an absolute
+# path, `~`, a variable, a climb, or after a cd out of the tree) or inside
+# it. The host hands an absolute path inside the work tree as a relative
+# one.
+(defn- find-starts-outside? [cmd moved]
+  (def starts (take-while (fn [a] (and (not (pre? "-" a))
+                                       (not (member? ["(" "!" "\\(" ";"] a))))
+                          (filter (fn [a] (not (member? ["-H" "-L" "-P"] a))) (slice cmd 1))))
+  (or moved
+      (truthy? (find (fn [p] (and (not (under-tmp? p))
+                                  (or (pre? "/" p) (pre? "~" p) (pre? "$" p) (climbs? p))))
+                     starts))))
+
+(defn- find-deletes? [cmd]
+  (and (= (argv-base (in cmd 0)) "find")
+       (or (member? cmd "-delete") (find-exec-delete? cmd))))
+
+# `find-exec-rm` when the find runs rm, shred or unlink through -exec, else
+# `find-delete`. A start outside the work tree denies; a delete inside it
+# or under /tmp warns; a cleanup of regenerable names inside it is nil.
 (defn- find-delete-id [argv]
   (def moved (leaves-tree? argv))
-  (def hit (find (fn [cmd] (find-delete? cmd moved)) (commands argv)))
-  (when hit (if (find-exec-delete? hit) "find-exec-rm" "find-delete")))
+  (var deny nil)
+  (var warn nil)
+  (each cmd (commands argv)
+    (when (and (nil? deny) (find-deletes? cmd))
+      (def id (if (find-exec-delete? cmd) "find-exec-rm" "find-delete"))
+      (cond
+        (find-delete? cmd moved)
+        (if (find-starts-outside? cmd moved)
+          (set deny [PolicyReason-shellDangerousRunner id])
+          (unless warn (set warn [PolicyReason-shellDangerousRunner id :warn])))
+        (not (regenerable-cleanup?
+               (take-while (fn [a] (and (not (pre? "-" a)) (not (member? ["(" "!" "\\("] a))))
+                           (slice cmd 1))
+               (drop-while (fn [a] (and (not (pre? "-" a)) (not (member? ["(" "!" "\\("] a))))
+                           (slice cmd 1))))
+        (unless warn (set warn [PolicyReason-shellDangerousRunner id :warn])))))
+  (or deny warn))
 
 # A mode that sets the setuid or setgid bit: an octal mode of four or more
 # digits whose leading digit holds 4 or 2 (4755, 04755, 2775), or a symbolic
@@ -990,34 +1029,50 @@
                 (set hit (danger-self expanded)))))))))
   hit)
 
-# Returns a deny pair [code rule-id] or nil if this module has no opinion.
-# Each rule id is the token ljos-policyd uses. A privilege runner is judged
-# by the command it runs first, so `sudo rm -rf /srv` is the delete.
+# Returns [code rule-id], [code rule-id :warn], or nil if this module has
+# no opinion. Each rule id is the token ljos-policyd uses. A pair without
+# :warn refuses; with it, the line runs and the id is published as a
+# warning. A refusal anywhere on the line wins over a warning. A privilege
+# runner is judged by the command it runs first, so `sudo rm -rf /srv` is
+# the delete. The irreversible checks come first.
 (def shell-danger-deny
   (fn shell-danger-deny [argv]
     (def privileged (find (fn [t] (privilege-runner? (argv-base t))) argv))
     (def body (if privileged
                 (filter (fn [t] (not (privilege-runner? (argv-base t)))) argv)
                 argv))
-    (def hit
-      (cond
-        (python-only-remote? body) [PolicyReason-shellRemoteExec "curl-pipe-python"]
-        (remote-exec? body) [PolicyReason-shellRemoteExec "curl-pipe-shell"]
-        (decoded-exec? body) [PolicyReason-shellRemoteExec "decoded-pipe-shell"]
-        (find setuid-mode? (commands body)) [PolicyReason-shellDangerousRunner "chmod-setuid"]
-        (raw-disk? body) [PolicyReason-shellDangerousRunner "raw-disk"]
-        (recursive-mode-change? body) [PolicyReason-shellDangerousRunner "recursive-chmod-chown"]
-        (recursive-delete-off-tmp? body) [PolicyReason-shellDangerousRunner "rm-rf-outside-tmp"]
-        (recursive-delete-off-tmp? (mapcat (fn [c] [;(peel-delete-wrappers c) ";"]) (commands body)))
-        [PolicyReason-shellDangerousRunner "rm-rf-outside-tmp"]
-        (deletes-a-root-tree? body) [PolicyReason-shellDangerousRunner "rm-rf-outside-tmp"]
-        (find-delete-id body) [PolicyReason-shellDangerousRunner (find-delete-id body)]
-        (git-config-hit body) (git-config-hit body)
-        (git-dangerous? body) [PolicyReason-shellGitDangerous (git-dangerous? body)]
-        nil))
+    (def checks
+      [(fn [] (when (and (remote-exec? body) (not (python-only-remote? body)))
+                [PolicyReason-shellRemoteExec "curl-pipe-shell"]))
+       (fn [] (when (python-only-remote? body)
+                [PolicyReason-shellRemoteExec "curl-pipe-shell" :warn]))
+       (fn [] (when (or (recursive-delete-off-tmp? body)
+                        (recursive-delete-off-tmp?
+                          (mapcat (fn [c] [;(peel-delete-wrappers c) ";"]) (commands body)))
+                        (deletes-a-root-tree? body))
+                [PolicyReason-shellDangerousRunner "rm-rf-outside-tmp"]))
+       (fn [] (find-delete-id body))
+       (fn [] (git-config-hit body))
+       (fn [] (when-let [id (git-dangerous? body)] [PolicyReason-shellGitDangerous id]))
+       (fn [] (when (decoded-exec? body) [PolicyReason-shellRemoteExec "decoded-pipe-shell"]))
+       (fn [] (when (find setuid-mode? (commands body))
+                [PolicyReason-shellDangerousRunner "chmod-setuid"]))
+       (fn [] (when (raw-disk? body) [PolicyReason-shellDangerousRunner "raw-disk"]))
+       (fn [] (when (recursive-mode-change? body)
+                [PolicyReason-shellDangerousRunner "recursive-chmod-chown"]))])
+    (var deny nil)
+    (var warn nil)
+    (each check checks
+      (when (nil? deny)
+        (def hit (check))
+        (cond
+          (nil? hit) nil
+          (= (get hit 2) :warn) (unless warn (set warn hit))
+          (set deny hit))))
     (cond
-      hit hit
+      deny deny
       privileged [PolicyReason-shellPrivilegeDenied "sudo"]
+      warn warn
       nil)))
 
 (set danger-self shell-danger-deny)
