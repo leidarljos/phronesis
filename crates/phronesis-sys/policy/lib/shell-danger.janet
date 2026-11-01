@@ -494,11 +494,33 @@
        (member? scratch-dirs (in parts 0))
        (not (member? parts ".git"))))
 
+# A unique prefix of one long option is that option, as getopt reads it:
+# `--rec` is `--recursive`. An exact name wins, so `--force` is not
+# `--force-with-lease`. A value after `=` is kept.
+(defn- expand-long [word options]
+  (def eq (string/find "=" word))
+  (def name (if eq (string/slice word 0 eq) word))
+  (if (or (not (pre? "--" name)) (= name "--"))
+    word
+    (let [hits (filter (fn [o] (pre? name o)) options)
+          chosen (cond (member? options name) name
+                       (= (length hits) 1) (in hits 0)
+                       nil)]
+      (cond
+        (nil? chosen) word
+        eq (string chosen (string/slice word eq))
+        chosen))))
+
+(def- rm-long
+  ["--recursive" "--force" "--dir" "--verbose" "--interactive" "--one-file-system"
+   "--preserve-root" "--no-preserve-root" "--help" "--version"])
+
 # A recursive rm or rtrash with an operand that is neither under /tmp or
 # /var/tmp, nor a build output directory or a top-level scratch directory
 # named as a plain relative path. When the line can cd out of the tree,
 # only /tmp operands pass.
-(defn- recursive-delete? [cmd moved]
+(defn- recursive-delete? [raw moved]
+  (def cmd (map (fn [a] (expand-long a rm-long)) raw))
   (def b (argv-base (in cmd 0)))
   (and (or (= b "rm") (= b "rtrash"))
        (or (truthy? (find (fn [a] (and (short-flags? a) (has-sub? "r" a) (has-sub? "f" a)))
@@ -537,13 +559,22 @@
                (not (find (fn [a] (member? ["-o" "-or" "!" "-not" "," "(" ")" "\\(" "\\)"] a))
                           expr))))
   (var named 0)
+  (var first-test nil)
   (def n (length expr))
+  # The action runs on what reaches it: a -delete before its -name runs on
+  # every file.
+  (def action (find-index (fn [a] (member? ["-delete" "-exec" "-execdir" "-ok" "-okdir"] a)) expr))
   (for k 0 (- n 1)
     (def test (in expr k))
     (def value (in expr (+ k 1)))
+    (when (and (nil? first-test)
+               (member? ["-name" "-iname" "-path" "-ipath" "-wholename"] test))
+      (set first-test k))
     (cond
       (member? ["-name" "-iname"] test)
-      (if (member? regenerable-names value) (++ named) (set ok false))
+      (if (or (member? regenerable-names value) (member? build-output-dirs value))
+        (++ named)
+        (set ok false))
       (member? ["-path" "-ipath" "-wholename"] test)
       (let [parts (filter (fn [part] (and (not= part "*") (not= part ".")))
                           (string/split "/" value))]
@@ -552,18 +583,37 @@
           (set ok false)))
       (member? ["-regex" "-iregex" "-lname" "-ilname"] test)
       (set ok false)))
-  (and ok (> named 0)))
+  (and ok (> named 0) (or (nil? action) (and first-test (< first-test action)))))
 
 # find ... -delete, or -exec rm (also -execdir, -ok, shred, unlink), whose
 # starting points are not all under /tmp. No starting point is `.`. A
 # cleanup of files a tool writes again inside the working tree is allowed,
 # unless the line can cd out of the tree first.
+# Whether words run a delete: rm, shred or unlink, behind wrappers, or as
+# the first command of a shell's -c script.
+(var- runs-a-delete-self nil)
+(defn- runs-a-delete? [words]
+  (when-let [at (command-at words)]
+    (def b (argv-base (in words at)))
+    (cond
+      (member? ["rm" "shred" "unlink" "rmdir" "srm"] b) true
+      (member? shells b)
+      (let [c (find-index (fn [a] (and (pre? "-" a) (not (pre? "--" a)) (has-sub? "c" a)))
+                          (slice words (+ at 1)))]
+        (when-let [script (and c (get words (+ at 2 c)))]
+          (runs-a-delete-self
+            (filter (fn [w] (> (length w) 0)) (string/split " " (string/trim script "\"'"))))))
+      false)))
+(set runs-a-delete-self runs-a-delete?)
+
 (defn- find-exec-delete? [cmd]
   (var exec-delete false)
   (for k 0 (- (length cmd) 1)
-    (when (and (member? ["-exec" "-execdir" "-ok" "-okdir"] (in cmd k))
-               (member? ["rm" "shred" "unlink"] (argv-base (in cmd (+ k 1)))))
-      (set exec-delete true)))
+    (when (member? ["-exec" "-execdir" "-ok" "-okdir"] (in cmd k))
+      (def payload (take-while (fn [a] (not (member? [";" "+" "\\;" "\\+"] a)))
+                               (slice cmd (+ k 1))))
+      (when (and (not (empty? payload)) (runs-a-delete? payload))
+        (set exec-delete true))))
   exec-delete)
 
 (defn- find-delete? [cmd moved]
@@ -629,8 +679,8 @@
                   (cond
                     (member? feeder-valued a) (+= k 2)
                     (pre? "-" a) (++ k)
-                    (set run a)))
-                (and run (member? delete-commands (argv-base run))))))
+                    (set run k)))
+                (and run (runs-a-delete? (slice cmd run))))))
           (commands argv))))
 
 # `find-exec-rm` when the find runs rm, shred or unlink through -exec, else
@@ -1016,7 +1066,8 @@
         (cond
           # --worktree=VALUE names the work tree with a value git does
           # not take: the gate warns whatever the paths.
-          (and (= body "worktree") eq (not negated)) (set forced true)
+          (and (= body "worktree") eq (not negated))
+          (unless (member? ["false" "no" "0" ""] (string/slice a (+ eq 1))) (set forced true))
           (and (member? restore-no-value body) eq) (set stops true)
           (and (member? restore-valued body) (not negated) (not eq)) (++ i)
           (= body "staged") (set staged (not negated))
@@ -1041,8 +1092,33 @@
                                (find lease-flag? (slice cmd (+ at 1)))))))
                  (commands argv))))
 
-(defn git-dangerous [cmd]
-  (def at (git-subcommand-at cmd))
+# Long options per git subcommand, for abbreviations: `push --mir` is
+# `--mirror`, `reset --har` is `--hard`.
+(def- git-long
+  {"push" ["--all" "--atomic" "--delete" "--dry-run" "--exec" "--follow-tags" "--force"
+           "--force-if-includes" "--force-with-lease" "--mirror" "--no-force-with-lease"
+           "--no-thin" "--no-verify" "--porcelain" "--progress" "--prune" "--push-option"
+           "--quiet" "--receive-pack" "--recurse-submodules" "--repo" "--set-upstream"
+           "--signed" "--tags" "--thin" "--verbose"]
+   "reset" ["--hard" "--soft" "--mixed" "--merge" "--keep" "--quiet" "--patch"]
+   "clean" ["--directories" "--dry-run" "--exclude" "--force" "--interactive" "--quiet"]
+   "switch" ["--conflict" "--create" "--detach" "--discard-changes" "--force" "--guess"
+             "--ignore-other-worktrees" "--merge" "--no-guess" "--no-progress" "--no-track"
+             "--orphan" "--progress" "--quiet" "--recurse-submodules" "--track"]
+   "restore" ["--conflict" "--ignore-skip-worktree-bits" "--ignore-unmerged" "--merge"
+              "--ours" "--overlay" "--patch" "--quiet" "--source" "--staged" "--theirs"
+              "--worktree"]})
+
+(defn git-dangerous [raw]
+  (def raw-at (git-subcommand-at raw))
+  (def table (when raw-at
+               (get git-long (in raw raw-at)
+                    (when (= (in raw raw-at) "checkout") (get git-long "restore")))))
+  (def cmd (if table
+             [;(slice raw 0 (+ raw-at 1))
+              ;(map (fn [a] (expand-long a table)) (slice raw (+ raw-at 1)))]
+             raw))
+  (def at raw-at)
   (def sub (when at (in cmd at)))
   (def rest (if at (slice cmd (+ at 1)) []))
   (def first-word (get rest 0))
@@ -1059,6 +1135,10 @@
                rest))
     "git-push-delete"
     (and (= sub "reset") (has "--hard")) "git-reset-hard"
+    # checkout -f and switch --discard-changes throw away local edits.
+    (and (member? ["checkout" "switch"] sub)
+         (or (has "--force") (short "f") (has "--discard-changes")))
+    "git-discard-worktree"
     # Untracked files and directories both: -f with -d, and no dry run.
     (and (= sub "clean")
          (or (short "f") (has "--force"))
@@ -1096,7 +1176,9 @@
   (each cmd (commands argv)
     (def b (argv-base (in cmd 0)))
     (when (and (nil? reason) (or (= b "git") (pre? "$" b)))
-      (set reason (git-dangerous cmd))))
+      (set reason (git-dangerous cmd)))
+    (when (and (nil? reason) (member? ["git-filter-repo" "git-filter-branch"] b))
+      (set reason "git-history-rewrite")))
   reason)
 
 # Returns a deny pair [code reason] or nil if this module has no opinion.
