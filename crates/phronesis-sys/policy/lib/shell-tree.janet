@@ -115,10 +115,10 @@
         "mv" (let [d (mv-dest cmd)]
                (when (and d (outside-tree? d))
                  (set hit [PolicyReason-shellDangerousRunner
-                           (string "mv-tree-outside: a whole tree moved onto " d)])))
+                           "mv-tree-outside"])))
         "rsync" (when (and (rsync-deletes? cmd) (not (rsync-dry? cmd)))
                   (let [d (rsync-dest cmd)]
                     (when (and d (outside-tree? d))
                       (set hit [PolicyReason-shellDangerousRunner
-                                (string "rsync-delete-outside: rsync --delete over " d)])))))))
+                                "rsync-delete-outside"])))))))
   hit)
