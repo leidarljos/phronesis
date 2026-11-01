@@ -35,6 +35,12 @@
     (set i (+ i 1)))
   out)
 
+# An allow, carrying `warn: ID` when a rule warned.
+(defn- allowed [warned]
+  (if warned
+    (decide Decision-allow (in warned 0) (string "warn: " (in warned 1)))
+    (decide Decision-allow PolicyReason-shellExecAllow "shell exec under workspace")))
+
 (defn shell-check
   ``Seat pack entry: Cap'n ShellView bytes in, PolicyDecision out.
   The default law first, then the seat's package rules, then its Python
@@ -46,8 +52,11 @@
     (break (decide Decision-deny PolicyReason-pathOutsideWorkspace
                    "path outside workspace")))
   (def argv (read-argv root))
+  # A hit tagged :warn runs and is published as a warning unless a later
+  # rule refuses the line.
   (def danger (shell-danger-deny argv))
-  (unless (nil? danger)
+  (def warned (when (and danger (= (get danger 2) :warn)) danger))
+  (unless (or (nil? danger) warned)
     (break (decide Decision-deny (in danger 0) (in danger 1))))
   (def secret (shell-secret-deny argv))
   (unless (nil? secret)
@@ -56,8 +65,7 @@
   (unless (nil? package)
     (break (decide Decision-deny (in package 0) (in package 1))))
   (unless (touches-python? argv)
-    (break (decide Decision-allow PolicyReason-shellExecAllow
-                   "shell exec under workspace")))
+    (break (allowed warned)))
   (unless (uv-run? argv)
     (break (decide Decision-deny PolicyReason-pythonRequiresUvRun
                    "python requires uv run + PEP 723")))
@@ -67,8 +75,7 @@
   (when (and (has-py-path? argv) (not (any-pep723? root)))
     (break (decide Decision-deny PolicyReason-pythonMissingPep723
                    "python missing PEP 723 metadata")))
-  (decide Decision-allow PolicyReason-shellExecAllow
-          "shell exec under workspace"))
+  (allowed warned))
 
 (defn audio-check
   ``Voice gate entry, the same as policy/shell.janet's, so this pack can
