@@ -305,3 +305,77 @@
     (if (= kind :deny)
       [PolicyReason-pathSensitiveDeny (string "reads-credential: " by " with " path)]
       [PolicyReason-pathSensitiveDeny (string "credential-count: " by " with " path)])))
+
+# Inline programs: an interpreter given its program as an argument, and
+# whether that text names a credential store. A mention asks; it neither
+# denies nor allows, since the program may only name the path.
+
+(def- inline-flags
+  {"python" "-c" "pypy" "-c" "perl" "-e" "ruby" "-e" "node" "-e" "deno" "eval"
+   "bun" "-e"})
+
+# `python3.12` is `python`: the name up to its first digit.
+(defn- inline-flag [head]
+  (def b (rd-base head))
+  (def stem (or (get (peg/match ~(<- (any (if-not (range "09") 1))) b) 0) b))
+  (get inline-flags stem))
+
+(defn- inline-program [run]
+  (when-let [flag (inline-flag (in run 0))]
+    (def at (find-index
+              (fn [a]
+                (or (= a flag)
+                    (and (rd-pre? "-" flag) (rd-pre? "-" a) (not (rd-pre? "--" a))
+                         (string/has-suffix? (string/slice flag 1) a))))
+              run))
+    (when at (get run (+ at 1)))))
+
+(defn- mention-at? [text part]
+  (var hit false)
+  (var from 0)
+  (while (and (not hit) from)
+    (def i (string/find part text from))
+    (if (nil? i)
+      (set from nil)
+      (let [before (if (> i 0) (string/slice text (- i 1) i) nil)
+            j (+ i (length part))
+            after (if (< j (length text)) (string/slice text j (+ j 1)) nil)
+            before-ok (or (nil? before) (truthy? (string/find before "/~'\" (,=:\n")))
+            after-ok (or (nil? after)
+                         (not (peg/match ~(+ (range "az" "AZ" "09") (set "_-.")) after)))]
+        (if (and before-ok after-ok) (set hit true) (set from (+ i 1))))))
+  hit)
+
+(defn- names-store? [low]
+  (or (truthy? (find |(rd-contains? low $) read-credential-paths))
+      (and (rd-contains? low "/proc/") (rd-contains? low "/environ"))
+      (truthy? (find |(mention-at? low $) read-credential-parts))))
+
+# `seats.toml` or `ljos.toml` under ~/.config/ljos named, and no other store.
+(defn- ljos-config-mention? [low]
+  (and (rd-contains? low ".config/ljos")
+       (or (rd-contains? low "seats.toml") (rd-contains? low "ljos.toml"))
+       (not (names-store? (->> low
+                               (string/replace-all ".config/ljos/seats.toml" " ")
+                               (string/replace-all ".config/ljos/ljos.toml" " ")
+                               (string/replace-all ".config/ljos/" " ")
+                               (string/replace-all ".config/ljos" " "))))))
+
+(defn mentions-credential? [code]
+  ``Whether program text names a credential store. A part stands on its own,
+  so `.secrets.example` and `os.environ` do not.``
+  (def low (rd-lower code))
+  (and (not (ljos-config-mention? low))
+       (or (names-store? low) (mention-at? low ".env"))))
+
+(defn shell-read-ask [argv]
+  ``[code reason] when an inline python, perl, ruby, node, deno or bun
+  program names a credential store, nil otherwise.``
+  (var hit nil)
+  (each cmd (rd-commands argv)
+    (unless hit
+      (when-let [at (rd-head-at cmd)
+                 code (inline-program (slice cmd at))]
+        (when (mentions-credential? code)
+          (set hit [PolicyReason-highRiskPrompt "credential-mention"])))))
+  hit)

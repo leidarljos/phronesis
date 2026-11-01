@@ -22,6 +22,7 @@
 (def AudioAction-inject 4)
 
 (def PolicyReason-pathOutsideWorkspace 2)
+(def PolicyReason-highRiskPrompt 7)
 (def PolicyReason-pythonRequiresUvRun 17)
 (def PolicyReason-pythonDashCDenied 18)
 (def PolicyReason-pythonMissingPep723 19)
