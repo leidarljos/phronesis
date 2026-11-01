@@ -34,8 +34,11 @@
                    "path outside workspace")))
   (def argv (read-argv root))
   # Privilege / remote-exec / disks / deletes / dangerous git (policy/lib/shell-danger).
+  # A hit tagged :warn runs and is published as a warning, unless a later
+  # rule refuses the line.
   (def danger (shell-danger-deny argv))
-  (unless (nil? danger)
+  (def warned (when (and danger (= (get danger 2) :warn)) danger))
+  (unless (or (nil? danger) warned)
     (break (decide Decision-deny (in danger 0) (in danger 1))))
   # Reading or uploading a credential store (policy/lib/shell-read).
   (def read (shell-read-deny argv))
@@ -55,6 +58,8 @@
   (def ask (shell-read-ask argv))
   (unless (nil? ask)
     (break (decide Decision-prompt (in ask 0) (in ask 1))))
+  (when warned
+    (break (decide Decision-allow (in warned 0) (string "warn: " (in warned 1)))))
   (decide Decision-allow PolicyReason-shellExecAllow
           "shell exec under workspace"))
 
