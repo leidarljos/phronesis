@@ -984,6 +984,7 @@
   (var staged nil)
   (var worktree nil)
   (var stops false)
+  (var forced false)
   (def paths @[])
   (var opts true)
   (var i 0)
@@ -1013,6 +1014,9 @@
             negated (pre? "--no-" name)
             body (string/slice name (if negated 5 2))]
         (cond
+          # --worktree=VALUE names the work tree with a value git does
+          # not take: the gate warns whatever the paths.
+          (and (= body "worktree") eq (not negated)) (set forced true)
           (and (member? restore-no-value body) eq) (set stops true)
           (and (member? restore-valued body) (not negated) (not eq)) (++ i)
           (= body "staged") (set staged (not negated))
@@ -1020,7 +1024,7 @@
           (= body "patch") (unless negated (set stops true))))
       (array/push paths a)))
   (def worktree-on (if (nil? worktree) (nil? staged) worktree))
-  (and (not stops) worktree-on (truthy? (find whole-tree? paths))))
+  (or forced (and (not stops) worktree-on (truthy? (find whole-tree? paths)))))
 
 # A git call that throws away work no commit holds. Returns its reason, or
 # nil. Mirrors ljos-policyd's table: force push, remote ref delete, reset
