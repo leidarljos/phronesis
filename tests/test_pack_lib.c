@@ -78,6 +78,7 @@ static int pack_lib_setup(void **state)
 	assert_int_equal(load_lib_file("shell-danger.janet"), 0);
 	assert_int_equal(load_lib_file("shell-read.janet"), 0);
 	assert_int_equal(load_lib_file("shell-secret.janet"), 0);
+	assert_int_equal(load_lib_file("shell-tree.janet"), 0);
 
 	/* Sanity: entry helpers are bound. */
 	assert_int_not_equal(
@@ -645,6 +646,49 @@ static void test_shell_read_laws(void **state)
 	}
 }
 
+static void test_shell_tree_laws(void **state)
+{
+	/* mv onto /dev/null or a whole tree outside the work tree, and rsync
+	 * --delete over such a tree; the host hands paths inside the tree as
+	 * relative ones. */
+	static const struct {
+		const char *line;
+		const char *token;
+	} cases[] = {
+		{ "mv ~/projects /dev/null", "mv-tree-outside" },
+		{ "mv -t /dev/null src", "mv-tree-outside" },
+		{ "rsync -a --delete empty/ ~/", "rsync-delete-outside" },
+		{ "rsync -a --delete-after x/ /etc/", "rsync-delete-outside" },
+		{ "rsync -a --delete build/ host:/var/www/", "rsync-delete-outside" },
+		{ "rsync -a --delete build/ /mnt/backup/build/", "rsync-delete-outside" },
+		{ "mv a.txt b.txt", NULL },
+		{ "mv /dev/null x", NULL },
+		{ "mv notes.md /tmp/notes.md", NULL },
+		{ "rsync -a src/ dest/", NULL },
+		{ "rsync -a src/ ~/", NULL },
+		{ "rsync -an --delete x/ /etc/", NULL },
+		{ "rsync --dry-run --delete x/ /etc/", NULL },
+		{ "rsync -a --delete dist/ ./site/", NULL },
+	};
+	size_t i;
+	(void)state;
+
+	for (i = 0; i < sizeof(cases) / sizeof(cases[0]); i++) {
+		const char *why = deny_reason(call1("shell-tree-deny", words(cases[i].line)));
+
+		if (!cases[i].token) {
+			if (why)
+				fail_msg("%s: want allow, got %s", cases[i].line, why);
+			continue;
+		}
+		if (!why)
+			fail_msg("%s: want %s, got allow", cases[i].line, cases[i].token);
+		if (strncmp(why, cases[i].token, strlen(cases[i].token)) != 0 ||
+		    why[strlen(cases[i].token)] != ':')
+			fail_msg("%s: want %s, got %s", cases[i].line, cases[i].token, why);
+	}
+}
+
 static void test_shell_secret_laws(void **state)
 {
 	/* Build fixtures without contiguous secret shapes in source (CI secrets:scan). */
@@ -864,6 +908,8 @@ int run_pack_lib_tests(void)
 						pack_lib_setup,
 						pack_lib_teardown),
 		cmocka_unit_test_setup_teardown(test_shell_read_laws, pack_lib_setup,
+						pack_lib_teardown),
+		cmocka_unit_test_setup_teardown(test_shell_tree_laws, pack_lib_setup,
 						pack_lib_teardown),
 		cmocka_unit_test_setup_teardown(test_shell_secret_laws,
 						pack_lib_setup,

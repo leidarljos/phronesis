@@ -1,0 +1,1 @@
+The pack refuses `rsync --delete` over a whole tree outside the work tree and names `mv` of a whole tree onto /dev/null or outside it (`mv-tree-outside`). Ported from ljos-policyd's built-in table, case for case; the host hands paths inside the work tree as relative ones.

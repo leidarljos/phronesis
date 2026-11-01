@@ -41,6 +41,11 @@
   (def read (shell-read-deny argv))
   (unless (nil? read)
     (break (decide Decision-deny (in read 0) (in read 1))))
+  # A whole tree moved or mirrored away outside the work tree
+  # (policy/lib/shell-tree).
+  (def tree (shell-tree-deny argv))
+  (unless (nil? tree)
+    (break (decide Decision-deny (in tree 0) (in tree 1))))
   # Secrets must never appear in spawn argv (policy/lib/shell-secret).
   (def secret (shell-secret-deny argv))
   (unless (nil? secret)
