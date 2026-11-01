@@ -1067,7 +1067,9 @@
           # --worktree=VALUE names the work tree with a value git does
           # not take: the gate warns whatever the paths.
           (and (= body "worktree") eq (not negated))
-          (unless (member? ["false" "no" "0" ""] (string/slice a (+ eq 1))) (set forced true))
+          (if (member? ["false" "no" "0" ""] (string/slice a (+ eq 1)))
+            (set stops true)
+            (set forced true))
           (and (member? restore-no-value body) eq) (set stops true)
           (and (member? restore-valued body) (not negated) (not eq)) (++ i)
           (= body "staged") (set staged (not negated))
