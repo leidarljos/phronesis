@@ -433,4 +433,26 @@ mod tests {
             .unwrap();
         assert_eq!(discard.decision, Decision::Deny, "{discard:?}");
     }
+
+    /// A read of a credential store is refused with its rule id first, and
+    /// a count that prints no content is named apart from a read.
+    #[test]
+    fn the_embedded_pack_refuses_a_credential_read() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut sup = seat(dir.path(), Entry::Shell);
+        let read = sup
+            .check_shell(dir.path(), &words("cat /home/u/.ssh/id_rsa"))
+            .unwrap();
+        assert_eq!(read.decision, Decision::Deny, "{read:?}");
+        assert!(read.reason.starts_with("reads-credential: "), "{read:?}");
+        let count = sup
+            .check_shell(dir.path(), &words("wc -c /home/u/.ssh/id_rsa"))
+            .unwrap();
+        assert_eq!(count.decision, Decision::Deny, "{count:?}");
+        assert!(count.reason.starts_with("credential-count: "), "{count:?}");
+        let plain = sup
+            .check_shell(dir.path(), &words("cat README.md"))
+            .unwrap();
+        assert_eq!(plain.decision, Decision::Allow, "{plain:?}");
+    }
 }

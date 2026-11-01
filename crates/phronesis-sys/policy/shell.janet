@@ -22,7 +22,8 @@
 (defn shell-check
   ``Shell content pack entry: Cap'n ShellView bytes in, PolicyDecision out.
   The default law: privilege, remote and decoded scripts, disks, modes,
-  recursive deletes, git calls that drop work, and secrets in argv. The
+  recursive deletes, git calls that drop work, credential reads, and
+  secrets in argv. The
   seat's package and Python rules live in policy/seat.janet, which a seat
   loads beside or instead of this file.``
   [buf]
@@ -36,6 +37,10 @@
   (def danger (shell-danger-deny argv))
   (unless (nil? danger)
     (break (decide Decision-deny (in danger 0) (in danger 1))))
+  # Reading or uploading a credential store (policy/lib/shell-read).
+  (def read (shell-read-deny argv))
+  (unless (nil? read)
+    (break (decide Decision-deny (in read 0) (in read 1))))
   # Secrets must never appear in spawn argv (policy/lib/shell-secret).
   (def secret (shell-secret-deny argv))
   (unless (nil? secret)

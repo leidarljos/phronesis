@@ -62,6 +62,10 @@ cp "$wraps"/c-capnproto/lib/{capn.c,capn-malloc.c,capn-stream.c,capnp_c.h,capnp_
 cp "$wraps/c-capnproto/COPYING" "$v/c-capnproto/COPYING"
 cp "$wraps"/capnp-janet/src/*.c "$v/capnp-janet/src/"
 cp -r "$wraps/capnp-janet/include/capnp-janet" "$v/capnp-janet/include/"
+# The upstream header names an embedder this tree does not carry; the
+# vendored copy names ljos-policyd, the embedder that links the crate.
+sed -i.bak -E 's/lib[a-z]+_policyd/libljos_policyd/g' "$v/capnp-janet/include/capnp-janet/capnp_janet.h"
+rm -f "$v/capnp-janet/include/capnp-janet/capnp_janet.h.bak"
 cp "$wraps/capnp-janet/LICENSE" "$v/capnp-janet/LICENSE"
 bash "$repo/scripts/gen-capnp-c.sh" "$repo/schema" "$v/capnp" "$capnpc_c"
 cp "$repo/schema/SCHEMA_PIN" "$v/capnp/SCHEMA_PIN"
